@@ -22,7 +22,10 @@ import (
 const migrationLockKey = 123456
 
 // example: 00003-users.do.sql
-var versionedMigrationRegex = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
+var (
+	versionedMigrationRegexDo   = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
+	versionedMigrationRegexUndo = regexp.MustCompile(`^\d{5}-.*\.undo\.sql$`)
+)
 
 type MigrationFile struct {
 	path string
@@ -152,51 +155,59 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 	}
 
 	for _, file := range mp.files {
-		isVersioned := versionedMigrationRegex.MatchString(file.base)
-		if isVersioned {
-			versionStr := strings.Split(filepath.Base(file.base), "-")[0]
-			version, err := strconv.Atoi(versionStr)
-			if err != nil {
-				return err
-			}
-
-			if mp.direction == "apply" && applied[version] {
-				continue
-			}
-			if mp.direction == "revert" && !applied[version] {
-				continue
-			}
-
-			sql, err := os.ReadFile(file.path)
-			if err != nil {
-				return err
-			}
-			newHash := ComputeHash(sql)
-			name := file.base
-
-			slog.Info("migration",
-				slog.String("mode", mp.mode),
-				slog.String("path", file.base),
-			)
-
-			_, err = tx.Exec(ctx, string(sql))
-			if err != nil {
-				return fmt.Errorf("error applying migration %s: %v", file, err)
-			}
-
-			if mp.direction == "apply" {
-				_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (version, hash, name) VALUES ($1, $2, $3)", mp.table),
-					version,
-					newHash,
-					name,
+		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
+		if !isVersioned {
+			if !versionedMigrationRegexUndo.MatchString(file.base) {
+				slog.Warn("skipped",
+					slog.String("path", filepath.ToSlash(file.path)),
 				)
-			} else {
-				_, err = tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE version = $1", mp.table), version)
 			}
-			if err != nil {
-				return err
-			}
+			continue
 		}
+
+		versionStr := strings.Split(filepath.Base(file.base), "-")[0]
+		version, err := strconv.Atoi(versionStr)
+		if err != nil {
+			return err
+		}
+
+		if mp.direction == "apply" && applied[version] {
+			continue
+		}
+		if mp.direction == "revert" && !applied[version] {
+			continue
+		}
+
+		sql, err := os.ReadFile(file.path)
+		if err != nil {
+			return err
+		}
+		newHash := ComputeHash(sql)
+		name := file.base
+
+		slog.Info("migration",
+			slog.String("mode", mp.mode),
+			slog.String("path", file.base),
+		)
+
+		_, err = tx.Exec(ctx, string(sql))
+		if err != nil {
+			return fmt.Errorf("error applying migration %s: %v", file, err)
+		}
+
+		if mp.direction == "apply" {
+			_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (version, hash, name) VALUES ($1, $2, $3)", mp.table),
+				version,
+				newHash,
+				name,
+			)
+		} else {
+			_, err = tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE version = $1", mp.table), version)
+		}
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil
