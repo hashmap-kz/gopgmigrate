@@ -21,7 +21,8 @@ import (
 // Migration Lock Key (must be unique per application)
 const migrationLockKey = 123456
 
-var versionedMigrationRegex = regexp.MustCompile(`^\d{7}-.*\.sql$`)
+// example: 0000003-users.do.sql
+var versionedMigrationRegex = regexp.MustCompile(`^\d{7}-.*\.do\.sql$`)
 
 type MigrationFile struct {
 	path string
@@ -78,8 +79,7 @@ func getFiles(folder string) ([]MigrationFile, error) {
 		if err != nil {
 			return err
 		}
-		isRepeatableOrVersioned := strings.HasSuffix(path, ".do.sql") || strings.HasSuffix(path, ".r.sql")
-		if !d.IsDir() && isRepeatableOrVersioned {
+		if !d.IsDir() && strings.HasSuffix(path, ".sql") {
 			files = append(files, MigrationFile{
 				path: path,
 				base: filepath.Base(path),
@@ -131,7 +131,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 	for _, file := range files {
 		isVersioned := versionedMigrationRegex.MatchString(file.base)
-		isRepeatable := !isVersioned
+		isRepeatable := strings.HasSuffix(file.base, ".r.sql")
 
 		// Handle repeatable migrations
 		if isRepeatable {
