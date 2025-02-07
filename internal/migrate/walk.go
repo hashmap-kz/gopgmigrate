@@ -33,8 +33,8 @@ func getFilesInAPath(folder string) ([]migrationFile, error) {
 	return files, nil
 }
 
-// getFiles walks given directory recursively, sort result by basename
-func getFiles(folder string) (*migrationCtx, error) {
+// GetFiles walks given directory recursively, sort result by basename
+func GetFiles(folder string) (*migrationCtx, error) {
 	schemaFiles, err := getFilesInAPath(filepath.Join(folder, schemaDirName))
 	if err != nil {
 		return nil, err

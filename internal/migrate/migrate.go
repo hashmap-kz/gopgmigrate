@@ -14,7 +14,7 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(conn *pgx.Conn, folder string) error {
+func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 	var err error
 
 	ctx := context.Background()
@@ -39,17 +39,10 @@ func RunMigrations(conn *pgx.Conn, folder string) error {
 	}
 	defer releaseMigrationLock(tx) // Release lock after transaction
 
-	files, err := getFiles(folder)
-	if err != nil {
-		return err
-	}
-
 	// I) migrate schema
 	err = migrateSchemaData(ctx, tx, migrationParams{
-		table:  "public.migrate_schema",
-		folder: folder,
-		files:  files.schema,
-		mode:   "SCH",
+		table: schemaHistoryTableName,
+		files: files.schema,
 	})
 	if err != nil {
 		return err
@@ -57,10 +50,8 @@ func RunMigrations(conn *pgx.Conn, folder string) error {
 
 	// II) migrate repeatable
 	err = migrateRepeatable(ctx, tx, migrationParams{
-		table:  "public.migrate_repeatable",
-		folder: folder,
-		files:  files.repeatable,
-		mode:   "REP",
+		table: repeatableHistoryTableName,
+		files: files.repeatable,
 	})
 	if err != nil {
 		return err
@@ -68,10 +59,8 @@ func RunMigrations(conn *pgx.Conn, folder string) error {
 
 	// III) migrate data
 	err = migrateSchemaData(ctx, tx, migrationParams{
-		table:  "public.migrate_data",
-		folder: folder,
-		files:  files.data,
-		mode:   "DAT",
+		table: dataHistoryTableName,
+		files: files.data,
 	})
 	if err != nil {
 		return err
@@ -145,7 +134,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 		name := file.base
 
 		slog.Info("migration",
-			slog.String("mode", mp.mode),
+			slog.String("mode", "VER"),
 			slog.String("path", file.base),
 		)
 
@@ -190,7 +179,7 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 		// Apply only if changed
 		if existingHash != newHash {
 			slog.Info("migration",
-				slog.String("mode", mp.mode),
+				slog.String("mode", "REP"),
 				slog.String("path", file.base),
 			)
 

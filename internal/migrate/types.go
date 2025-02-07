@@ -6,6 +6,10 @@ const (
 	schemaDirName     = "schema"
 	repeatableDirName = "repeatable"
 	dataDirName       = "data"
+
+	schemaHistoryTableName     = "public.migrate_schema"
+	repeatableHistoryTableName = "public.migrate_repeatable"
+	dataHistoryTableName       = "public.migrate_data"
 )
 
 var (
@@ -29,8 +33,6 @@ type migrationCtx struct {
 }
 
 type migrationParams struct {
-	table  string
-	folder string
-	files  []migrationFile
-	mode   string // schema, data, repeatable: for logging only
+	table string
+	files []migrationFile
 }

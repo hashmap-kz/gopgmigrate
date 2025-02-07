@@ -36,8 +36,19 @@ func main() {
 		log.Fatalf("history tables error: %v", err)
 	}
 
+	// get migration scripts
+	files, err := migrate.GetFiles(migrationDirectory)
+	if err != nil {
+		log.Fatalf("collecting files error: %v", err)
+	}
+
+	err = migrate.CheckHistory(conn, files)
+	if err != nil {
+		log.Fatalf("migration history error: %v", err)
+	}
+
 	// run all migrations in a single transaction
-	err = migrate.RunMigrations(conn, migrationDirectory)
+	err = migrate.RunMigrations(conn, files)
 	if err != nil {
 		log.Fatalf("migration error: %v", err)
 	}
