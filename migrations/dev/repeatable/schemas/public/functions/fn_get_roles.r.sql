@@ -12,5 +12,6 @@ begin
         select c.record_id as id,
                c.role_name
         from mtest_roles c;
+
 end
 $fn$ language plpgsql;
