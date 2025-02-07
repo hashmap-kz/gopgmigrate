@@ -21,8 +21,8 @@ import (
 // Migration Lock Key (must be unique per application)
 const migrationLockKey = 123456
 
-// example: 0000003-users.do.sql
-var versionedMigrationRegex = regexp.MustCompile(`^\d{7}-.*\.do\.sql$`)
+// example: 00003-users.do.sql
+var versionedMigrationRegex = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
 
 type MigrationFile struct {
 	path string
@@ -261,5 +261,5 @@ func main() {
 		log.Fatal("Migration error:", err)
 	}
 
-	fmt.Println("Migrations applied successfully!")
+	slog.Info("migrations applied successfully")
 }
