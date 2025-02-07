@@ -7,10 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,14 @@ import (
 
 // Migration Lock Key (must be unique per application)
 const migrationLockKey = 123456
+
+var versionedMigrationRegex = regexp.MustCompile(`^\d{7}-.*\.sql$`)
+
+type MigrationFile struct {
+	path string
+	base string
+	dir  string
+}
 
 // GetDatabaseConnection initializes a PostgreSQL connection
 func GetDatabaseConnection(dbURL string) (*pgx.Conn, error) {
@@ -65,6 +74,32 @@ func ComputeHash(content []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// getFiles walks given directory recursively, sort result by basename
+func getFiles(folder string) ([]MigrationFile, error) {
+	var files []MigrationFile
+	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".sql") {
+			files = append(files, MigrationFile{
+				path: path,
+				base: filepath.Base(path),
+				dir:  filepath.Dir(path),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Sort by base (Ascending)
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].base < files[j].base
+	})
+	return files, nil
+}
+
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
 func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 	ctx := context.Background()
@@ -91,24 +126,23 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 		return err
 	}
 
-	files, err := filepath.Glob(filepath.Join(folder, "*.sql"))
+	files, err := getFiles(folder)
 	if err != nil {
 		return err
 	}
-	sort.Strings(files)
 
 	for _, file := range files {
-		isRepeatable := strings.Contains(file, ".repeatable.sql")
-		isVersioned := strings.Contains(file, fmt.Sprintf(".%s.sql", direction))
+		isVersioned := versionedMigrationRegex.MatchString(file.base)
+		isRepeatable := !isVersioned
 
 		// Handle repeatable migrations
 		if isRepeatable {
-			sql, err := os.ReadFile(file)
+			sql, err := os.ReadFile(file.path)
 			if err != nil {
 				return err
 			}
 			newHash := ComputeHash(sql)
-			name := filepath.Base(file)
+			name := filepath.Base(file.path)
 
 			// Get stored hash
 			var existingHash string
@@ -119,7 +153,8 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 			// Apply only if changed
 			if existingHash != newHash {
-				fmt.Printf("Applying repeatable migration %s...\n", file)
+				slog.Info("applying repeatable migration", slog.String("path", file.path))
+
 				_, err = tx.Exec(ctx, string(sql))
 				if err != nil {
 					return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
@@ -136,35 +171,31 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 		// Handle versioned migrations
 		if isVersioned {
-			versionStr := strings.Split(filepath.Base(file), "_")[0]
-			version, err := strconv.Atoi(versionStr)
-			if err != nil {
-				return fmt.Errorf("invalid migration filename format: %s", file)
-			}
+			versionStr := strings.Split(filepath.Base(file.base), "-")[0]
 
-			if direction == "up" && applied[version] {
+			if direction == "apply" && applied[versionStr] {
 				continue
 			}
-			if direction == "down" && !applied[version] {
+			if direction == "revert" && !applied[versionStr] {
 				continue
 			}
 
-			sql, err := os.ReadFile(file)
+			sql, err := os.ReadFile(file.path)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Applying migration %s...\n", file)
+			slog.Info("applying versioned migration", slog.String("path", file.path))
 			_, err = tx.Exec(ctx, string(sql))
 			if err != nil {
 				return fmt.Errorf("error applying migration %s: %v", file, err)
 			}
 
 			// Update schema_migrations table
-			if direction == "up" {
-				_, err = tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", version)
+			if direction == "apply" {
+				_, err = tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", versionStr)
 			} else {
-				_, err = tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", version)
+				_, err = tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", versionStr)
 			}
 			if err != nil {
 				return err
@@ -177,16 +208,16 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 }
 
 // Get applied migrations
-func GetAppliedMigrations(tx pgx.Tx) (map[int]bool, error) {
+func GetAppliedMigrations(tx pgx.Tx) (map[string]bool, error) {
 	rows, err := tx.Query(context.Background(), "SELECT version FROM schema_migrations")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	migrations := make(map[int]bool)
+	migrations := make(map[string]bool)
 	for rows.Next() {
-		var version int
+		var version string
 		if err := rows.Scan(&version); err != nil {
 			return nil, err
 		}
@@ -196,7 +227,6 @@ func GetAppliedMigrations(tx pgx.Tx) (map[int]bool, error) {
 }
 
 func main() {
-
 	// Connect to the database
 	conn, err := GetDatabaseConnection("postgres://postgres:postgres@localhost:5432/bookstore")
 	if err != nil {
@@ -219,7 +249,7 @@ func main() {
 	direction := "apply"
 
 	// Run all migrations in a single transaction
-	err = RunMigrations(conn, "migrations", direction)
+	err = RunMigrations(conn, filepath.Join("migrations", "dev"), direction)
 	if err != nil {
 		log.Fatal("Migration error:", err)
 	}
