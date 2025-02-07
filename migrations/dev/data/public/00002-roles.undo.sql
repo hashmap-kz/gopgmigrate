@@ -1,1 +1,1 @@
-delete from mtest_roles where true;
+delete from public.mtest_roles where true;

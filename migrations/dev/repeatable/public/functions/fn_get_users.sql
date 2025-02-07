@@ -1,5 +1,5 @@
-drop function if exists fn_get_users;
-create function fn_get_users()
+drop function if exists public.fn_get_users;
+create function public.fn_get_users()
     returns table
             (
                 id    int,

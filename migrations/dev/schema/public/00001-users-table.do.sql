@@ -1,4 +1,4 @@
-create table mtest_users
+create table public.mtest_users
 (
     id    serial primary key,
     email varchar(255) not null unique

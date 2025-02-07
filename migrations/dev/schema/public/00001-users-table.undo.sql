@@ -1,1 +1,1 @@
-drop table if exists mtest_users cascade;
+drop table if exists public.mtest_users cascade;

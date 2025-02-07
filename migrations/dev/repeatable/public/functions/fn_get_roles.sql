@@ -1,5 +1,5 @@
-drop function if exists fn_get_roles;
-create function fn_get_roles()
+drop function if exists public.fn_get_roles;
+create function public.fn_get_roles()
     returns table
             (
                 id        int,

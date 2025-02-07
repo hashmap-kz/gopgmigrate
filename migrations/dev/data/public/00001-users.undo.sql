@@ -1,1 +1,1 @@
-delete from mtest_users where true;
+delete from public.mtest_users where true;
