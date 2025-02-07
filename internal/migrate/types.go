@@ -1,0 +1,36 @@
+package migrate
+
+import "regexp"
+
+const (
+	schemaDirName     = "schema"
+	repeatableDirName = "repeatable"
+	dataDirName       = "data"
+)
+
+var (
+	// example: 00003-users.do.sql
+	versionedMigrationRegexDo = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
+
+	// example: 00003-users.undo.sql
+	versionedMigrationRegexUndo = regexp.MustCompile(`^\d{5}-.*\.undo\.sql$`)
+)
+
+type migrationFile struct {
+	path string
+	base string
+	dir  string
+}
+
+type migrationCtx struct {
+	schema     []migrationFile
+	repeatable []migrationFile
+	data       []migrationFile
+}
+
+type migrationParams struct {
+	table  string
+	folder string
+	files  []migrationFile
+	mode   string // schema, data, repeatable: for logging only
+}
