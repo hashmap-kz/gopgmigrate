@@ -3,13 +3,10 @@ package migrate
 import "regexp"
 
 const (
-	schemaDirName     = "schema"
-	repeatableDirName = "repeatable"
-	dataDirName       = "data"
-
-	schemaHistoryTableName     = "public.migrate_schema"
-	repeatableHistoryTableName = "public.migrate_repeatable"
-	dataHistoryTableName       = "public.migrate_data"
+	schemaDirName           = "schema"
+	repeatableDirName       = "repeatable"
+	dataDirName             = "data"
+	defaultHistoryTableName = "public.migrate_history"
 )
 
 var (
@@ -33,6 +30,6 @@ type migrationCtx struct {
 }
 
 type migrationParams struct {
-	table string
+	mode  string
 	files []migrationFile
 }

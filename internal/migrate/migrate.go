@@ -41,7 +41,7 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 
 	// I) migrate schema
 	err = migrateSchemaData(ctx, tx, migrationParams{
-		table: schemaHistoryTableName,
+		mode:  schemaDirName,
 		files: files.schema,
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 
 	// II) migrate repeatable
 	err = migrateRepeatable(ctx, tx, migrationParams{
-		table: repeatableHistoryTableName,
+		mode:  repeatableDirName,
 		files: files.repeatable,
 	})
 	if err != nil {
@@ -59,7 +59,7 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 
 	// III) migrate data
 	err = migrateSchemaData(ctx, tx, migrationParams{
-		table: dataHistoryTableName,
+		mode:  dataDirName,
 		files: files.data,
 	})
 	if err != nil {
@@ -70,37 +70,9 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 	return tx.Commit(ctx)
 }
 
-// EnsureSchemaMigrationTables checks that migration tracking tables exist
-func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
-	query := `
-		create table if not exists public.migrate_schema (
-			id 			serial primary key,
-			version 	int unique not null,
-			name 		text unique not null,
-			hash 		text not null,
-			applied_at 	timestamp default now()
-		);
-		create table if not exists public.migrate_repeatable (
-			id 			serial primary key,
-			name 		text unique not null,
-			hash 		text not null,
-			applied_at 	timestamp default now()
-		);
-		create table if not exists public.migrate_data (
-			id 			serial primary key,
-			version 	int unique not null,
-			name 		text unique not null,
-			hash 		text not null,
-			applied_at 	timestamp default now()
-		);
-	`
-	_, err := conn.Exec(context.Background(), query)
-	return err
-}
-
 // migrateSchemaData applies versioned migrations for schema/data
 func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams) error {
-	applied, err := getAppliedMigrations(tx, mp.table)
+	applied, err := getAppliedMigrations(tx, mp.mode)
 	if err != nil {
 		return err
 	}
@@ -145,10 +117,12 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 		}
 
 		// update history
-		_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (version, hash, name) VALUES ($1, $2, $3)", mp.table),
+		query := fmt.Sprintf("INSERT INTO %s (version, hash, name, mode) VALUES ($1, $2, $3, $4)", defaultHistoryTableName)
+		_, err = tx.Exec(ctx, query,
 			version,
 			newHash,
 			name,
+			mp.mode,
 		)
 		if err != nil {
 			return err
@@ -171,7 +145,10 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 
 		// Get stored hash
 		var existingHash string
-		err = tx.QueryRow(ctx, fmt.Sprintf("SELECT hash FROM %s WHERE name = $1", mp.table), name).Scan(&existingHash)
+		err = tx.QueryRow(ctx, fmt.Sprintf("SELECT hash FROM %s WHERE name = $1 and mode = $2", defaultHistoryTableName),
+			name,
+			repeatableDirName,
+		).Scan(&existingHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
@@ -188,11 +165,12 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 				return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
 			}
 			_, err = tx.Exec(ctx, fmt.Sprintf(`
-					INSERT INTO %s (name, hash)
-					VALUES ($1, $2)
-					ON CONFLICT (name) DO UPDATE SET hash = $2, applied_at = NOW()`, mp.table),
+					INSERT INTO %s (name, hash, mode)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (name, mode) DO UPDATE SET hash = $2, applied_at = NOW()`, defaultHistoryTableName),
 				name,
 				newHash,
+				mp.mode,
 			)
 			if err != nil {
 				return err
@@ -203,8 +181,9 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 }
 
 // Get applied migrations for a given history-table
-func getAppliedMigrations(tx pgx.Tx, table string) (map[int]bool, error) {
-	rows, err := tx.Query(context.Background(), fmt.Sprintf("SELECT version FROM %s where version is not null", table))
+func getAppliedMigrations(tx pgx.Tx, mode string) (map[int]bool, error) {
+	query := fmt.Sprintf("SELECT version FROM %s where version is not null and mode = $1", defaultHistoryTableName)
+	rows, err := tx.Query(context.Background(), query, mode)
 	if err != nil {
 		return nil, err
 	}

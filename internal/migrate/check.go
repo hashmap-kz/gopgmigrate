@@ -23,15 +23,15 @@ func CheckMigrationDirectory(folder string) error {
 func CheckHistory(conn *pgx.Conn, files *migrationCtx) error {
 	// TODO: simplify, optimize
 
-	schemaMigrations, err := getAppliedMigrationsInternal(conn, schemaHistoryTableName)
+	schemaMigrations, err := getAppliedMigrationsInternal(conn, schemaDirName)
 	if err != nil {
 		return err
 	}
-	repeatableMigrations, err := getAppliedMigrationsInternal(conn, repeatableHistoryTableName)
+	repeatableMigrations, err := getAppliedMigrationsInternal(conn, repeatableDirName)
 	if err != nil {
 		return err
 	}
-	dataMigrations, err := getAppliedMigrationsInternal(conn, dataHistoryTableName)
+	dataMigrations, err := getAppliedMigrationsInternal(conn, dataDirName)
 	if err != nil {
 		return err
 	}
@@ -70,8 +70,9 @@ func found(k string, mf []migrationFile) bool {
 	return false
 }
 
-func getAppliedMigrationsInternal(conn *pgx.Conn, table string) (map[string]struct{}, error) {
-	rows, err := conn.Query(context.Background(), fmt.Sprintf("SELECT name FROM %s", table))
+func getAppliedMigrationsInternal(conn *pgx.Conn, mode string) (map[string]struct{}, error) {
+	query := fmt.Sprintf("SELECT name FROM %s where mode = $1", defaultHistoryTableName)
+	rows, err := conn.Query(context.Background(), query, mode)
 	if err != nil {
 		return nil, err
 	}
