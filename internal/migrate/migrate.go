@@ -2,8 +2,6 @@ package migrate
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -109,12 +107,6 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 	`
 	_, err := conn.Exec(context.Background(), query)
 	return err
-}
-
-// computeHash computes SHA256 hash of a file
-func computeHash(content []byte) string {
-	hash := sha256.Sum256(content)
-	return hex.EncodeToString(hash[:])
 }
 
 // migrateSchemaData applies versioned migrations for schema/data
