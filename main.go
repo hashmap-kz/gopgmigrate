@@ -55,6 +55,8 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 		create table if not exists schema_migrations (
 			id 			serial primary key,
 			version 	varchar(8) unique not null,
+			name 		text unique not null,
+			hash 		text not null,
 			applied_at 	timestamp default now()
 		);
 		create table if not exists schema_migrations_repeatable (
@@ -184,6 +186,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 			if err != nil {
 				return err
 			}
+			newHash := ComputeHash(sql)
 
 			slog.Info("applying versioned migration", slog.String("path", file.path))
 			_, err = tx.Exec(ctx, string(sql))
@@ -193,7 +196,11 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 			// Update schema_migrations table
 			if direction == "apply" {
-				_, err = tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", versionStr)
+				_, err = tx.Exec(ctx, "INSERT INTO schema_migrations (version, hash, name) VALUES ($1, $2, $3)",
+					versionStr,
+					newHash,
+					file.base,
+				)
 			} else {
 				_, err = tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", versionStr)
 			}
