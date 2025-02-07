@@ -21,55 +21,62 @@ import (
 // Migration Lock Key (must be unique per application)
 const migrationLockKey = 123456
 
-// example: 00003-users.do.sql
+const (
+	schemaDirName     = "schema"
+	repeatableDirName = "repeatable"
+	dataDirName       = "data"
+)
+
 var (
-	versionedMigrationRegexDo   = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
+	// example: 00003-users.do.sql
+	versionedMigrationRegexDo = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
+
+	// example: 00003-users.undo.sql
 	versionedMigrationRegexUndo = regexp.MustCompile(`^\d{5}-.*\.undo\.sql$`)
 )
 
-type MigrationFile struct {
+type migrationFile struct {
 	path string
 	base string
 	dir  string
 }
 
-type Migration struct {
-	schema     []MigrationFile
-	repeatable []MigrationFile
-	data       []MigrationFile
+type migrationCtx struct {
+	schema     []migrationFile
+	repeatable []migrationFile
+	data       []migrationFile
 }
 
-type MigrationParams struct {
-	direction string
-	table     string
-	folder    string
-	files     []MigrationFile
-	mode      string // schema, data, repeatable: for logging only
+type migrationParams struct {
+	table  string
+	folder string
+	files  []migrationFile
+	mode   string // schema, data, repeatable: for logging only
 }
 
-// GetDatabaseConnection initializes a PostgreSQL connection
-func GetDatabaseConnection(dbURL string) (*pgx.Conn, error) {
+// getDatabaseConnection initializes a PostgreSQL connection
+func getDatabaseConnection(dbURL string) (*pgx.Conn, error) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, dbURL)
 	return conn, err
 }
 
-// AcquireMigrationLock ensures only one migration process runs at a time
-func AcquireMigrationLock(tx pgx.Tx) (bool, error) {
+// acquireMigrationLock ensures only one migration process runs at a time
+func acquireMigrationLock(tx pgx.Tx) (bool, error) {
 	ctx := context.Background()
 	var acquired bool
 	err := tx.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
 	return acquired, err
 }
 
-// ReleaseMigrationLock releases the advisory lock
-func ReleaseMigrationLock(tx pgx.Tx) error {
+// releaseMigrationLock releases the advisory lock
+func releaseMigrationLock(tx pgx.Tx) error {
 	_, err := tx.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", migrationLockKey)
 	return err
 }
 
-// Ensure migration tracking tables exist
-func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
+// ensureSchemaMigrationTables checks that migration tracking tables exist
+func ensureSchemaMigrationTables(conn *pgx.Conn) error {
 	query := `
 		create table if not exists public.migrate_schema (
 			id 			serial primary key,
@@ -96,20 +103,21 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 	return err
 }
 
-// Compute SHA256 hash of a file
-func ComputeHash(content []byte) string {
+// computeHash computes SHA256 hash of a file
+func computeHash(content []byte) string {
 	hash := sha256.Sum256(content)
 	return hex.EncodeToString(hash[:])
 }
 
-func getFilesInAPath(folder string) ([]MigrationFile, error) {
-	var files []MigrationFile
+// getFilesInAPath walks path, collects all *.sql files
+func getFilesInAPath(folder string) ([]migrationFile, error) {
+	var files []migrationFile
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(path, ".sql") {
-			files = append(files, MigrationFile{
+			files = append(files, migrationFile{
 				path: path,
 				base: filepath.Base(path),
 				dir:  filepath.Dir(path),
@@ -128,28 +136,29 @@ func getFilesInAPath(folder string) ([]MigrationFile, error) {
 }
 
 // getFiles walks given directory recursively, sort result by basename
-func getFiles(folder string) (*Migration, error) {
-	schemaFiles, err := getFilesInAPath(filepath.Join(folder, "schema"))
+func getFiles(folder string) (*migrationCtx, error) {
+	schemaFiles, err := getFilesInAPath(filepath.Join(folder, schemaDirName))
 	if err != nil {
 		return nil, err
 	}
-	repeatableFiles, err := getFilesInAPath(filepath.Join(folder, "repeatable"))
+	repeatableFiles, err := getFilesInAPath(filepath.Join(folder, repeatableDirName))
 	if err != nil {
 		return nil, err
 	}
-	dataFiles, err := getFilesInAPath(filepath.Join(folder, "data"))
+	dataFiles, err := getFilesInAPath(filepath.Join(folder, dataDirName))
 	if err != nil {
 		return nil, err
 	}
-	return &Migration{
+	return &migrationCtx{
 		schema:     schemaFiles,
 		repeatable: repeatableFiles,
 		data:       dataFiles,
 	}, nil
 }
 
-func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error {
-	applied, err := GetAppliedMigrations(tx, mp.table)
+// migrateSchemaData applies versioned migrations for schema/data
+func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams) error {
+	applied, err := getAppliedMigrations(tx, mp.table)
 	if err != nil {
 		return err
 	}
@@ -171,10 +180,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 			return err
 		}
 
-		if mp.direction == "apply" && applied[version] {
-			continue
-		}
-		if mp.direction == "revert" && !applied[version] {
+		if applied[version] {
 			continue
 		}
 
@@ -182,7 +188,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 		if err != nil {
 			return err
 		}
-		newHash := ComputeHash(sql)
+		newHash := computeHash(sql)
 		name := file.base
 
 		slog.Info("migration",
@@ -190,20 +196,18 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 			slog.String("path", file.base),
 		)
 
+		// execute migration script
 		_, err = tx.Exec(ctx, string(sql))
 		if err != nil {
 			return fmt.Errorf("error applying migration %s: %v", file, err)
 		}
 
-		if mp.direction == "apply" {
-			_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (version, hash, name) VALUES ($1, $2, $3)", mp.table),
-				version,
-				newHash,
-				name,
-			)
-		} else {
-			_, err = tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE version = $1", mp.table), version)
-		}
+		// update history
+		_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (version, hash, name) VALUES ($1, $2, $3)", mp.table),
+			version,
+			newHash,
+			name,
+		)
 		if err != nil {
 			return err
 		}
@@ -213,13 +217,14 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 	return nil
 }
 
-func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp MigrationParams) error {
+// migrateRepeatable applies repeatable migrations
+func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error {
 	for _, file := range mp.files {
 		sql, err := os.ReadFile(file.path)
 		if err != nil {
 			return err
 		}
-		newHash := ComputeHash(sql)
+		newHash := computeHash(sql)
 		name := file.base
 
 		// Get stored hash
@@ -255,8 +260,8 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp MigrationParams) error
 	return nil
 }
 
-// RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(conn *pgx.Conn, folder, direction string) error {
+// runMigrations applies both versioned and repeatable migrations in a single transaction
+func runMigrations(conn *pgx.Conn, folder string) error {
 	ctx := context.Background()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -265,7 +270,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 	defer tx.Rollback(ctx) // Ensures rollback if anything fails
 
 	// Acquire advisory lock
-	acquired, err := AcquireMigrationLock(tx)
+	acquired, err := acquireMigrationLock(tx)
 	if err != nil {
 		return err
 	}
@@ -273,7 +278,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 		fmt.Println("Another migration process is running. Exiting.")
 		return nil
 	}
-	defer ReleaseMigrationLock(tx) // Release lock after transaction
+	defer releaseMigrationLock(tx) // Release lock after transaction
 
 	files, err := getFiles(folder)
 	if err != nil {
@@ -281,36 +286,33 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 	}
 
 	// I) migrate schema
-	err = migrateSchemaData(ctx, tx, MigrationParams{
-		direction: direction,
-		table:     "public.migrate_schema",
-		folder:    folder,
-		files:     files.schema,
-		mode:      "SCH",
+	err = migrateSchemaData(ctx, tx, migrationParams{
+		table:  "public.migrate_schema",
+		folder: folder,
+		files:  files.schema,
+		mode:   "SCH",
 	})
 	if err != nil {
 		return err
 	}
 
 	// II) migrate repeatable
-	err = migrateRepeatable(ctx, tx, MigrationParams{
-		direction: direction,
-		table:     "public.migrate_repeatable",
-		folder:    folder,
-		files:     files.repeatable,
-		mode:      "REP",
+	err = migrateRepeatable(ctx, tx, migrationParams{
+		table:  "public.migrate_repeatable",
+		folder: folder,
+		files:  files.repeatable,
+		mode:   "REP",
 	})
 	if err != nil {
 		return err
 	}
 
 	// III) migrate data
-	err = migrateSchemaData(ctx, tx, MigrationParams{
-		direction: direction,
-		table:     "public.migrate_data",
-		folder:    folder,
-		files:     files.data,
-		mode:      "DAT",
+	err = migrateSchemaData(ctx, tx, migrationParams{
+		table:  "public.migrate_data",
+		folder: folder,
+		files:  files.data,
+		mode:   "DAT",
 	})
 	if err != nil {
 		return err
@@ -320,8 +322,8 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 	return tx.Commit(ctx)
 }
 
-// Get applied migrations
-func GetAppliedMigrations(tx pgx.Tx, table string) (map[int]bool, error) {
+// Get applied migrations for a given history-table
+func getAppliedMigrations(tx pgx.Tx, table string) (map[int]bool, error) {
 	rows, err := tx.Query(context.Background(), fmt.Sprintf("SELECT version FROM %s where version is not null", table))
 	if err != nil {
 		return nil, err
@@ -339,6 +341,7 @@ func GetAppliedMigrations(tx pgx.Tx, table string) (map[int]bool, error) {
 	return migrations, nil
 }
 
+// directoryExists checks that a given path exists and it's a directory
 func directoryExists(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -350,55 +353,41 @@ func directoryExists(path string) bool {
 	return info.IsDir()
 }
 
-func checkFolder(folder string) error {
-	schemaDir := filepath.Join(folder, "schema")
-	if !directoryExists(schemaDir) {
+// checkMigrationDirectory checks that the migration-directory structure is conforming for all rules
+func checkMigrationDirectory(folder string) error {
+	if !directoryExists(filepath.Join(folder, schemaDirName)) {
 		return fmt.Errorf("schema directory not exist in a given directory: %s", folder)
 	}
-
-	repeatableDir := filepath.Join(folder, "repeatable")
-	if !directoryExists(repeatableDir) {
+	if !directoryExists(filepath.Join(folder, repeatableDirName)) {
 		return fmt.Errorf("repeatable directory not exist in a given directory: %s", folder)
 	}
-
-	dataDir := filepath.Join(folder, "data")
-	if !directoryExists(dataDir) {
+	if !directoryExists(filepath.Join(folder, dataDirName)) {
 		return fmt.Errorf("data directory not exist in a given directory: %s", folder)
 	}
-
 	return nil
 }
 
 func main() {
 	// Connect to the database
-	conn, err := GetDatabaseConnection("postgres://postgres:postgres@localhost:5432/bookstore")
+	conn, err := getDatabaseConnection("postgres://postgres:postgres@localhost:5432/bookstore")
 	if err != nil {
 		log.Fatal("Database connection error:", err)
 	}
 	defer conn.Close(context.Background())
 
-	err = EnsureSchemaMigrationTables(conn)
+	err = ensureSchemaMigrationTables(conn)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	//// Parse command-line arguments
-	//if len(os.Args) < 2 {
-	//	fmt.Println("Usage: go run main.go [up|down]")
-	//	os.Exit(1)
-	//}
-	//direction := os.Args[1]
-
-	direction := "apply"
-
-	folder := filepath.Join("migrations", "dev")
-	err = checkFolder(folder)
+	migrationDirectory := filepath.Join("migrations", "dev")
+	err = checkMigrationDirectory(migrationDirectory)
 	if err != nil {
 		log.Fatal("Migration directory error:", err)
 	}
 
 	// Run all migrations in a single transaction
-	err = RunMigrations(conn, folder, direction)
+	err = runMigrations(conn, migrationDirectory)
 	if err != nil {
 		log.Fatal("Migration error:", err)
 	}
