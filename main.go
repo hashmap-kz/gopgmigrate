@@ -55,10 +55,8 @@ type migrationParams struct {
 }
 
 // getDatabaseConnection initializes a PostgreSQL connection
-func getDatabaseConnection(dbURL string) (*pgx.Conn, error) {
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dbURL)
-	return conn, err
+func getDatabaseConnection(ctx context.Context, dbURL string) (*pgx.Conn, error) {
+	return pgx.Connect(ctx, dbURL)
 }
 
 // acquireMigrationLock ensures only one migration process runs at a time
@@ -262,12 +260,18 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 
 // runMigrations applies both versioned and repeatable migrations in a single transaction
 func runMigrations(conn *pgx.Conn, folder string) error {
+	var err error
+
 	ctx := context.Background()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx) // Ensures rollback if anything fails
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx) // Only rollback if error occurs
+		}
+	}()
 
 	// Acquire advisory lock
 	acquired, err := acquireMigrationLock(tx)
@@ -344,32 +348,26 @@ func getAppliedMigrations(tx pgx.Tx, table string) (map[int]bool, error) {
 // directoryExists checks that a given path exists and it's a directory
 func directoryExists(path string) bool {
 	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-		return false
-	}
-	return info.IsDir()
+	return err == nil && info.IsDir()
 }
 
 // checkMigrationDirectory checks that the migration-directory structure is conforming for all rules
 func checkMigrationDirectory(folder string) error {
-	if !directoryExists(filepath.Join(folder, schemaDirName)) {
-		return fmt.Errorf("schema directory not exist in a given directory: %s", folder)
-	}
-	if !directoryExists(filepath.Join(folder, repeatableDirName)) {
-		return fmt.Errorf("repeatable directory not exist in a given directory: %s", folder)
-	}
-	if !directoryExists(filepath.Join(folder, dataDirName)) {
-		return fmt.Errorf("data directory not exist in a given directory: %s", folder)
+	requiredDirs := []string{schemaDirName, repeatableDirName, dataDirName}
+	for _, dir := range requiredDirs {
+		fullPath := filepath.Join(folder, dir)
+		if !directoryExists(fullPath) {
+			return fmt.Errorf("%s directory does not exist in: %s", dir, folder)
+		}
 	}
 	return nil
 }
 
 func main() {
+	ctx := context.Background()
+
 	// Connect to the database
-	conn, err := getDatabaseConnection("postgres://postgres:postgres@localhost:5432/bookstore")
+	conn, err := getDatabaseConnection(ctx, "postgres://postgres:postgres@localhost:5432/bookstore")
 	if err != nil {
 		log.Fatal("Database connection error:", err)
 	}
