@@ -1,0 +1,1 @@
+delete from mtest_users where true;

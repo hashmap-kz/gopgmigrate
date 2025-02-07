@@ -1,0 +1,1 @@
+drop table if exists mtest_roles cascade;

@@ -1,0 +1,1 @@
+delete from mtest_roles where true;

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -54,7 +55,7 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 	query := `
 		create table if not exists schema_migrations (
 			id 			serial primary key,
-			version 	varchar(8) unique not null,
+			version 	int unique not null,
 			name 		text unique not null,
 			hash 		text not null,
 			applied_at 	timestamp default now()
@@ -83,7 +84,8 @@ func getFiles(folder string) ([]MigrationFile, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".sql") {
+		isRepeatableOrVersioned := strings.HasSuffix(path, ".do.sql") || strings.HasSuffix(path, ".r.sql")
+		if !d.IsDir() && isRepeatableOrVersioned {
 			files = append(files, MigrationFile{
 				path: path,
 				base: filepath.Base(path),
@@ -174,11 +176,15 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 		// Handle versioned migrations
 		if isVersioned {
 			versionStr := strings.Split(filepath.Base(file.base), "-")[0]
+			version, err := strconv.Atoi(versionStr)
+			if err != nil {
+				return err
+			}
 
-			if direction == "apply" && applied[versionStr] {
+			if direction == "apply" && applied[version] {
 				continue
 			}
-			if direction == "revert" && !applied[versionStr] {
+			if direction == "revert" && !applied[version] {
 				continue
 			}
 
@@ -197,12 +203,12 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 			// Update schema_migrations table
 			if direction == "apply" {
 				_, err = tx.Exec(ctx, "INSERT INTO schema_migrations (version, hash, name) VALUES ($1, $2, $3)",
-					versionStr,
+					version,
 					newHash,
 					file.base,
 				)
 			} else {
-				_, err = tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", versionStr)
+				_, err = tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", version)
 			}
 			if err != nil {
 				return err
@@ -215,16 +221,16 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 }
 
 // Get applied migrations
-func GetAppliedMigrations(tx pgx.Tx) (map[string]bool, error) {
+func GetAppliedMigrations(tx pgx.Tx) (map[int]bool, error) {
 	rows, err := tx.Query(context.Background(), "SELECT version FROM schema_migrations")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	migrations := make(map[string]bool)
+	migrations := make(map[int]bool)
 	for rows.Next() {
-		var version string
+		var version int
 		if err := rows.Scan(&version); err != nil {
 			return nil, err
 		}
