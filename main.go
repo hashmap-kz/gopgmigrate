@@ -55,13 +55,7 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 	query := `
 		create table if not exists schema_migrations (
 			id 			serial primary key,
-			version 	int unique not null,
-			name 		text unique not null,
-			hash 		text not null,
-			applied_at 	timestamp default now()
-		);
-		create table if not exists schema_migrations_repeatable (
-			id 			serial primary key,
+			version 	int, -- null when migration is 'repeatable'
 			name 		text unique not null,
 			hash 		text not null,
 			applied_at 	timestamp default now()
@@ -150,7 +144,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 			// Get stored hash
 			var existingHash string
-			err = tx.QueryRow(ctx, "SELECT hash FROM schema_migrations_repeatable WHERE name = $1", name).Scan(&existingHash)
+			err = tx.QueryRow(ctx, "SELECT hash FROM schema_migrations WHERE name = $1", name).Scan(&existingHash)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
@@ -164,7 +158,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 					return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
 				}
 				_, err = tx.Exec(ctx, `
-					INSERT INTO schema_migrations_repeatable (name, hash)
+					INSERT INTO schema_migrations (name, hash)
 					VALUES ($1, $2)
 					ON CONFLICT (name) DO UPDATE SET hash = $2, applied_at = NOW()`, name, newHash)
 				if err != nil {
@@ -222,7 +216,7 @@ func RunMigrations(conn *pgx.Conn, folder, direction string) error {
 
 // Get applied migrations
 func GetAppliedMigrations(tx pgx.Tx) (map[int]bool, error) {
-	rows, err := tx.Query(context.Background(), "SELECT version FROM schema_migrations")
+	rows, err := tx.Query(context.Background(), "SELECT version FROM schema_migrations where version is not null")
 	if err != nil {
 		return nil, err
 	}
