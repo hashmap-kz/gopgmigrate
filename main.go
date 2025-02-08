@@ -21,7 +21,7 @@ func main() {
 
 	// TODO: these are parameters (envs/cli)
 	connString := "postgres://postgres:postgres@localhost:5432/bookstore"
-	migrationDirectory := filepath.Join("migrations", "dev")
+	migrationDirectory := filepath.Join("examples", "basic")
 
 	// check given directory
 	err = migrate.CheckMigrationDirectory(migrationDirectory)

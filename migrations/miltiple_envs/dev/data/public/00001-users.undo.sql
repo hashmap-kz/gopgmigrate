@@ -1,0 +1,1 @@
+delete from public.mtest_users where true;
