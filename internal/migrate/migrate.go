@@ -37,7 +37,11 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	mhRepo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
 
 	// check that all applied migrations are present in files list
-	err = checkHistory(ctx, mhRepo, files)
+	appliedNames, err := mhRepo.GetAppliedNames(ctx)
+	if err != nil {
+		return err
+	}
+	err = checkHistory(appliedNames, files)
 	if err != nil {
 		return err
 	}
@@ -162,40 +166,4 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, files []migrationFil
 		}
 	}
 	return nil
-}
-
-// history checker
-
-func checkHistory(ctx context.Context, mhRepo migrate_history.MigrateHistoryRepository, files *MigrationCtx) error {
-	appliedNames, err := mhRepo.GetAppliedNames(ctx)
-	if err != nil {
-		return err
-	}
-
-	all := files.repeatable
-	all = append(all, files.versioned...)
-
-	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, all)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func checkHistoryTableIsSyncedWithLocalFiles(migrations map[string]bool, mf []migrationFile) error {
-	for k := range migrations {
-		if !found(k, mf) {
-			return fmt.Errorf("detected applied migration not resolved locally: %s", k)
-		}
-	}
-	return nil
-}
-
-func found(k string, mf []migrationFile) bool {
-	for _, f := range mf {
-		if k == f.base {
-			return true
-		}
-	}
-	return false
 }
