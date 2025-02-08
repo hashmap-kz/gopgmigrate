@@ -4,6 +4,8 @@ This tool automates the execution of PostgreSQL migrations, supporting **version
 migrations. It ensures consistency and prevents duplicate executions using **advisory locks** and **transactional
 execution**.
 
+---
+
 ## Features
 
 - **Versioned Migrations**: Runs migrations sequentially, ensuring each version is applied once.
@@ -11,17 +13,34 @@ execution**.
 - **Data Migrations**: Similar to schema migrations but for seed/data scripts.
 - **Transactional Execution**: Ensures all migrations run within a single transaction.
 
+---
+
 ## Installation
 
 TODO
+
+---
 
 ## Configuration
 
 The database connection URL is retrieved from an environment variable:
 
 ```sh
-export DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+export PGMIGRATE_DB_URL="postgres://user:password@localhost:5432/dbname"
+
+# default: public.migrate_history
+export PGMIGRATE_HISTORY_TABLE_NAME=migrate_history_dev
+
+# one of: (debug, info, warn, error)
+# default: info
+export PGMIGRATE_LOG_LEVEL=debug
+
+# one of: (console, json)
+# default: console
+export PGMIGRATE_LOG_MODE=console
 ```
+
+---
 
 ## Migration Directory Structure
 
@@ -49,13 +68,15 @@ data/
   ├── 00001-seed_data.do.sql
 ```
 
+---
+
 ## Running Migrations
 
 Run migrations using:
 
-```sh
-go run main.go
-```
+TODO
+
+--- 
 
 ## Error Handling
 
@@ -63,22 +84,29 @@ go run main.go
 - Uses advisory locks to prevent concurrent runs.
 - Ensures directories exist before execution.
 
+--- 
+
 ## Implementation Details
 
 - **Regex Validation**:
     - Versioned migrations: `^\d{5}-[^.]+\.do\.sql$`
-    - Repeatable migrations: `.*\.r\.sql$`
+    - Repeatable migrations: `.*\.sql$`
 - **Sorting**:
     - Versioned migrations are sorted numerically using their prefix.
 - **Transaction Safety**:
     - All migrations run inside a **single transaction**.
 
-## License
+---
 
-MIT License
+## **Contributing**
 
-## Contributing
+We welcome contributions! To contribute: see the [Contribution](CONTRIBUTING.md) guidelines.
 
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+---
+
+## **License**
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+---
+
