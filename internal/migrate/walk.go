@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-func GetFilesV2(migrationDirectory string) (*MigrationCtx, error) {
+func GetFiles(migrationDirectory string) (*MigrationCtx, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
@@ -126,7 +126,7 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
-		version, err := parseVersion(f.base)
+		version, err := parseVersionDo(f.base)
 		if err != nil {
 			return err
 		}
@@ -145,11 +145,11 @@ func checkVersionsAreSequential(versioned []migrationFile) error {
 		return nil
 	}
 	for i := 1; i < len(versioned); i++ {
-		curVer, err := parseVersion(versioned[i].base)
+		curVer, err := parseVersionDo(versioned[i].base)
 		if err != nil {
 			return err
 		}
-		prevVer, err := parseVersion(versioned[i-1].base)
+		prevVer, err := parseVersionDo(versioned[i-1].base)
 		if err != nil {
 			return err
 		}

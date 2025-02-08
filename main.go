@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// get migration scripts
-	files, err := migrate.GetFilesV2(migrationDirectory)
+	files, err := migrate.GetFiles(migrationDirectory)
 	if err != nil {
 		log.Fatalf("collecting files error: %v", err)
 	}

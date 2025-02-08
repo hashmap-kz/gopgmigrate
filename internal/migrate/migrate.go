@@ -90,11 +90,11 @@ func migrateVersioned(ctx context.Context, conn *pgx.Conn, mp migrationParams, m
 		// execute migration script
 		_, err = conn.Exec(ctx, string(file.data))
 		if err != nil {
-			return fmt.Errorf("error applying migration %s: %v", file, err)
+			return fmt.Errorf("error applying migration %s: %v", file.base, err)
 		}
 
 		// write history
-		version, err := parseVersion(file.base)
+		version, err := parseVersionDo(file.base)
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 			// execute script
 			_, err = conn.Exec(ctx, string(file.data))
 			if err != nil {
-				return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
+				return fmt.Errorf("error applying repeatable migration %s: %v", file.base, err)
 			}
 
 			// update history (upsert)
