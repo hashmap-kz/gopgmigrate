@@ -21,9 +21,10 @@ type migrationFile struct {
 	path string
 	base string
 	dir  string
+	data []byte
 }
 
-type migrationCtx struct {
+type MigrationCtx struct {
 	schema     []migrationFile
 	repeatable []migrationFile
 	data       []migrationFile

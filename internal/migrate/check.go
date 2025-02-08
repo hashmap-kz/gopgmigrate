@@ -20,7 +20,7 @@ func CheckMigrationDirectory(folder string) error {
 	return nil
 }
 
-func CheckHistory(conn *pgx.Conn, files *migrationCtx) error {
+func CheckHistory(conn *pgx.Conn, files *MigrationCtx) error {
 	// TODO: simplify, optimize
 
 	schemaMigrations, err := getAppliedMigrationsInternal(conn, schemaDirName)

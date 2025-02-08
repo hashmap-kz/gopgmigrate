@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +14,7 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
+func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	var err error
 
 	ctx := context.Background()
@@ -36,31 +35,33 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 	}
 	defer releaseMigrationLock(tx)
 
-	repo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
+	// repository, helper functions for history-handling
+	// works inside the same transaction as the other migration scripts
+	mhRepo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
 
 	// I) migrate schema
-	err = migrateSchemaData(ctx, tx, migrationParams{
+	err = migrateSchemaData(ctx, conn, migrationParams{
 		mode:  schemaDirName,
 		files: files.schema,
-	}, repo)
+	}, mhRepo)
 	if err != nil {
 		return err
 	}
 
 	// II) migrate repeatable
-	err = migrateRepeatable(ctx, tx, migrationParams{
+	err = migrateRepeatable(ctx, conn, migrationParams{
 		mode:  repeatableDirName,
 		files: files.repeatable,
-	}, repo)
+	}, mhRepo)
 	if err != nil {
 		return err
 	}
 
 	// III) migrate data
-	err = migrateSchemaData(ctx, tx, migrationParams{
+	err = migrateSchemaData(ctx, conn, migrationParams{
 		mode:  dataDirName,
 		files: files.data,
-	}, repo)
+	}, mhRepo)
 	if err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 }
 
 // migrateSchemaData applies versioned migrations for schema/data
-func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
+func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
 	all, err := mhRepo.FindAllByMode(ctx, mp.mode)
 	if err != nil {
 		return err
@@ -104,17 +105,13 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRep
 			continue
 		}
 
-		sql, err := os.ReadFile(file.path)
-		if err != nil {
-			return err
-		}
 		slog.Info("migration",
 			slog.String("mode", "VER"),
-			slog.String("path", file.base),
+			slog.String("name", file.base),
 		)
 
 		// execute migration script
-		_, err = tx.Exec(ctx, string(sql))
+		_, err = conn.Exec(ctx, string(file.data))
 		if err != nil {
 			return fmt.Errorf("error applying migration %s: %v", file, err)
 		}
@@ -124,7 +121,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRep
 			MhVersion: &version,
 			MhMode:    mp.mode,
 			MhName:    file.base,
-			MhHash:    computeHash(sql),
+			MhHash:    computeHash(file.data),
 		})
 		if err != nil {
 			return err
@@ -136,19 +133,14 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRep
 }
 
 // migrateRepeatable applies repeatable migrations
-func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
+func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
 	for _, file := range mp.files {
-		sql, err := os.ReadFile(file.path)
-		if err != nil {
-			return err
-		}
-		newHash := computeHash(sql)
-		name := file.base
+		newHash := computeHash(file.data)
 
 		// Get stored hash
 		var existingHash string
 		migrateHistory, err := mhRepo.FindByNameMode(ctx, migrate_history.MigrateHistorySearchNameMode{
-			MhName: name,
+			MhName: file.base,
 			MhMode: repeatableDirName,
 		})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -162,19 +154,20 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRep
 		if existingHash != newHash {
 			slog.Info("migration",
 				slog.String("mode", "REP"),
-				slog.String("path", file.base),
+				slog.String("name", file.base),
 			)
 
-			_, err = tx.Exec(ctx, string(sql))
+			// execute script
+			_, err = conn.Exec(ctx, string(file.data))
 			if err != nil {
 				return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
 			}
 
-			// upsert
+			// update history (upsert)
 			if migrateHistory == nil {
 				_, err := mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
 					MhMode: repeatableDirName,
-					MhName: name,
+					MhName: file.base,
 					MhHash: newHash,
 				})
 				if err != nil {
