@@ -37,9 +37,8 @@ func GetFilesV2(migrationDirectory string) (*MigrationCtx, error) {
 	}
 
 	return &MigrationCtx{
-		schema:     versioned,
+		versioned:  versioned,
 		repeatable: repeatable,
-		data:       nil,
 	}, nil
 }
 

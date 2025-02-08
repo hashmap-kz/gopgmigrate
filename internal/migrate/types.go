@@ -2,13 +2,6 @@ package migrate
 
 import "regexp"
 
-const (
-	schemaDirName           = "schema"
-	repeatableDirName       = "repeatable"
-	dataDirName             = "data"
-	defaultHistoryTableName = "public.migrate_history"
-)
-
 var (
 	// example: 00003-users.do.sql
 	versionedMigrationRegexDo = regexp.MustCompile(`^\d{5}-.*\.do\.sql$`)
@@ -29,12 +22,10 @@ type migrationFile struct {
 }
 
 type MigrationCtx struct {
-	schema     []migrationFile
+	versioned  []migrationFile
 	repeatable []migrationFile
-	data       []migrationFile
 }
 
 type migrationParams struct {
-	mode  string
 	files []migrationFile
 }

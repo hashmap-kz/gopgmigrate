@@ -10,9 +10,6 @@ type MigrateHistory struct {
 	// Version number of the migration (bigint). Used for versioned migrations.
 	MhVersion *int64 `json:"mh_version" db:"mh_version"`
 
-	// Migration type: schema, data, or repeatable.
-	MhMode string `json:"mh_mode" db:"mh_mode"`
-
 	// Name of the migration file applied.
 	MhName string `json:"mh_name" db:"mh_name"`
 

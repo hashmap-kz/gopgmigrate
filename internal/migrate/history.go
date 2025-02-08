@@ -13,20 +13,19 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 		(
 			id            int 		  generated always as identity primary key,
 			mh_version    bigint 	  not null,
-			mh_mode       varchar(16) not null check (mh_mode in ('schema', 'data', 'repeatable')),
-			mh_name       text        not null,
+			mh_name       text        unique not null,
 			mh_hash       text        not null,
 			mh_applied_by name        not null default session_user,
 			mh_applied_at timestamptz not null default transaction_timestamp()
 		);
-		
-		create unique index if not exists ix_migrate_history_mode_name_unq
-			on public.migrate_history (mh_mode, mh_name);
+		-- TODO: mh_version should be unique by itself, and here two options: handle a different table for repeatable
+		-- migrations, or create the index like this
+		--
+		create unique index if not exists ix_migrate_history_ver_name_unq on public.migrate_history(mh_version, mh_name);
 
 		comment on table  public.migrate_history is 'Tracks executed migrations, ensuring version control and repeatable migrations.';
 		comment on column public.migrate_history.id is 'Auto-incrementing primary key.';
 		comment on column public.migrate_history.mh_version is 'Version number of the migration (bigint). Used for versioned migrations.';
-		comment on column public.migrate_history.mh_mode is 'Migration type: schema, data, or repeatable.';
 		comment on column public.migrate_history.mh_name is 'Name of the migration file applied.';
 		comment on column public.migrate_history.mh_hash is 'SHA256 hash of the migration script to detect changes in repeatable migrations.';
 		comment on column public.migrate_history.mh_applied_by is 'User who executed the migration.';

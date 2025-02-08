@@ -25,15 +25,13 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 	query := `		
 		insert into public.migrate_history (
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash
 		)
-		values ($1, $2, $3, $4)
+		values ($1, $2, $3)
 		returning
 			id,
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
@@ -42,7 +40,6 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 
 	row := r.db.QueryRow(ctx, query,
 		inputEntity.MhVersion,
-		inputEntity.MhMode,
 		inputEntity.MhName,
 		inputEntity.MhHash,
 	)
@@ -69,7 +66,6 @@ func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, newHash strin
 		returning 
 			id,
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
@@ -110,7 +106,6 @@ func (r *migrateHistoryRepository) FindByID(ctx context.Context, pkID int) (*Mig
 		select
 			id,
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
@@ -139,25 +134,23 @@ func (r *migrateHistoryRepository) ExistsByID(ctx context.Context, pkID int) (bo
 	return exists, nil
 }
 
-func (r *migrateHistoryRepository) FindByNameMode(ctx context.Context, searchDTO MigrateHistorySearchNameMode) (*MigrateHistory, error) {
+func (r *migrateHistoryRepository) FindByName(ctx context.Context, name string) (*MigrateHistory, error) {
 	tag := "migrateHistoryRepository.FindByNameMode"
 
 	query := `		
 		select
 			id,
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
 			mh_applied_at
 		from public.migrate_history
 		where 
-			mh_name = $1 and 
-			mh_mode = $2
+			mh_name = $1
 		`
 
-	row := r.db.QueryRow(ctx, query, searchDTO.MhName, searchDTO.MhMode)
+	row := r.db.QueryRow(ctx, query, name)
 
 	scannedEntity, err := scanFullRow(row)
 	if err != nil {
@@ -173,7 +166,6 @@ func (r *migrateHistoryRepository) FindAll(ctx context.Context) ([]MigrateHistor
 		select
 			id,
 			mh_version,
-			mh_mode,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
@@ -203,46 +195,8 @@ func (r *migrateHistoryRepository) FindAll(ctx context.Context) ([]MigrateHistor
 	return scannedEntities, nil
 }
 
-func (r *migrateHistoryRepository) FindAllByMode(ctx context.Context, mode string) ([]MigrateHistory, error) {
-	tag := "migrateHistoryRepository.FindAllByMode"
-
-	query := `		
-		select
-			id,
-			mh_version,
-			mh_mode,
-			mh_name,
-			mh_hash,
-			mh_applied_by,
-			mh_applied_at
-		from public.migrate_history
-		where mh_mode = $1
-		order by mh_name
-		`
-
-	rows, err := r.db.Query(ctx, query, mode)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", tag, err)
-	}
-	defer rows.Close()
-
-	var scannedEntities []MigrateHistory
-	for rows.Next() {
-		scannedEntity, err := scanFullRow(rows)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", tag, err)
-		}
-		scannedEntities = append(scannedEntities, *scannedEntity)
-	}
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-	return scannedEntities, nil
-}
-
-func (r *migrateHistoryRepository) GetAppliedNamesByMode(ctx context.Context, mode string) (map[string]bool, error) {
-	all, err := r.FindAllByMode(ctx, mode)
+func (r *migrateHistoryRepository) GetAppliedNames(ctx context.Context) (map[string]bool, error) {
+	all, err := r.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +217,6 @@ func scanFullRow(row pgx.Row) (*MigrateHistory, error) {
 	err := row.Scan(
 		&scannedEntity.ID,
 		&scannedEntity.MhVersion,
-		&scannedEntity.MhMode,
 		&scannedEntity.MhName,
 		&scannedEntity.MhHash,
 		&scannedEntity.MhAppliedBy,

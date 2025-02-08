@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -24,18 +23,6 @@ func main() {
 	connString := "postgres://postgres:postgres@localhost:5432/bookstore"
 	migrationDirectory := filepath.Join("examples", "basic")
 
-	// check given directory
-	err = migrate.CheckMigrationDirectory(migrationDirectory)
-	if err != nil {
-		log.Fatalf("migration directory error: %v", err)
-	}
-
-	filesV2, err := migrate.GetFilesV2(migrationDirectory)
-	if err != nil {
-		log.Fatalf("migration files error: %v", err)
-	}
-	fmt.Println(filesV2)
-
 	// connect to the database
 	conn, err := migrate.GetDatabaseConnection(ctx, connString)
 	if err != nil {
@@ -50,7 +37,7 @@ func main() {
 	}
 
 	// get migration scripts
-	files, err := migrate.GetFiles(migrationDirectory)
+	files, err := migrate.GetFilesV2(migrationDirectory)
 	if err != nil {
 		log.Fatalf("collecting files error: %v", err)
 	}

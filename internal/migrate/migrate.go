@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 
 	"github.com/jackc/pgx/v5"
 	"gopgmigrate/internal/migrate_history"
@@ -43,10 +42,9 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 		return err
 	}
 
-	// I) migrate schema
-	err = migrateSchemaData(ctx, conn, migrationParams{
-		mode:  schemaDirName,
-		files: files.schema,
+	// I) migrate versioned
+	err = migrateVersioned(ctx, conn, migrationParams{
+		files: files.versioned,
 	}, mhRepo)
 	if err != nil {
 		return err
@@ -54,17 +52,7 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 
 	// II) migrate repeatable
 	err = migrateRepeatable(ctx, conn, migrationParams{
-		mode:  repeatableDirName,
 		files: files.repeatable,
-	}, mhRepo)
-	if err != nil {
-		return err
-	}
-
-	// III) migrate data
-	err = migrateSchemaData(ctx, conn, migrationParams{
-		mode:  dataDirName,
-		files: files.data,
 	}, mhRepo)
 	if err != nil {
 		return err
@@ -74,21 +62,17 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	return tx.Commit(ctx)
 }
 
-// migrateSchemaData applies versioned migrations for schema/data
-func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
-	applied, err := mhRepo.GetAppliedNamesByMode(ctx, mp.mode)
+// migrateVersioned applies versioned migrations for versioned/data
+func migrateVersioned(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
+	applied, err := mhRepo.GetAppliedNames(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, file := range mp.files {
+		// twice check a file given
 		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
 		if !isVersioned {
-			if !versionedMigrationRegexUndo.MatchString(file.base) {
-				slog.Warn("skipped",
-					slog.String("path", filepath.ToSlash(file.path)),
-				)
-			}
 			continue
 		}
 
@@ -116,7 +100,6 @@ func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 		}
 		_, err = mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
 			MhVersion: version,
-			MhMode:    mp.mode,
 			MhName:    file.base,
 			MhHash:    computeHash(file.data),
 		})
@@ -132,14 +115,17 @@ func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 // migrateRepeatable applies repeatable migrations
 func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
 	for _, file := range mp.files {
+		// twice check a file given
+		isRepeatable := repeatableMigrationRegex.MatchString(file.base)
+		if !isRepeatable {
+			continue
+		}
+
 		newHash := computeHash(file.data)
 
 		// Get stored hash
 		var existingHash string
-		migrateHistory, err := mhRepo.FindByNameMode(ctx, migrate_history.MigrateHistorySearchNameMode{
-			MhName: file.base,
-			MhMode: repeatableDirName,
-		})
+		migrateHistory, err := mhRepo.FindByName(ctx, file.base)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
@@ -164,7 +150,6 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 			if migrateHistory == nil {
 				_, err := mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
 					MhVersion: -1,
-					MhMode:    repeatableDirName,
 					MhName:    file.base,
 					MhHash:    newHash,
 				})
@@ -186,33 +171,15 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 // history checker
 
 func checkHistory(ctx context.Context, mhRepo migrate_history.MigrateHistoryRepository, files *MigrationCtx) error {
-	schemaMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, schemaDirName)
+	appliedNames, err := mhRepo.GetAppliedNames(ctx)
 	if err != nil {
 		return err
 	}
-	repeatableMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, repeatableDirName)
+	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, files.versioned)
 	if err != nil {
 		return err
 	}
-	dataMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, dataDirName)
-	if err != nil {
-		return err
-	}
-
-	err = checkHistoryTableIsSyncedWithLocalFiles(schemaMigrations, files.schema)
-	if err != nil {
-		return err
-	}
-	err = checkHistoryTableIsSyncedWithLocalFiles(repeatableMigrations, files.repeatable)
-	if err != nil {
-		return err
-	}
-	err = checkHistoryTableIsSyncedWithLocalFiles(dataMigrations, files.data)
-	if err != nil {
-		return err
-	}
-
-	return err
+	return nil
 }
 
 func checkHistoryTableIsSyncedWithLocalFiles(migrations map[string]bool, mf []migrationFile) error {

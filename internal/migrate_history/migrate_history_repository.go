@@ -10,8 +10,7 @@ type MigrateHistoryRepository interface {
 	DeleteByID(ctx context.Context, pkID int) error
 	FindByID(ctx context.Context, pkID int) (*MigrateHistory, error)
 	ExistsByID(ctx context.Context, pkID int) (bool, error)
-	FindByNameMode(ctx context.Context, searchDTO MigrateHistorySearchNameMode) (*MigrateHistory, error)
+	FindByName(ctx context.Context, name string) (*MigrateHistory, error)
 	FindAll(ctx context.Context) ([]MigrateHistory, error)
-	FindAllByMode(ctx context.Context, mode string) ([]MigrateHistory, error)
-	GetAppliedNamesByMode(ctx context.Context, mode string) (map[string]bool, error)
+	GetAppliedNames(ctx context.Context) (map[string]bool, error)
 }
