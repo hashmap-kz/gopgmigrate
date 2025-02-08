@@ -15,6 +15,9 @@ var (
 
 	// example: 00003-users.undo.sql
 	versionedMigrationRegexUndo = regexp.MustCompile(`^\d{5}-.*\.undo\.sql$`)
+
+	// any filename with '.sql' extension
+	repeatableMigrationRegex = regexp.MustCompile(`(?i)\.sql$`)
 )
 
 type migrationFile struct {

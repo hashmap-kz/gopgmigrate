@@ -3,21 +3,21 @@ package migrate
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
-	"strings"
 )
 
 // GetFiles walks given directory recursively, sort result by basename
 func GetFiles(folder string) (*MigrationCtx, error) {
-	schemaFiles, err := getFilesInAPath(filepath.Join(folder, schemaDirName))
+	schemaFiles, err := getFilesInAPath(filepath.Join(folder, schemaDirName), versionedMigrationRegexDo)
 	if err != nil {
 		return nil, err
 	}
-	repeatableFiles, err := getFilesInAPath(filepath.Join(folder, repeatableDirName))
+	repeatableFiles, err := getFilesInAPath(filepath.Join(folder, repeatableDirName), repeatableMigrationRegex)
 	if err != nil {
 		return nil, err
 	}
-	dataFiles, err := getFilesInAPath(filepath.Join(folder, dataDirName))
+	dataFiles, err := getFilesInAPath(filepath.Join(folder, dataDirName), versionedMigrationRegexDo)
 	if err != nil {
 		return nil, err
 	}
@@ -29,13 +29,13 @@ func GetFiles(folder string) (*MigrationCtx, error) {
 }
 
 // getFilesInAPath walks path, collects all *.sql files
-func getFilesInAPath(folder string) ([]migrationFile, error) {
+func getFilesInAPath(folder string, reg *regexp.Regexp) ([]migrationFile, error) {
 	var files []migrationFile
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".sql") {
+		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(filepath.Base(path)) {
 			sql, err := os.ReadFile(path)
 			if err != nil {
 				return err
