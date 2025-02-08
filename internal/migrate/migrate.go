@@ -175,7 +175,11 @@ func checkHistory(ctx context.Context, mhRepo migrate_history.MigrateHistoryRepo
 	if err != nil {
 		return err
 	}
-	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, files.versioned)
+
+	all := files.repeatable
+	all = append(all, files.versioned...)
+
+	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, all)
 	if err != nil {
 		return err
 	}

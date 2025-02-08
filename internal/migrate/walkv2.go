@@ -36,6 +36,11 @@ func GetFilesV2(migrationDirectory string) (*MigrationCtx, error) {
 		return nil, err
 	}
 
+	err = checkVersionsAreSequential(versioned)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MigrationCtx{
 		versioned:  versioned,
 		repeatable: repeatable,
@@ -94,9 +99,9 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 	return files, nil
 }
 
-func checkFilesAreUniqueByVersion(files []migrationFile) error {
+func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
 	seenVersions := map[int64]bool{}
-	for _, f := range files {
+	for _, f := range versioned {
 		version, err := parseVersion(f.base)
 		if err != nil {
 			return err
@@ -107,6 +112,29 @@ func checkFilesAreUniqueByVersion(files []migrationFile) error {
 			)
 		}
 		seenVersions[version] = true
+	}
+	return nil
+}
+
+func checkVersionsAreSequential(versioned []migrationFile) error {
+	if len(versioned) < 2 {
+		return nil
+	}
+	for i := 1; i < len(versioned); i++ {
+		curVer, err := parseVersion(versioned[i].base)
+		if err != nil {
+			return err
+		}
+		prevVer, err := parseVersion(versioned[i-1].base)
+		if err != nil {
+			return err
+		}
+		if curVer != prevVer+1 {
+			return fmt.Errorf("versions are not sequential, check %s and %s",
+				filepath.ToSlash(versioned[i-1].path),
+				filepath.ToSlash(versioned[i].path),
+			)
+		}
 	}
 	return nil
 }
