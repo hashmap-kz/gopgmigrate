@@ -19,7 +19,7 @@ func NewMigrateHistoryRepository(_ context.Context, db *pgx.Conn) MigrateHistory
 	}
 }
 
-func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *MigrateHistory) (*MigrateHistory, error) {
+func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *MigrateHistoryCreateInput) (*MigrateHistory, error) {
 	tag := "migrateHistoryRepository.Save"
 
 	query := `		
@@ -27,19 +27,15 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 			mh_version,
 			mh_mode,
 			mh_name,
-			mh_hash,
-			mh_txid,
-			mh_applied_by,
-			mh_applied_at
+			mh_hash
 		)
-		values ($1, $2, $3, $4, $5, $6, $7)
+		values ($1, $2, $3, $4)
 		returning
 			id,
 			mh_version,
 			mh_mode,
 			mh_name,
 			mh_hash,
-			mh_txid,
 			mh_applied_by,
 			mh_applied_at
 		`
@@ -49,9 +45,6 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 		inputEntity.MhMode,
 		inputEntity.MhName,
 		inputEntity.MhHash,
-		inputEntity.MhTxid,
-		inputEntity.MhAppliedBy,
-		inputEntity.MhAppliedAt,
 	)
 
 	scannedEntity, err := scanFullRow(row)
@@ -61,19 +54,17 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 	return scannedEntity, nil
 }
 
-func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, inputEntity *MigrateHistory, pkID int) (*MigrateHistory, error) {
+func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, newHash string, pkID int) (*MigrateHistory, error) {
 	tag := "migrateHistoryRepository.UpdateByID"
 
+	// update is available ONLY for repeatable migrations
+	// and we're able to update ONLY the hash field
 	query := `		
 		update public.migrate_history
-		set 
-			mh_version    = coalesce(nullif($2, 0::int8), mh_version),
-			mh_mode       = coalesce(nullif($3, ''), mh_mode),
-			mh_name       = coalesce(nullif($4, ''), mh_name),
-			mh_hash       = coalesce(nullif($5, ''), mh_hash),
-			mh_txid       = coalesce(nullif($6, '0'::xid8), mh_txid),
-			mh_applied_by = coalesce(nullif($7, ''), mh_applied_by),
-			mh_applied_at = coalesce(nullif($8, '0001-01-01 00:00:00'::timestamp), mh_applied_at)
+		set
+			mh_hash       = $2,
+			mh_applied_by = session_user,
+			mh_applied_at = transaction_timestamp()
 		where id = $1
 		returning 
 			id,
@@ -81,20 +72,13 @@ func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, inputEntity *
 			mh_mode,
 			mh_name,
 			mh_hash,
-			mh_txid,
 			mh_applied_by,
 			mh_applied_at
 		`
 
 	row := r.db.QueryRow(ctx, query,
 		pkID,
-		inputEntity.MhVersion,
-		inputEntity.MhMode,
-		inputEntity.MhName,
-		inputEntity.MhHash,
-		inputEntity.MhTxid,
-		inputEntity.MhAppliedBy,
-		inputEntity.MhAppliedAt,
+		newHash,
 	)
 
 	scannedEntity, err := scanFullRow(row)
@@ -129,7 +113,6 @@ func (r *migrateHistoryRepository) FindByID(ctx context.Context, pkID int) (*Mig
 			mh_mode,
 			mh_name,
 			mh_hash,
-			mh_txid,
 			mh_applied_by,
 			mh_applied_at
 		from public.migrate_history
@@ -138,6 +121,43 @@ func (r *migrateHistoryRepository) FindByID(ctx context.Context, pkID int) (*Mig
 		`
 
 	row := r.db.QueryRow(ctx, query, pkID)
+
+	scannedEntity, err := scanFullRow(row)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", tag, err)
+	}
+	return scannedEntity, nil
+}
+
+func (r *migrateHistoryRepository) ExistsByID(ctx context.Context, pkID int) (bool, error) {
+	var exists bool
+	query := `select exists(select 1 from public.migrate_history where id = $1)`
+	err := r.db.QueryRow(context.Background(), query, pkID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (r *migrateHistoryRepository) FindByNameMode(ctx context.Context, searchDTO MigrateHistorySearchNameMode) (*MigrateHistory, error) {
+	tag := "migrateHistoryRepository.FindByNameMode"
+
+	query := `		
+		select
+			id,
+			mh_version,
+			mh_mode,
+			mh_name,
+			mh_hash,
+			mh_applied_by,
+			mh_applied_at
+		from public.migrate_history
+		where 
+			mh_name = $1 and 
+			mh_mode = $2
+		`
+
+	row := r.db.QueryRow(ctx, query, searchDTO.MhName, searchDTO.MhMode)
 
 	scannedEntity, err := scanFullRow(row)
 	if err != nil {
@@ -156,7 +176,6 @@ func (r *migrateHistoryRepository) FindAll(ctx context.Context) ([]MigrateHistor
 			mh_mode,
 			mh_name,
 			mh_hash,
-			mh_txid,
 			mh_applied_by,
 			mh_applied_at
 		from public.migrate_history
@@ -164,6 +183,44 @@ func (r *migrateHistoryRepository) FindAll(ctx context.Context) ([]MigrateHistor
 		`
 
 	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", tag, err)
+	}
+	defer rows.Close()
+
+	var scannedEntities []MigrateHistory
+	for rows.Next() {
+		scannedEntity, err := scanFullRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", tag, err)
+		}
+		scannedEntities = append(scannedEntities, *scannedEntity)
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	return scannedEntities, nil
+}
+
+func (r *migrateHistoryRepository) FindAllByMode(ctx context.Context, mode string) ([]MigrateHistory, error) {
+	tag := "migrateHistoryRepository.FindAllByMode"
+
+	query := `		
+		select
+			id,
+			mh_version,
+			mh_mode,
+			mh_name,
+			mh_hash,
+			mh_applied_by,
+			mh_applied_at
+		from public.migrate_history
+		where mh_mode = $1
+		order by mh_name
+		`
+
+	rows, err := r.db.Query(ctx, query, mode)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", tag, err)
 	}
@@ -197,7 +254,6 @@ func scanFullRow(row pgx.Row) (*MigrateHistory, error) {
 		&scannedEntity.MhMode,
 		&scannedEntity.MhName,
 		&scannedEntity.MhHash,
-		&scannedEntity.MhTxid,
 		&scannedEntity.MhAppliedBy,
 		&scannedEntity.MhAppliedAt,
 	)

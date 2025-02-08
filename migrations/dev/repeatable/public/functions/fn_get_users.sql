@@ -12,5 +12,6 @@ begin
         select c.record_id as id,
                c.email
         from mtest_users c;
+
 end
 $fn$ language plpgsql;

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gopgmigrate/internal/migrate_history"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"gopgmigrate/internal/migrate_history"
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
@@ -51,7 +51,7 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 	err = migrateRepeatable(ctx, tx, migrationParams{
 		mode:  repeatableDirName,
 		files: files.repeatable,
-	})
+	}, repo)
 	if err != nil {
 		return err
 	}
@@ -70,16 +70,17 @@ func RunMigrations(conn *pgx.Conn, files *migrationCtx) error {
 }
 
 // migrateSchemaData applies versioned migrations for schema/data
-func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, repo migrate_history.MigrateHistoryRepository) error {
-	all, err := repo.FindAll(ctx)
+func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
+	all, err := mhRepo.FindAllByMode(ctx, mp.mode)
 	if err != nil {
 		return err
 	}
-	fmt.Println(all)
-
-	applied, err := getAppliedMigrations(tx, mp.mode)
-	if err != nil {
-		return err
+	applied := map[int64]bool{}
+	for _, e := range all {
+		if e.MhVersion == nil {
+			return fmt.Errorf("unexpected nil version for applied migration: %s/%s", e.MhMode, e.MhName)
+		}
+		applied[*e.MhVersion] = true
 	}
 
 	for _, file := range mp.files {
@@ -94,7 +95,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, repo 
 		}
 
 		versionStr := strings.Split(filepath.Base(file.base), "-")[0]
-		version, err := strconv.Atoi(versionStr)
+		version, err := strconv.ParseInt(versionStr, 10, 64)
 		if err != nil {
 			return err
 		}
@@ -107,9 +108,6 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, repo 
 		if err != nil {
 			return err
 		}
-		newHash := computeHash(sql)
-		name := file.base
-
 		slog.Info("migration",
 			slog.String("mode", "VER"),
 			slog.String("path", file.base),
@@ -121,14 +119,13 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, repo 
 			return fmt.Errorf("error applying migration %s: %v", file, err)
 		}
 
-		// update history
-		query := fmt.Sprintf("INSERT INTO %s (mh_version, mh_hash, mh_name, mh_mode) VALUES ($1, $2, $3, $4)", defaultHistoryTableName)
-		_, err = tx.Exec(ctx, query,
-			version,
-			newHash,
-			name,
-			mp.mode,
-		)
+		// write history
+		_, err = mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
+			MhVersion: &version,
+			MhMode:    mp.mode,
+			MhName:    file.base,
+			MhHash:    computeHash(sql),
+		})
 		if err != nil {
 			return err
 		}
@@ -139,7 +136,7 @@ func migrateSchemaData(ctx context.Context, tx pgx.Tx, mp migrationParams, repo 
 }
 
 // migrateRepeatable applies repeatable migrations
-func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error {
+func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
 	for _, file := range mp.files {
 		sql, err := os.ReadFile(file.path)
 		if err != nil {
@@ -150,12 +147,15 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 
 		// Get stored hash
 		var existingHash string
-		err = tx.QueryRow(ctx, fmt.Sprintf("SELECT mh_hash FROM %s WHERE mh_name = $1 and mh_mode = $2", defaultHistoryTableName),
-			name,
-			repeatableDirName,
-		).Scan(&existingHash)
+		migrateHistory, err := mhRepo.FindByNameMode(ctx, migrate_history.MigrateHistorySearchNameMode{
+			MhName: name,
+			MhMode: repeatableDirName,
+		})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
+		}
+		if migrateHistory != nil {
+			existingHash = migrateHistory.MhHash
 		}
 
 		// Apply only if changed
@@ -169,38 +169,25 @@ func migrateRepeatable(ctx context.Context, tx pgx.Tx, mp migrationParams) error
 			if err != nil {
 				return fmt.Errorf("error applying repeatable migration %s: %v", file, err)
 			}
-			_, err = tx.Exec(ctx, fmt.Sprintf(`
-					INSERT INTO %s (mh_name, mh_hash, mh_mode)
-					VALUES ($1, $2, $3)
-					ON CONFLICT (mh_name, mh_mode) DO UPDATE SET mh_hash = $2, mh_applied_at = NOW()`, defaultHistoryTableName),
-				name,
-				newHash,
-				mp.mode,
-			)
-			if err != nil {
-				return err
+
+			// upsert
+			if migrateHistory == nil {
+				_, err := mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
+					MhMode: repeatableDirName,
+					MhName: name,
+					MhHash: newHash,
+				})
+				if err != nil {
+					return err
+				}
+			} else {
+				_, err := mhRepo.UpdateByID(ctx, newHash, migrateHistory.ID)
+				if err != nil {
+					return err
+				}
 			}
+
 		}
 	}
 	return nil
-}
-
-// Get applied migrations for a given history-table
-func getAppliedMigrations(tx pgx.Tx, mode string) (map[int]bool, error) {
-	query := fmt.Sprintf("SELECT mh_version FROM %s where mh_version is not null and mh_mode = $1", defaultHistoryTableName)
-	rows, err := tx.Query(context.Background(), query, mode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	migrations := make(map[int]bool)
-	for rows.Next() {
-		var version int
-		if err := rows.Scan(&version); err != nil {
-			return nil, err
-		}
-		migrations[version] = true
-	}
-	return migrations, nil
 }

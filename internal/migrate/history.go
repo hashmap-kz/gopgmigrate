@@ -16,9 +16,8 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 			mh_mode       varchar(16) not null check (mh_mode::text in ('schema', 'data', 'repeatable')),
 			mh_name       text        not null,
 			mh_hash       text        not null,
-			mh_txid       xid8        not null default pg_current_xact_id(),
 			mh_applied_by name        not null default session_user,
-			mh_applied_at timestamp   not null default statement_timestamp()
+			mh_applied_at timestamptz not null default transaction_timestamp()
 		);
 		
 		create unique index if not exists ix_migrate_history_unq
@@ -30,7 +29,6 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 		comment on column public.migrate_history.mh_mode is 'Migration type: schema, data, or repeatable.';
 		comment on column public.migrate_history.mh_name is 'Name of the migration file applied.';
 		comment on column public.migrate_history.mh_hash is 'SHA256 hash of the migration script to detect changes in repeatable migrations.';
-		comment on column public.migrate_history.mh_txid is 'Transaction ID when the migration was applied.';
 		comment on column public.migrate_history.mh_applied_by is 'User who executed the migration.';
 		comment on column public.migrate_history.mh_applied_at is 'Timestamp when the migration was applied.';
 	`

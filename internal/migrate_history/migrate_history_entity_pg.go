@@ -19,9 +19,6 @@ type MigrateHistory struct {
 	// SHA256 hash of the migration script to detect changes in repeatable migrations.
 	MhHash string `json:"mh_hash" db:"mh_hash"`
 
-	// Transaction ID when the migration was applied.
-	MhTxid uint64 `json:"mh_txid" db:"mh_txid"`
-
 	// User who executed the migration.
 	MhAppliedBy string `json:"mh_applied_by" db:"mh_applied_by"`
 
