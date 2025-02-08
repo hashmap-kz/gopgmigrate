@@ -12,17 +12,17 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 		create table if not exists public.migrate_history
 		(
 			id            serial primary key,
-			mh_version    bigint,
-			mh_mode       varchar(16) not null check (mh_mode::text in ('schema', 'data', 'repeatable')),
+			mh_version    bigint 	  not null,
+			mh_mode       varchar(16) not null check (mh_mode in ('schema', 'data', 'repeatable')),
 			mh_name       text        not null,
 			mh_hash       text        not null,
 			mh_applied_by name        not null default session_user,
 			mh_applied_at timestamptz not null default transaction_timestamp()
 		);
 		
-		create unique index if not exists ix_migrate_history_unq
+		create unique index if not exists ix_migrate_history_mode_name_unq
 			on public.migrate_history (mh_mode, mh_name);
-		
+
 		comment on table  public.migrate_history is 'Tracks executed migrations, ensuring version control and repeatable migrations.';
 		comment on column public.migrate_history.id is 'Auto-incrementing primary key.';
 		comment on column public.migrate_history.mh_version is 'Version number of the migration (bigint). Used for versioned migrations.';

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"gopgmigrate/internal/migrate_history"
@@ -94,12 +92,8 @@ func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 			continue
 		}
 
-		versionStr := strings.Split(filepath.Base(file.base), "-")[0]
-		version, err := strconv.ParseInt(versionStr, 10, 64)
-		if err != nil {
-			return err
-		}
-
+		// TODO: check that hash match
+		// skip applied
 		if applied[file.base] {
 			continue
 		}
@@ -116,8 +110,12 @@ func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 		}
 
 		// write history
+		version, err := parseVersion(file.base)
+		if err != nil {
+			return err
+		}
 		_, err = mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
-			MhVersion: &version,
+			MhVersion: version,
 			MhMode:    mp.mode,
 			MhName:    file.base,
 			MhHash:    computeHash(file.data),
@@ -165,9 +163,10 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 			// update history (upsert)
 			if migrateHistory == nil {
 				_, err := mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
-					MhMode: repeatableDirName,
-					MhName: file.base,
-					MhHash: newHash,
+					MhVersion: -1,
+					MhMode:    repeatableDirName,
+					MhName:    file.base,
+					MhHash:    newHash,
 				})
 				if err != nil {
 					return err

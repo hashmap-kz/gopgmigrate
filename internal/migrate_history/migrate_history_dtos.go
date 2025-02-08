@@ -6,7 +6,7 @@ type MigrateHistorySearchNameMode struct {
 }
 
 type MigrateHistoryCreateInput struct {
-	MhVersion *int64
+	MhVersion int64
 	MhMode    string
 	MhName    string
 	MhHash    string
