@@ -12,7 +12,3 @@ type MigrationCtx struct {
 	versioned  []migrationFile
 	repeatable []migrationFile
 }
-
-type migrationParams struct {
-	files []migrationFile
-}

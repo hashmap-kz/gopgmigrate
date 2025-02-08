@@ -14,7 +14,7 @@ func TestParseVersionDo(t *testing.T) {
 		{"12345-roles.do.sql", 12345, false},
 		{"00000-init.do.sql", 0, false},
 		{"00123-test.do.sql", 123, false},
-		
+
 		{"1234-users.do.sql", -1, true},      // Invalid: needs exactly 5 digits
 		{"0000-users.do.sql", -1, true},      // Invalid: only 4 digits
 		{"00001_users.do.sql", -1, true},     // Invalid: uses `_` instead of `-`

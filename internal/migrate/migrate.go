@@ -43,17 +43,13 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	}
 
 	// I) migrate versioned
-	err = migrateVersioned(ctx, conn, migrationParams{
-		files: files.versioned,
-	}, mhRepo)
+	err = migrateVersioned(ctx, conn, files.versioned, mhRepo)
 	if err != nil {
 		return err
 	}
 
 	// II) migrate repeatable
-	err = migrateRepeatable(ctx, conn, migrationParams{
-		files: files.repeatable,
-	}, mhRepo)
+	err = migrateRepeatable(ctx, conn, files.repeatable, mhRepo)
 	if err != nil {
 		return err
 	}
@@ -63,13 +59,13 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 }
 
 // migrateVersioned applies versioned migrations for versioned/data
-func migrateVersioned(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
+func migrateVersioned(ctx context.Context, conn *pgx.Conn, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) error {
 	applied, err := mhRepo.GetAppliedNames(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, file := range mp.files {
+	for _, file := range files {
 		// twice check a file given
 		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
 		if !isVersioned {
@@ -113,8 +109,8 @@ func migrateVersioned(ctx context.Context, conn *pgx.Conn, mp migrationParams, m
 }
 
 // migrateRepeatable applies repeatable migrations
-func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
-	for _, file := range mp.files {
+func migrateRepeatable(ctx context.Context, conn *pgx.Conn, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) error {
+	for _, file := range files {
 		// twice check a file given
 		isRepeatable := repeatableMigrationRegex.MatchString(file.base)
 		if !isRepeatable {
