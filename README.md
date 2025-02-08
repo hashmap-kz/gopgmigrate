@@ -121,4 +121,11 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - Do not distinct between schema/data, but allow nested directories (versions, etc...)
 - Add tag-based rollbacks (a special migration file, that writes a tag into history-table)
 - For repeatable migrations it is possible to use another table
+- Every *.do.sql MUST have corresponding *.undo.sql (it is possible to place all of them in any folder, and the file itself may be empty)
+
+
+
+
+
+
 
