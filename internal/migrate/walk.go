@@ -54,7 +54,6 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 			files = append(files, migrationFile{
 				path: path,
 				base: filepath.Base(path),
-				dir:  filepath.Dir(path),
 				data: sql,
 			})
 		}

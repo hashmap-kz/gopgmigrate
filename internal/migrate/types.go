@@ -1,10 +1,8 @@
 package migrate
 
 type migrationFile struct {
-	vers int64
 	path string
 	base string
-	dir  string
 	data []byte
 }
 
