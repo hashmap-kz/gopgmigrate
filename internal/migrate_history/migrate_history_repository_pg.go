@@ -241,6 +241,18 @@ func (r *migrateHistoryRepository) FindAllByMode(ctx context.Context, mode strin
 	return scannedEntities, nil
 }
 
+func (r *migrateHistoryRepository) GetAppliedNamesByMode(ctx context.Context, mode string) (map[string]bool, error) {
+	all, err := r.FindAllByMode(ctx, mode)
+	if err != nil {
+		return nil, err
+	}
+	applied := map[string]bool{}
+	for _, e := range all {
+		applied[e.MhName] = true
+	}
+	return applied, nil
+}
+
 // scan utils
 
 // scanFullRow is expected to scan all columns from a table.

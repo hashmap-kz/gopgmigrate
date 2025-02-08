@@ -48,12 +48,6 @@ func main() {
 		log.Fatalf("collecting files error: %v", err)
 	}
 
-	// TODO: repo
-	//err = migrate.CheckHistory(conn, files)
-	//if err != nil {
-	//	log.Fatalf("migration history error: %v", err)
-	//}
-
 	// run all migrations in a single transaction
 	err = migrate.RunMigrations(conn, files)
 	if err != nil {

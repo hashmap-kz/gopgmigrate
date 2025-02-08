@@ -39,6 +39,12 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	// works inside the same transaction as the other migration scripts
 	mhRepo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
 
+	// check that all applied migrations are present in files list
+	err = checkHistory(ctx, mhRepo, files)
+	if err != nil {
+		return err
+	}
+
 	// I) migrate schema
 	err = migrateSchemaData(ctx, conn, migrationParams{
 		mode:  schemaDirName,
@@ -72,16 +78,9 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 
 // migrateSchemaData applies versioned migrations for schema/data
 func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, mhRepo migrate_history.MigrateHistoryRepository) error {
-	all, err := mhRepo.FindAllByMode(ctx, mp.mode)
+	applied, err := mhRepo.GetAppliedNamesByMode(ctx, mp.mode)
 	if err != nil {
 		return err
-	}
-	applied := map[int64]bool{}
-	for _, e := range all {
-		if e.MhVersion == nil {
-			return fmt.Errorf("unexpected nil version for applied migration: %s/%s", e.MhMode, e.MhName)
-		}
-		applied[*e.MhVersion] = true
 	}
 
 	for _, file := range mp.files {
@@ -101,7 +100,7 @@ func migrateSchemaData(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 			return err
 		}
 
-		if applied[version] {
+		if applied[file.base] {
 			continue
 		}
 
@@ -183,4 +182,54 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, mp migrationParams, 
 		}
 	}
 	return nil
+}
+
+// history checker
+
+func checkHistory(ctx context.Context, mhRepo migrate_history.MigrateHistoryRepository, files *MigrationCtx) error {
+	schemaMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, schemaDirName)
+	if err != nil {
+		return err
+	}
+	repeatableMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, repeatableDirName)
+	if err != nil {
+		return err
+	}
+	dataMigrations, err := mhRepo.GetAppliedNamesByMode(ctx, dataDirName)
+	if err != nil {
+		return err
+	}
+
+	err = checkHistoryTableIsSyncedWithLocalFiles(schemaMigrations, files.schema)
+	if err != nil {
+		return err
+	}
+	err = checkHistoryTableIsSyncedWithLocalFiles(repeatableMigrations, files.repeatable)
+	if err != nil {
+		return err
+	}
+	err = checkHistoryTableIsSyncedWithLocalFiles(dataMigrations, files.data)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func checkHistoryTableIsSyncedWithLocalFiles(migrations map[string]bool, mf []migrationFile) error {
+	for k := range migrations {
+		if !found(k, mf) {
+			return fmt.Errorf("detected applied migration not resolved locally: %s", k)
+		}
+	}
+	return nil
+}
+
+func found(k string, mf []migrationFile) bool {
+	for _, f := range mf {
+		if k == f.base {
+			return true
+		}
+	}
+	return false
 }

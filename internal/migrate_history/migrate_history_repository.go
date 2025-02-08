@@ -13,4 +13,5 @@ type MigrateHistoryRepository interface {
 	FindByNameMode(ctx context.Context, searchDTO MigrateHistorySearchNameMode) (*MigrateHistory, error)
 	FindAll(ctx context.Context) ([]MigrateHistory, error)
 	FindAllByMode(ctx context.Context, mode string) ([]MigrateHistory, error)
+	GetAppliedNamesByMode(ctx context.Context, mode string) (map[string]bool, error)
 }
