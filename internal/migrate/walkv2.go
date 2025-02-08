@@ -10,33 +10,24 @@ import (
 )
 
 func GetFilesV2(migrationDirectory string) (*MigrationCtx, error) {
-	strayFiles, err := checkStrayFilesFast(migrationDirectory)
+	var err error
+
+	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
 	if err != nil {
 		return nil, err
-	}
-	if len(strayFiles) > 0 {
-		for _, sf := range strayFiles {
-			slog.Error("stray-file", slog.String("path", sf))
-		}
-		return nil, fmt.Errorf("stray files are not allowed")
 	}
 
 	versioned, err := getFilesInAPathV2(migrationDirectory, versionedMigrationRegexDo)
 	if err != nil {
 		return nil, err
 	}
+
 	repeatable, err := getFilesInAPathV2(migrationDirectory, repeatableMigrationRegex)
 	if err != nil {
 		return nil, err
 	}
 
-	// check versions are correct
-	err = checkFilesAreUniqueByVersion(versioned)
-	if err != nil {
-		return nil, err
-	}
-
-	err = checkVersionsAreSequential(versioned)
+	err = checkVersionedMigrations(versioned)
 	if err != nil {
 		return nil, err
 	}
@@ -45,26 +36,6 @@ func GetFilesV2(migrationDirectory string) (*MigrationCtx, error) {
 		versioned:  versioned,
 		repeatable: repeatable,
 	}, nil
-}
-
-func checkStrayFilesFast(directory string) ([]string, error) {
-	var strayFiles []string
-	err := filepath.WalkDir(directory, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			base := filepath.Base(path)
-			isOk := repeatableMigrationRegex.MatchString(base) ||
-				versionedMigrationRegexDo.MatchString(base) ||
-				versionedMigrationRegexUndo.MatchString(base)
-			if !isOk {
-				strayFiles = append(strayFiles, filepath.ToSlash(path))
-			}
-		}
-		return nil
-	})
-	return strayFiles, err
 }
 
 // getFilesInAPath walks path, collects all *.sql files
@@ -97,6 +68,59 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 		return files[i].base < files[j].base
 	})
 	return files, nil
+}
+
+// stray files checking routine
+
+func checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory string) error {
+	strayFiles, err := getAllStrayFiles(migrationDirectory)
+	if err != nil {
+		return err
+	}
+	if len(strayFiles) > 0 {
+		for _, sf := range strayFiles {
+			slog.Error("stray-file", slog.String("path", sf))
+		}
+		return fmt.Errorf("stray files are not allowed")
+	}
+	return nil
+}
+
+func getAllStrayFiles(directory string) ([]string, error) {
+	var strayFiles []string
+	err := filepath.WalkDir(directory, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			base := filepath.Base(path)
+			isOk := repeatableMigrationRegex.MatchString(base) ||
+				versionedMigrationRegexDo.MatchString(base) ||
+				versionedMigrationRegexUndo.MatchString(base)
+			if !isOk {
+				strayFiles = append(strayFiles, filepath.ToSlash(path))
+			}
+		}
+		return nil
+	})
+	return strayFiles, err
+}
+
+// routine around versioned migrations
+
+func checkVersionedMigrations(versioned []migrationFile) error {
+	var err error
+
+	err = checkFilesAreUniqueByVersion(versioned)
+	if err != nil {
+		return err
+	}
+	err = checkVersionsAreSequential(versioned)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
