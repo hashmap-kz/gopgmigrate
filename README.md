@@ -116,13 +116,17 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ---
 
 ## Notes:
-- Versions should be unique recursively, error otherwise (data/00001-users.sql, schema/000001-roles.sql -> this is an error)
-- Versions should be incremented sequentially (001,002,003), error otherwise
-- Do not distinct between schema/data, but allow nested directories (versions, etc...)
-- Add tag-based rollbacks (a special migration file, that writes a tag into history-table)
-- For repeatable migrations it is possible to use another table
-- Every *.do.sql MUST have corresponding *.undo.sql (it is possible to place all of them in any folder, and the file itself may be empty)
 
+- Version numbers must be unique across all directories when scanned recursively; otherwise, an error will be raised (
+  e.g., data/00001-users.sql and schema/00001-roles.sql is an error).
+- Version numbers must increment sequentially (e.g., 00001, 00002, 00003); any gaps or inconsistencies will result in an
+  error.
+- No distinction is made between schema/ and data/, but nested directories are allowed for organizing versions and other
+  files.
+- Support for tag-based rollbacks is provided using special migration files that write a tag into the history table.
+- Repeatable migrations can be managed using a separate table.
+- Every *.do.sql file must have a corresponding *.undo.sql file. These files can be placed in any directory, and the *
+  .undo.sql file may be empty if no undo action is required.
 
 
 
