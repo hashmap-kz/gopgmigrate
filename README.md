@@ -26,7 +26,12 @@ TODO
 The database connection URL is retrieved from an environment variable:
 
 ```sh
-export PGMIGRATE_DB_URL="postgres://user:password@localhost:5432/dbname"
+### REQUIRED
+
+export PGMIGRATE_CONNSTR="postgres://user:password@localhost:5432/dbname"
+export PGMIGRATE_DIRNAME="examples/basic"
+
+### OPTIONAL
 
 # default: public.migrate_history
 export PGMIGRATE_HISTORY_TABLE_NAME=migrate_history_dev
