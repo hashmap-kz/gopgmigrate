@@ -11,7 +11,7 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 	query := `
 		create table if not exists public.migrate_history
 		(
-			id            serial primary key,
+			id            int 		  generated always as identity primary key,
 			mh_version    bigint 	  not null,
 			mh_mode       varchar(16) not null check (mh_mode in ('schema', 'data', 'repeatable')),
 			mh_name       text        not null,
