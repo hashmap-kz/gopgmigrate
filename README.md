@@ -115,3 +115,10 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ---
 
+## Notes:
+- Filenames should be unique recursively, error otherwise
+- Versions should be incremented sequentially (001,002,003), error otherwise
+- Do not distinct between schema/data, but allow nested directories (versions, etc...)
+- Add tag-based rollbacks (a special migration file, that writes a tag into history-table)
+- For repeatable migrations it is possible to use another table
+
