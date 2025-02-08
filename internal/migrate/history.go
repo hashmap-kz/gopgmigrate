@@ -2,26 +2,38 @@ package migrate
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // EnsureSchemaMigrationTables checks that migration tracking tables exist
 func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
-	query := fmt.Sprintf(`
-		create table if not exists %s
+	query := `
+		create table if not exists public.migrate_history
 		(
-			id         serial primary key,
-			version    int,
-			mode       varchar(16) not null,
-			name       text        not null,
-			hash       text        not null,
-			applied_at timestamp default now(),
-			constraint ckh_mode check ( mode in ('schema', 'data', 'repeatable') )
+			id            serial primary key,
+			mh_version    bigint,
+			mh_mode       varchar(16) not null check (mh_mode::text in ('schema', 'data', 'repeatable')),
+			mh_name       text        not null,
+			mh_hash       text        not null,
+			mh_txid       xid8        not null default pg_current_xact_id(),
+			mh_applied_by name        not null default session_user,
+			mh_applied_at timestamp   not null default statement_timestamp()
 		);
-		create unique index if not exists ix_migrate_history_unq on %s (mode, name);
-	`, defaultHistoryTableName, defaultHistoryTableName)
+		
+		create unique index if not exists ix_migrate_history_unq
+			on public.migrate_history (mh_mode, mh_name);
+		
+		comment on table  public.migrate_history is 'Tracks executed migrations, ensuring version control and repeatable migrations.';
+		comment on column public.migrate_history.id is 'Auto-incrementing primary key.';
+		comment on column public.migrate_history.mh_version is 'Version number of the migration (bigint). Used for versioned migrations.';
+		comment on column public.migrate_history.mh_mode is 'Migration type: schema, data, or repeatable.';
+		comment on column public.migrate_history.mh_name is 'Name of the migration file applied.';
+		comment on column public.migrate_history.mh_hash is 'SHA256 hash of the migration script to detect changes in repeatable migrations.';
+		comment on column public.migrate_history.mh_txid is 'Transaction ID when the migration was applied.';
+		comment on column public.migrate_history.mh_applied_by is 'User who executed the migration.';
+		comment on column public.migrate_history.mh_applied_at is 'Timestamp when the migration was applied.';
+	`
 	_, err := conn.Exec(context.Background(), query)
 	return err
 }
