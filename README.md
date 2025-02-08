@@ -127,6 +127,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - Repeatable migrations can be managed using a separate table.
 - Every *.do.sql file must have a corresponding *.undo.sql file. These files can be placed in any directory, and the *
   .undo.sql file may be empty if no undo action is required.
+- Any stray file inside 'migration-dir' must cause an error (if the file is not a versioned-migration, and not a repeatable one).
 
 
 
