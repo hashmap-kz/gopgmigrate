@@ -14,6 +14,11 @@ strictly ordered.
 - **Repeatable Migrations**: Re-applies if the SQL script changes (hash-based detection).
 - **Transactional Execution**: Ensures all migrations run within a single transaction.
 
+--- 
+## Naming conventions
+
+![Migration Naming Convention](assets/migration-names.png)
+
 ---
 
 ## Installation
