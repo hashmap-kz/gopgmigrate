@@ -3,7 +3,6 @@ package migrate
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 )
 
 type AppliedHistoryItem struct {
@@ -77,7 +76,5 @@ func findHist(base string, hist AppliedHistory) *AppliedHistoryItem {
 }
 
 func isRepeatable(file migrationFile) bool {
-	// TODO: use regex
-	return strings.HasSuffix(file.base, ".r.sql") ||
-		strings.HasSuffix(file.base, ".rntx.sql")
+	return repeatableMigrationRegexDo.MatchString(file.base)
 }

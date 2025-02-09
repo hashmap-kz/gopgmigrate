@@ -77,7 +77,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	}
 
 	slog.Info("migration",
-		slog.String("mode", "VER"),
+		slog.String("mode", getModeForLog(file)),
 		slog.String("name", file.base),
 	)
 
@@ -120,6 +120,13 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	}
 
 	return nil
+}
+
+func getModeForLog(file migrationFile) string {
+	if isRepeatable(file) {
+		return "REP"
+	}
+	return "VER"
 }
 
 func makeAppliedHistory(hist []migrate_history.MigrateHistory) AppliedHistory {

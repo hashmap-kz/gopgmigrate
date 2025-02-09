@@ -12,6 +12,9 @@ var (
 
 	// example: 00003-users.undo.sql
 	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(undo|undontx)\.sql$`)
+
+	// example: 00009-fn_get_roles.r.sql
+	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(r|rntx)\.sql$`)
 )
 
 func parseVersionDo(basename string) (int64, error) {
