@@ -28,12 +28,14 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 	query := fmt.Sprintf(`
 		create table if not exists %s
 		(
-			id            int 		  generated always as identity primary key,
-			mh_version    bigint 	  unique not null check (left(mh_name, 5)::integer = mh_version),
-			mh_name       text        unique not null check (left(mh_name, 5)::integer = mh_version),
-			mh_hash       text        not null,
-			mh_applied_by name        not null default session_user,
-			mh_applied_at timestamptz not null default transaction_timestamp()
+			id            int generated always as identity primary key,
+			mh_version    bigint unique not null,
+			mh_name       text unique   not null,
+			mh_hash       text          not null,
+			mh_applied_by name          not null default session_user,
+			mh_applied_at timestamptz   not null default transaction_timestamp(),
+			constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
+			constraint check_version_unsigned check (mh_version >= 0 )
 		);
 	`, r.tableName)
 
