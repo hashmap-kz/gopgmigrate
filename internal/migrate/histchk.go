@@ -14,22 +14,22 @@ type AppliedHistory map[string]AppliedHistoryItem
 
 // applied
 
-func checkHistory(appliedNames AppliedHistory, files []migrationFile) error {
-	return checkHistoryTableIsSyncedWithLocalFiles(appliedNames, files)
+func checkHistory(appliedMigrations AppliedHistory, localFiles []migrationFile) error {
+	return checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations, localFiles)
 }
 
-func checkHistoryTableIsSyncedWithLocalFiles(migrations AppliedHistory, mf []migrationFile) error {
-	for k := range migrations {
-		if !found(k, mf) {
+func checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations AppliedHistory, localFiles []migrationFile) error {
+	for k := range appliedMigrations {
+		if !appliedMigrationPresentLocally(k, localFiles) {
 			return fmt.Errorf("detected applied migration not resolved locally: %s", k)
 		}
 	}
 	return nil
 }
 
-func found(k string, mf []migrationFile) bool {
-	for _, f := range mf {
-		if k == f.base {
+func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []migrationFile) bool {
+	for _, f := range localFiles {
+		if appliedScriptBasename == f.base {
 			return true
 		}
 	}
@@ -38,16 +38,16 @@ func found(k string, mf []migrationFile) bool {
 
 // to apply
 
-func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) ([]migrationFile, error) {
+func getVersionedMigrationsToApply(appliedMigrations AppliedHistory, localFiles []migrationFile) ([]migrationFile, error) {
 	var toApply []migrationFile
-	for _, file := range files {
+	for _, file := range localFiles {
 		// twice check a file given
 		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
 		if !isVersioned {
 			continue
 		}
 
-		existing := findHist(file.base, hist)
+		existing := findHist(file.base, appliedMigrations)
 
 		if isRepeatable(file) {
 			// apply only if changed
@@ -68,8 +68,8 @@ func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) (
 	return toApply, nil
 }
 
-func findHist(base string, hist AppliedHistory) *AppliedHistoryItem {
-	if existing, ok := hist[base]; ok {
+func findHist(base string, appliedMigrations AppliedHistory) *AppliedHistoryItem {
+	if existing, ok := appliedMigrations[base]; ok {
 		return &existing
 	}
 	return nil

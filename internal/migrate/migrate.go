@@ -13,7 +13,7 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(ctx context.Context, conn *sql.DB, files []migrationFile) error {
+func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile) error {
 	var err error
 
 	// Acquire advisory lock
@@ -42,14 +42,14 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files []migrationFile) err
 	if err != nil {
 		return err
 	}
-	appliedHistoryIndex := makeAppliedHistory(migrateHistory)
-	err = checkHistory(appliedHistoryIndex, files)
+	appliedMigrations := makeAppliedHistory(migrateHistory)
+	err = checkHistory(appliedMigrations, localFiles)
 	if err != nil {
 		return err
 	}
 
 	// migrate
-	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files, appliedHistoryIndex)
+	versionedMigrationsToApply, err := getVersionedMigrationsToApply(appliedMigrations, localFiles)
 	if err != nil {
 		return err
 	}

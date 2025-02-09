@@ -139,7 +139,7 @@ func TestFound(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := found(test.searchKey, test.files)
+			result := appliedMigrationPresentLocally(test.searchKey, test.files)
 			if result != test.wantFound {
 				t.Errorf("found(%q) = %v, want %v", test.searchKey, result, test.wantFound)
 			}
@@ -158,7 +158,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "1"},
 	}
 
-	toApply, err := getVersionedMigrationsToApply(mockFiles, mockHistory)
+	toApply, err := getVersionedMigrationsToApply(mockHistory, mockFiles)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 
 	// Test hash mismatch scenario
 	mockHistory["00002-users.do.sql"] = AppliedHistoryItem{MhName: "00002-users.do.sql", MhHash: "wrong-hash"}
-	_, err = getVersionedMigrationsToApply(mockFiles, mockHistory)
+	_, err = getVersionedMigrationsToApply(mockHistory, mockFiles)
 	if err == nil {
 		t.Errorf("Expected hash mismatch error but got nil")
 	}
