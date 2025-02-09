@@ -43,7 +43,7 @@ func main() {
 	}
 
 	// run all migrations in a single transaction
-	err = migrate.RunMigrations(conn, files)
+	err = migrate.RunMigrations(ctx, conn, files)
 	if err != nil {
 		log.Fatalf("migration error: %v", err)
 	}

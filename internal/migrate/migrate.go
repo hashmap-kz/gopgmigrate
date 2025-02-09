@@ -11,13 +11,11 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
+func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) error {
 	var err error
 
-	ctx := context.Background()
-
 	// Acquire advisory lock
-	acquired, err := acquireMigrationLock(conn)
+	acquired, err := acquireMigrationLock(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -25,7 +23,7 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 		fmt.Println("Another migration process is running. Exiting.")
 		return nil
 	}
-	defer releaseMigrationLock(conn)
+	defer releaseMigrationLock(ctx, conn)
 
 	// TODO: simplify from here a LOT
 
@@ -72,8 +70,10 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 
 // migrateOneScript applies versioned migrations for versioned/data
 func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
+	useTX := !file.notx
+
 	var tx pgx.Tx
-	if !file.notx {
+	if useTX {
 		tx, err = conn.Begin(ctx)
 		if err != nil {
 			return err
@@ -95,7 +95,7 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 	// write history
 	if mod == "r" {
 		// update history (upsert)
-		_, err = mhRepo.SaveOrUpdate(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
+		_, err = mhRepo.SaveOrUpdateRepeatable(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
 			MhName: file.base,
 			MhHash: computeHash(file.data),
 		})
@@ -107,7 +107,7 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 		if err != nil {
 			return err
 		}
-		_, err = mhRepo.Save(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
+		_, err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
 			MhVersion: version,
 			MhName:    file.base,
 			MhHash:    computeHash(file.data),
@@ -117,7 +117,7 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 		}
 	}
 
-	if !file.notx {
+	if useTX {
 		err := tx.Commit(ctx)
 		if err != nil {
 			return err

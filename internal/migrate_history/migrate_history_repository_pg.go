@@ -19,8 +19,8 @@ func NewMigrateHistoryRepository(_ context.Context, db *pgx.Conn) MigrateHistory
 	}
 }
 
-func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) (*MigrateHistory, error) {
-	tag := "migrateHistoryRepository.Save"
+func (r *migrateHistoryRepository) SaveVersioned(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) (*MigrateHistory, error) {
+	tag := "migrateHistoryRepository.SaveVersioned"
 
 	query := `		
 		insert into public.migrate_history (
@@ -51,7 +51,37 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 	return scannedEntity, nil
 }
 
-func (r *migrateHistoryRepository) SaveOrUpdate(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) (*MigrateHistory, error) {
+func (r *migrateHistoryRepository) SaveRepeatable(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) (*MigrateHistory, error) {
+	tag := "migrateHistoryRepository.SaveRepeatable"
+
+	query := `		
+		insert into public.migrate_history (
+			mh_name,
+			mh_hash
+		)
+		values ($1, $2)
+		returning
+			id,
+			mh_version,
+			mh_name,
+			mh_hash,
+			mh_applied_by,
+			mh_applied_at
+		`
+
+	row := r.db.QueryRow(ctx, query,
+		inputEntity.MhName,
+		inputEntity.MhHash,
+	)
+
+	scannedEntity, err := scanFullRow(row)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", tag, err)
+	}
+	return scannedEntity, nil
+}
+
+func (r *migrateHistoryRepository) SaveOrUpdateRepeatable(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) (*MigrateHistory, error) {
 	existsByName, err := r.ExistsByName(ctx, inputEntity.MhName)
 	if err != nil {
 		return nil, err
@@ -59,7 +89,7 @@ func (r *migrateHistoryRepository) SaveOrUpdate(ctx context.Context, inputEntity
 	if existsByName {
 		return r.UpdateByName(ctx, inputEntity.MhHash, inputEntity.MhName)
 	}
-	return r.Save(ctx, &MigrateHistoryVersionedCreateInput{
+	return r.SaveRepeatable(ctx, &MigrateHistoryRepeatableCreateInput{
 		MhName: inputEntity.MhName,
 		MhHash: inputEntity.MhHash,
 	})
@@ -90,46 +120,6 @@ func (r *migrateHistoryRepository) UpdateByName(ctx context.Context, newHash str
 		name,
 		newHash,
 	)
-
-	scannedEntity, err := scanFullRow(row)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", tag, err)
-	}
-	return scannedEntity, nil
-}
-
-func (r *migrateHistoryRepository) DeleteByID(ctx context.Context, pkID int) error {
-	tag := "migrateHistoryRepository.DeleteByID"
-
-	query := `		
-		delete from only public.migrate_history
-		where id = $1
-		`
-
-	cmdTag, err := r.db.Exec(ctx, query, pkID)
-	if err != nil || cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("%s. no rows were deleted: %w", tag, err)
-	}
-	return nil
-}
-
-func (r *migrateHistoryRepository) FindByID(ctx context.Context, pkID int) (*MigrateHistory, error) {
-	tag := "migrateHistoryRepository.FindByID"
-
-	query := `		
-		select
-			id,
-			mh_version,
-			mh_name,
-			mh_hash,
-			mh_applied_by,
-			mh_applied_at
-		from public.migrate_history
-		where id = $1
-		order by id
-		`
-
-	row := r.db.QueryRow(ctx, query, pkID)
 
 	scannedEntity, err := scanFullRow(row)
 	if err != nil {
