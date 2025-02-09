@@ -239,4 +239,13 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - no-transaction support
 - https://github.com/flyway/flyway/blob/main/flyway-database/flyway-database-postgresql/src/main/java/org/flywaydb/database/postgresql/PostgreSQLParser.java#L35
 
-
+```
+Pattern COPY_FROM_STDIN_REGEX = Pattern.compile("^COPY( .*)? FROM STDIN");
+Pattern CREATE_DATABASE_TABLESPACE_SUBSCRIPTION_REGEX = Pattern.compile("^(CREATE|DROP) (DATABASE|TABLESPACE|SUBSCRIPTION)");
+Pattern ALTER_SYSTEM_REGEX = Pattern.compile("^ALTER SYSTEM");
+Pattern CREATE_INDEX_CONCURRENTLY_REGEX = Pattern.compile("^(CREATE|DROP)( UNIQUE)? INDEX CONCURRENTLY");
+Pattern REINDEX_REGEX = Pattern.compile("^REINDEX( VERBOSE)? (SCHEMA|DATABASE|SYSTEM)");
+Pattern VACUUM_REGEX = Pattern.compile("^VACUUM");
+Pattern DISCARD_ALL_REGEX = Pattern.compile("^DISCARD ALL");
+Pattern ALTER_TYPE_ADD_VALUE_REGEX = Pattern.compile("^ALTER TYPE( .*)? ADD VALUE");
+```
