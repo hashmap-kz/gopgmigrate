@@ -137,12 +137,13 @@ func checkPossibleNoTx(versioned []migrationFile) error {
 		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data))
 		if len(warnings) > 0 {
 			for _, w := range warnings {
-				slog.Error("notx-statement-detected", slog.String("w", w))
+				slog.Error("notx-statement-detected", slog.String("cause", w))
 			}
 			slog.Error("notx-statement-detected", slog.String("cause", "This may not necessarily be an error; it could be commented-out code that was matched by a pattern."))
-			slog.Error("notx-statement-detected", slog.String("cause", "This is handled before any migration runs; otherwise, the database itself would reject to apply this file."))
+			slog.Error("notx-statement-detected", slog.String("cause", "This is handled before any migration runs to prevent execution errors."))
 			slog.Error("notx-statement-detected", slog.String("cause", "Statements that cannot run inside a transaction should be moved to separate files."))
 			slog.Error("notx-statement-detected", slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."))
+
 			return fmt.Errorf("check statements in the file: [%s]",
 				filepath.ToSlash(elem.path),
 			)
