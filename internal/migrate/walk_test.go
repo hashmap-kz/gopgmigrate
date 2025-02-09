@@ -20,7 +20,7 @@ func TestGetFiles(t *testing.T) {
 	}
 
 	// Create a valid repeatable migration file
-	createTestFile(t, tmpDir, "refresh.r.sql", "-- SQL content")
+	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
 	// Run GetFiles
 	files, err := GetFiles(tmpDir)
@@ -29,11 +29,8 @@ func TestGetFiles(t *testing.T) {
 	}
 
 	// Check that migrations were correctly detected
-	if len(files.versioned) != 2 {
-		t.Errorf("Expected 2 versioned migrations, got %d", len(files.versioned))
-	}
-	if len(files.repeatable) != 1 {
-		t.Errorf("Expected 1 repeatable migration, got %d", len(files.repeatable))
+	if len(files) != 3 {
+		t.Errorf("Expected 3 versioned migrations, got %d", len(files))
 	}
 }
 
@@ -60,7 +57,7 @@ func TestGetAllStrayFiles(t *testing.T) {
 	// Create valid migration files
 	validFiles := []string{
 		"00001-init.do.sql",
-		"refresh.r.sql",
+		"00002-refresh.r.sql",
 	}
 	for _, f := range validFiles {
 		createTestFile(t, tmpDir, f, "-- SQL content")

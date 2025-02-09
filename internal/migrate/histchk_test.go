@@ -8,7 +8,7 @@ func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
 		applied     AppliedHistory
-		files       *MigrationCtx
+		files       []migrationFile
 		expectError bool
 		expectedErr string
 	}{
@@ -18,12 +18,9 @@ func TestCheckHistory(t *testing.T) {
 				"001-init.do.sql":  AppliedHistoryItem{},
 				"002-users.do.sql": AppliedHistoryItem{},
 			},
-			files: &MigrationCtx{
-				versioned: []migrationFile{
-					{base: "001-init.do.sql"},
-					{base: "002-users.do.sql"},
-				},
-				repeatable: []migrationFile{},
+			files: []migrationFile{
+				{base: "001-init.do.sql"},
+				{base: "002-users.do.sql"},
 			},
 			expectError: false,
 		},
@@ -33,12 +30,9 @@ func TestCheckHistory(t *testing.T) {
 				"001-init.do.sql": AppliedHistoryItem{},
 				"003-missing.sql": AppliedHistoryItem{}, // Missing file
 			},
-			files: &MigrationCtx{
-				versioned: []migrationFile{
-					{base: "001-init.do.sql"},
-					{base: "002-users.do.sql"},
-				},
-				repeatable: []migrationFile{},
+			files: []migrationFile{
+				{base: "001-init.do.sql"},
+				{base: "002-users.do.sql"},
 			},
 			expectError: true,
 			expectedErr: "detected applied migration not resolved locally: 003-missing.sql",
@@ -178,39 +172,6 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 	_, err = getVersionedMigrationsToApply(mockFiles, mockHistory)
 	if err == nil {
 		t.Errorf("Expected hash mismatch error but got nil")
-	}
-}
-
-// Test getRepeatableMigrationsToApply function
-func TestGetRepeatableMigrationsToApply(t *testing.T) {
-	mockFiles := []migrationFile{
-		{base: "refresh.r.sql", path: "/migrations/refresh.r.sql", data: []byte("refresh-data")},
-	}
-
-	mockHistory := AppliedHistory{
-		"refresh.r.sql": {MhName: "refresh.r.sql", MhHash: computeHash([]byte("refresh-data"))},
-	}
-
-	toApply, err := getRepeatableMigrationsToApply(mockFiles, mockHistory)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	// Since data has not changed, no migration should be applied
-	if len(toApply) != 0 {
-		t.Errorf("Expected no repeatable migration to apply, got: %v", toApply)
-	}
-
-	// Modify file content to force reapply
-	mockFiles[0].data = []byte("updated-refresh-data")
-	toApply, err = getRepeatableMigrationsToApply(mockFiles, mockHistory)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	// Now it should detect a change and apply the repeatable migration
-	if len(toApply) != 1 || toApply[0].base != "refresh.r.sql" {
-		t.Errorf("Expected refresh.r.sql to reapply, got: %v", toApply)
 	}
 }
 

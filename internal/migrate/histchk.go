@@ -3,6 +3,7 @@ package migrate
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 type AppliedHistoryItem struct {
@@ -14,17 +15,8 @@ type AppliedHistory map[string]AppliedHistoryItem
 
 // applied
 
-func checkHistory(appliedNames AppliedHistory, files *MigrationCtx) error {
-	var err error
-
-	all := files.repeatable
-	all = append(all, files.versioned...)
-
-	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, all)
-	if err != nil {
-		return err
-	}
-	return nil
+func checkHistory(appliedNames AppliedHistory, files []migrationFile) error {
+	return checkHistoryTableIsSyncedWithLocalFiles(appliedNames, files)
 }
 
 func checkHistoryTableIsSyncedWithLocalFiles(migrations AppliedHistory, mf []migrationFile) error {
@@ -56,34 +48,22 @@ func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) (
 			continue
 		}
 
-		// skip applied
 		existing := findHist(file.base, hist)
-		if existing != nil {
-			if existing.MhHash != computeHash(file.data) {
-				return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
+
+		if isRepeatable(file) {
+			// apply only if changed
+			if existing == nil || existing.MhHash != computeHash(file.data) {
+				toApply = append(toApply, file)
 			}
-			continue
-		}
-
-		toApply = append(toApply, file)
-	}
-	return toApply, nil
-}
-
-func getRepeatableMigrationsToApply(files []migrationFile, hist AppliedHistory) ([]migrationFile, error) {
-	var toApply []migrationFile
-	for _, file := range files {
-		// twice check a file given
-		isRepeatable := repeatableMigrationRegex.MatchString(file.base)
-		if !isRepeatable {
-			continue
-		}
-		newHash := computeHash(file.data)
-
-		// Apply only if changed
-		existing := findHist(file.base, hist)
-		if existing == nil || existing.MhHash != newHash {
-			toApply = append(toApply, file)
+		} else {
+			// check hash, skip applied
+			if existing == nil {
+				toApply = append(toApply, file)
+			} else {
+				if existing.MhHash != computeHash(file.data) {
+					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
+				}
+			}
 		}
 	}
 	return toApply, nil
@@ -94,4 +74,10 @@ func findHist(base string, hist AppliedHistory) *AppliedHistoryItem {
 		return &existing
 	}
 	return nil
+}
+
+func isRepeatable(file migrationFile) bool {
+	// TODO: use regex
+	return strings.HasSuffix(file.base, ".r.sql") ||
+		strings.HasSuffix(file.base, ".rntx.sql")
 }

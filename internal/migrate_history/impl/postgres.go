@@ -29,7 +29,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 		create table if not exists %s
 		(
 			id            int 		  generated always as identity primary key,
-			mh_version    bigint 	  unique,
+			mh_version    bigint 	  unique not null,
 			mh_name       text        unique not null,
 			mh_hash       text        not null,
 			mh_applied_by name        not null default session_user,
@@ -70,27 +70,28 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, in
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, inputEntity *migrate_history.MigrateHistoryRepeatableCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
 
 	query := fmt.Sprintf(`		
 		with updated as (
 			update %s
-				set mh_hash = $2,
+				set mh_hash = $3,
 					mh_applied_by = session_user,
 					mh_applied_at = transaction_timestamp()
-				where mh_name = $1
+				where mh_name = $2
 				returning id)
 		insert
-		into %s (mh_name, mh_hash, mh_applied_by, mh_applied_at)
+		into %s (mh_version, mh_name, mh_hash, mh_applied_by, mh_applied_at)
 		select $1,
-			   $2,
+               $2,
+			   $3,
 			   session_user,
 			   transaction_timestamp()
 		where not exists (select 1 from updated)
 		`, r.tableName, r.tableName)
 
-	_, err := r.db.ExecContext(ctx, query, inputEntity.MhName, inputEntity.MhHash)
+	_, err := r.db.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}

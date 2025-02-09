@@ -13,7 +13,7 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error {
+func RunMigrations(ctx context.Context, conn *sql.DB, files []migrationFile) error {
 	var err error
 
 	// Acquire advisory lock
@@ -48,25 +48,13 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error
 		return err
 	}
 
-	// I) migrate versioned
-	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files.versioned, appliedHistoryIndex)
+	// migrate
+	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files, appliedHistoryIndex)
 	if err != nil {
 		return err
 	}
 	for _, f := range versionedMigrationsToApply {
-		err = migrateOneScript(ctx, conn, f, mhRepo, "v")
-		if err != nil {
-			return err
-		}
-	}
-
-	// II) migrate repeatable
-	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(files.repeatable, appliedHistoryIndex)
-	if err != nil {
-		return err
-	}
-	for _, f := range repeatableMigrationsToApply {
-		err = migrateOneScript(ctx, conn, f, mhRepo, "r")
+		err = migrateOneScript(ctx, conn, f, mhRepo)
 		if err != nil {
 			return err
 		}
@@ -76,7 +64,7 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error
 }
 
 // migrateOneScript applies versioned migrations for versioned/data
-func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
+func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository) (err error) {
 	useTX := !strings.HasSuffix(file.base, "ntx.sql")
 
 	var tx *sql.Tx
@@ -100,19 +88,20 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	}
 
 	// write history
-	if mod == "r" {
-		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
-			MhName: file.base,
-			MhHash: computeHash(file.data),
+	version, err := parseVersionDo(file.base)
+	if err != nil {
+		return err
+	}
+	if isRepeatable(file) {
+		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
+			MhVersion: version,
+			MhName:    file.base,
+			MhHash:    computeHash(file.data),
 		})
 		if err != nil {
 			return err
 		}
 	} else {
-		version, err := parseVersionDo(file.base)
-		if err != nil {
-			return err
-		}
 		err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
 			MhVersion: version,
 			MhName:    file.base,
