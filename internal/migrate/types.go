@@ -5,8 +5,3 @@ type migrationFile struct {
 	base string
 	data []byte
 }
-
-type MigrationCtx struct {
-	versioned  []migrationFile
-	repeatable []migrationFile
-}

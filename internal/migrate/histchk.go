@@ -2,29 +2,23 @@ package migrate
 
 import (
 	"fmt"
-
-	"gopgmigrate/internal/migrate_history"
+	"path/filepath"
 )
 
-func checkHistory(hist []migrate_history.MigrateHistory, files *MigrationCtx) error {
-	var err error
-
-	appliedNames := map[string]bool{}
-	for _, elem := range hist {
-		appliedNames[elem.MhName] = true
-	}
-
-	all := files.repeatable
-	all = append(all, files.versioned...)
-
-	err = checkHistoryTableIsSyncedWithLocalFiles(appliedNames, all)
-	if err != nil {
-		return err
-	}
-	return nil
+type AppliedHistoryItem struct {
+	MhName string
+	MhHash string
 }
 
-func checkHistoryTableIsSyncedWithLocalFiles(migrations map[string]bool, mf []migrationFile) error {
+type AppliedHistory map[string]AppliedHistoryItem
+
+// applied
+
+func checkHistory(appliedNames AppliedHistory, files []migrationFile) error {
+	return checkHistoryTableIsSyncedWithLocalFiles(appliedNames, files)
+}
+
+func checkHistoryTableIsSyncedWithLocalFiles(migrations AppliedHistory, mf []migrationFile) error {
 	for k := range migrations {
 		if !found(k, mf) {
 			return fmt.Errorf("detected applied migration not resolved locally: %s", k)
@@ -40,4 +34,47 @@ func found(k string, mf []migrationFile) bool {
 		}
 	}
 	return false
+}
+
+// to apply
+
+func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) ([]migrationFile, error) {
+	var toApply []migrationFile
+	for _, file := range files {
+		// twice check a file given
+		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
+		if !isVersioned {
+			continue
+		}
+
+		existing := findHist(file.base, hist)
+
+		if isRepeatable(file) {
+			// apply only if changed
+			if existing == nil || existing.MhHash != computeHash(file.data) {
+				toApply = append(toApply, file)
+			}
+		} else {
+			// check hash, skip applied
+			if existing == nil {
+				toApply = append(toApply, file)
+			} else {
+				if existing.MhHash != computeHash(file.data) {
+					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
+				}
+			}
+		}
+	}
+	return toApply, nil
+}
+
+func findHist(base string, hist AppliedHistory) *AppliedHistoryItem {
+	if existing, ok := hist[base]; ok {
+		return &existing
+	}
+	return nil
+}
+
+func isRepeatable(file migrationFile) bool {
+	return repeatableMigrationRegexDo.MatchString(file.base)
 }

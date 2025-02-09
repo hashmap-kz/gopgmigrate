@@ -8,11 +8,6 @@ type MigrateHistoryVersionedCreateInput struct {
 	MhHash    string
 }
 
-type MigrateHistoryRepeatableCreateInput struct {
-	MhName string
-	MhHash string
-}
-
 // MigrateHistory tracks executed migrations, ensuring version control and repeatable migrations.
 type MigrateHistory struct {
 	// Auto-incrementing primary key.

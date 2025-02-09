@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-func GetFiles(migrationDirectory string) (*MigrationCtx, error) {
+func GetFiles(migrationDirectory string) ([]migrationFile, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
@@ -22,20 +22,12 @@ func GetFiles(migrationDirectory string) (*MigrationCtx, error) {
 		return nil, err
 	}
 
-	repeatable, err := getFilesInAPathV2(migrationDirectory, repeatableMigrationRegex)
-	if err != nil {
-		return nil, err
-	}
-
 	err = checkVersionedMigrations(versioned)
 	if err != nil {
 		return nil, err
 	}
 
-	return &MigrationCtx{
-		versioned:  versioned,
-		repeatable: repeatable,
-	}, nil
+	return versioned, nil
 }
 
 // getFilesInAPath walks path, collects all *.sql files
@@ -93,8 +85,7 @@ func getAllStrayFiles(directory string) ([]string, error) {
 		}
 		if !d.IsDir() {
 			base := filepath.Base(path)
-			isOk := repeatableMigrationRegex.MatchString(base) ||
-				versionedMigrationRegexDo.MatchString(base) ||
+			isOk := versionedMigrationRegexDo.MatchString(base) ||
 				versionedMigrationRegexUndo.MatchString(base)
 			if !isOk {
 				strayFiles = append(strayFiles, filepath.ToSlash(path))

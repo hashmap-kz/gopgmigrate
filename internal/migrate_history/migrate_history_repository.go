@@ -7,6 +7,6 @@ import (
 type MigrateHistoryRepository interface {
 	CreateHistoryTable(ctx context.Context) error
 	SaveVersioned(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) error
-	SaveRepeatable(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) error
+	SaveRepeatable(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) error
 	ListAll(ctx context.Context) ([]MigrateHistory, error)
 }
