@@ -43,7 +43,7 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error
 	if err != nil {
 		return err
 	}
-	err = checkHistory(appliedNames, files)
+	err = checkHistory(makeMapFromEntities(appliedNames), files)
 	if err != nil {
 		return err
 	}
@@ -195,4 +195,12 @@ func findHash(base string, hist []migrate_history.MigrateHistory) string {
 		}
 	}
 	return ""
+}
+
+func makeMapFromEntities(names []migrate_history.MigrateHistory) map[string]bool {
+	r := map[string]bool{}
+	for _, elem := range names {
+		r[elem.MhName] = true
+	}
+	return r
 }
