@@ -5,12 +5,8 @@ import (
 )
 
 type MigrateHistoryRepository interface {
-	Save(ctx context.Context, inputEntity *MigrateHistoryCreateInput) (*MigrateHistory, error)
-	UpdateByID(ctx context.Context, newHash string, pkID int) (*MigrateHistory, error)
-	DeleteByID(ctx context.Context, pkID int) error
-	FindByID(ctx context.Context, pkID int) (*MigrateHistory, error)
-	ExistsByID(ctx context.Context, pkID int) (bool, error)
-	FindByName(ctx context.Context, name string) (*MigrateHistory, error)
-	FindAll(ctx context.Context) ([]MigrateHistory, error)
-	GetAppliedNames(ctx context.Context) (map[string]bool, error)
+	CreateHistoryTable(ctx context.Context) error
+	SaveVersioned(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) error
+	SaveRepeatable(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) error
+	ListAll(ctx context.Context) ([]MigrateHistory, error)
 }

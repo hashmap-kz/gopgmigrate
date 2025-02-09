@@ -2,27 +2,23 @@ package migrate
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"gopgmigrate/internal/migrate_history/impl"
+
 	"gopgmigrate/internal/migrate_history"
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
+func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error {
 	var err error
 
-	ctx := context.Background()
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
 	// Acquire advisory lock
-	acquired, err := acquireMigrationLock(tx)
+	acquired, err := acquireMigrationLock(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -30,14 +26,20 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 		fmt.Println("Another migration process is running. Exiting.")
 		return nil
 	}
-	defer releaseMigrationLock(tx)
+	defer releaseMigrationLock(ctx, conn)
+
+	// TODO: simplify from here a LOT
 
 	// repository, helper functions for history-handling
 	// works inside the same transaction as the other migration scripts
-	mhRepo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
+	mhRepo := impl.NewMigrateHistoryPostgresRepository(ctx, conn, "public.migrate_history")
+	err = mhRepo.CreateHistoryTable(ctx)
+	if err != nil {
+		return err
+	}
 
 	// check that all applied migrations are present in files list
-	appliedNames, err := mhRepo.GetAppliedNames(ctx)
+	appliedNames, err := mhRepo.ListAll(ctx)
 	if err != nil {
 		return err
 	}
@@ -47,58 +49,71 @@ func RunMigrations(conn *pgx.Conn, files *MigrationCtx) error {
 	}
 
 	// I) migrate versioned
-	err = migrateVersioned(ctx, conn, files.versioned, mhRepo)
+	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files.versioned, appliedNames)
 	if err != nil {
 		return err
+	}
+	for _, f := range versionedMigrationsToApply {
+		err = migrateOneScript(ctx, conn, f, mhRepo, "v")
+		if err != nil {
+			return err
+		}
 	}
 
 	// II) migrate repeatable
-	err = migrateRepeatable(ctx, conn, files.repeatable, mhRepo)
+	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(files.repeatable, appliedNames)
 	if err != nil {
 		return err
 	}
+	for _, f := range repeatableMigrationsToApply {
+		err = migrateOneScript(ctx, conn, f, mhRepo, "r")
+		if err != nil {
+			return err
+		}
+	}
 
-	// Commit transaction if everything succeeds
-	return tx.Commit(ctx)
+	return nil
 }
 
-// migrateVersioned applies versioned migrations for versioned/data
-func migrateVersioned(ctx context.Context, conn *pgx.Conn, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) error {
-	applied, err := mhRepo.GetAppliedNames(ctx)
-	if err != nil {
-		return err
+// migrateOneScript applies versioned migrations for versioned/data
+func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
+	useTX := !strings.HasSuffix(file.base, "ntx.sql")
+
+	var tx *sql.Tx
+	if useTX {
+		tx, err = conn.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
 	}
 
-	for _, file := range files {
-		// twice check a file given
-		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
-		if !isVersioned {
-			continue
-		}
+	slog.Info("migration",
+		slog.String("mode", "VER"),
+		slog.String("name", file.base),
+	)
 
-		// TODO: check that hash match
-		// skip applied
-		if applied[file.base] {
-			continue
-		}
+	// execute migration script
+	_, err = conn.ExecContext(ctx, string(file.data))
+	if err != nil {
+		return fmt.Errorf("error applying migration %s: %v", file.base, err)
+	}
 
-		slog.Info("migration",
-			slog.String("mode", "VER"),
-			slog.String("name", file.base),
-		)
-
-		// execute migration script
-		_, err = conn.Exec(ctx, string(file.data))
+	// write history
+	if mod == "r" {
+		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
+			MhName: file.base,
+			MhHash: computeHash(file.data),
+		})
 		if err != nil {
-			return fmt.Errorf("error applying migration %s: %v", file.base, err)
+			return err
 		}
-
-		// write history
+	} else {
 		version, err := parseVersionDo(file.base)
 		if err != nil {
 			return err
 		}
-		_, err = mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
+		err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
 			MhVersion: version,
 			MhName:    file.base,
 			MhHash:    computeHash(file.data),
@@ -106,64 +121,78 @@ func migrateVersioned(ctx context.Context, conn *pgx.Conn, files []migrationFile
 		if err != nil {
 			return err
 		}
+	}
 
+	if useTX {
+		err := tx.Commit()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// migrateRepeatable applies repeatable migrations
-func migrateRepeatable(ctx context.Context, conn *pgx.Conn, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) error {
+func getVersionedMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
+	var toApply []migrationFile
+	for _, file := range files {
+		// twice check a file given
+		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
+		if !isVersioned {
+			continue
+		}
+
+		// TODO: simplify, optimize, index-map
+		// skip applied
+		existing := findHist(file.base, hist)
+		if existing != nil {
+			if existing.MhHash != computeHash(file.data) {
+				return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
+			}
+			continue
+		}
+
+		toApply = append(toApply, file)
+	}
+	return toApply, nil
+}
+
+func getRepeatableMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
+	var toApply []migrationFile
 	for _, file := range files {
 		// twice check a file given
 		isRepeatable := repeatableMigrationRegex.MatchString(file.base)
 		if !isRepeatable {
 			continue
 		}
-
 		newHash := computeHash(file.data)
 
+		// TODO: simplify, optimize, index-map
 		// Get stored hash
-		var existingHash string
-		migrateHistory, err := mhRepo.FindByName(ctx, file.base)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		if migrateHistory != nil {
-			existingHash = migrateHistory.MhHash
-		}
+		existingHash := findHash(file.base, hist)
 
 		// Apply only if changed
 		if existingHash != newHash {
-			slog.Info("migration",
-				slog.String("mode", "REP"),
-				slog.String("name", file.base),
-			)
+			toApply = append(toApply, file)
+		}
+	}
+	return toApply, nil
+}
 
-			// execute script
-			_, err = conn.Exec(ctx, string(file.data))
-			if err != nil {
-				return fmt.Errorf("error applying repeatable migration %s: %v", file.base, err)
-			}
-
-			// update history (upsert)
-			if migrateHistory == nil {
-				_, err := mhRepo.Save(ctx, &migrate_history.MigrateHistoryCreateInput{
-					MhVersion: -1,
-					MhName:    file.base,
-					MhHash:    newHash,
-				})
-				if err != nil {
-					return err
-				}
-			} else {
-				_, err := mhRepo.UpdateByID(ctx, newHash, migrateHistory.ID)
-				if err != nil {
-					return err
-				}
-			}
-
+func findHist(base string, hist []migrate_history.MigrateHistory) *migrate_history.MigrateHistory {
+	for _, elem := range hist {
+		if elem.MhName == base {
+			return &elem
 		}
 	}
 	return nil
+}
+
+func findHash(base string, hist []migrate_history.MigrateHistory) string {
+	for _, elem := range hist {
+		if elem.MhName == base {
+			return elem.MhHash
+		}
+	}
+	return ""
 }

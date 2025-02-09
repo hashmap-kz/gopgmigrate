@@ -2,10 +2,17 @@ package migrate
 
 import (
 	"fmt"
+
+	"gopgmigrate/internal/migrate_history"
 )
 
-func checkHistory(appliedNames map[string]bool, files *MigrationCtx) error {
+func checkHistory(hist []migrate_history.MigrateHistory, files *MigrationCtx) error {
 	var err error
+
+	appliedNames := map[string]bool{}
+	for _, elem := range hist {
+		appliedNames[elem.MhName] = true
+	}
 
 	all := files.repeatable
 	all = append(all, files.versioned...)
