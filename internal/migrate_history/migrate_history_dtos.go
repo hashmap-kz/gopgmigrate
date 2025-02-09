@@ -1,7 +1,12 @@
 package migrate_history
 
-type MigrateHistoryCreateInput struct {
+type MigrateHistoryVersionedCreateInput struct {
 	MhVersion int64
 	MhName    string
 	MhHash    string
+}
+
+type MigrateHistoryRepeatableCreateInput struct {
+	MhName string
+	MhHash string
 }

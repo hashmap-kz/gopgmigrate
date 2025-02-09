@@ -19,7 +19,7 @@ func NewMigrateHistoryRepository(_ context.Context, db *pgx.Conn) MigrateHistory
 	}
 }
 
-func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *MigrateHistoryCreateInput) (*MigrateHistory, error) {
+func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) (*MigrateHistory, error) {
 	tag := "migrateHistoryRepository.Save"
 
 	query := `		
@@ -51,8 +51,22 @@ func (r *migrateHistoryRepository) Save(ctx context.Context, inputEntity *Migrat
 	return scannedEntity, nil
 }
 
-func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, newHash string, pkID int) (*MigrateHistory, error) {
-	tag := "migrateHistoryRepository.UpdateByID"
+func (r *migrateHistoryRepository) SaveOrUpdate(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) (*MigrateHistory, error) {
+	existsByName, err := r.ExistsByName(ctx, inputEntity.MhName)
+	if err != nil {
+		return nil, err
+	}
+	if existsByName {
+		return r.UpdateByName(ctx, inputEntity.MhHash, inputEntity.MhName)
+	}
+	return r.Save(ctx, &MigrateHistoryVersionedCreateInput{
+		MhName: inputEntity.MhName,
+		MhHash: inputEntity.MhHash,
+	})
+}
+
+func (r *migrateHistoryRepository) UpdateByName(ctx context.Context, newHash string, name string) (*MigrateHistory, error) {
+	tag := "migrateHistoryRepository.UpdateByName"
 
 	// update is available ONLY for repeatable migrations
 	// and we're able to update ONLY the hash field
@@ -62,7 +76,7 @@ func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, newHash strin
 			mh_hash       = $2,
 			mh_applied_by = session_user,
 			mh_applied_at = transaction_timestamp()
-		where id = $1
+		where mh_name = $1
 		returning 
 			id,
 			mh_version,
@@ -73,7 +87,7 @@ func (r *migrateHistoryRepository) UpdateByID(ctx context.Context, newHash strin
 		`
 
 	row := r.db.QueryRow(ctx, query,
-		pkID,
+		name,
 		newHash,
 	)
 
@@ -124,10 +138,10 @@ func (r *migrateHistoryRepository) FindByID(ctx context.Context, pkID int) (*Mig
 	return scannedEntity, nil
 }
 
-func (r *migrateHistoryRepository) ExistsByID(ctx context.Context, pkID int) (bool, error) {
+func (r *migrateHistoryRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
 	var exists bool
-	query := `select exists(select 1 from public.migrate_history where id = $1)`
-	err := r.db.QueryRow(context.Background(), query, pkID).Scan(&exists)
+	query := `select exists(select 1 from public.migrate_history where mh_name = $1)`
+	err := r.db.QueryRow(context.Background(), query, name).Scan(&exists)
 	if err != nil {
 		return false, err
 	}

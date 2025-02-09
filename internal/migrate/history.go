@@ -12,15 +12,12 @@ func EnsureSchemaMigrationTables(conn *pgx.Conn) error {
 		create table if not exists public.migrate_history
 		(
 			id            int 		  generated always as identity primary key,
-			mh_version    bigint 	  not null,
+			mh_version    bigint 	  unique,
 			mh_name       text        unique not null,
 			mh_hash       text        not null,
 			mh_applied_by name        not null default session_user,
 			mh_applied_at timestamptz not null default transaction_timestamp()
 		);
-		-- TODO: mh_version should be unique by itself, and here two options: handle a different table for repeatable
-		-- migrations, or create the index like this
-		--
 		create unique index if not exists ix_migrate_history_ver_name_unq on public.migrate_history(mh_version, mh_name);
 
 		comment on table  public.migrate_history is 'Tracks executed migrations, ensuring version control and repeatable migrations.';

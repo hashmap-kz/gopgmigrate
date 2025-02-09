@@ -5,11 +5,12 @@ import (
 )
 
 type MigrateHistoryRepository interface {
-	Save(ctx context.Context, inputEntity *MigrateHistoryCreateInput) (*MigrateHistory, error)
-	UpdateByID(ctx context.Context, newHash string, pkID int) (*MigrateHistory, error)
+	Save(ctx context.Context, inputEntity *MigrateHistoryVersionedCreateInput) (*MigrateHistory, error)
+	SaveOrUpdate(ctx context.Context, inputEntity *MigrateHistoryRepeatableCreateInput) (*MigrateHistory, error)
+	UpdateByName(ctx context.Context, newHash string, name string) (*MigrateHistory, error)
 	DeleteByID(ctx context.Context, pkID int) error
 	FindByID(ctx context.Context, pkID int) (*MigrateHistory, error)
-	ExistsByID(ctx context.Context, pkID int) (bool, error)
+	ExistsByName(ctx context.Context, name string) (bool, error)
 	FindByName(ctx context.Context, name string) (*MigrateHistory, error)
 	FindAll(ctx context.Context) ([]MigrateHistory, error)
 	GetAppliedNames(ctx context.Context) (map[string]bool, error)
