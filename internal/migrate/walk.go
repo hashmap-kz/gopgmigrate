@@ -120,7 +120,34 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 	if err != nil {
 		return err
 	}
+	err = checkPossibleNoTx(versioned)
+	if err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func checkPossibleNoTx(versioned []migrationFile) error {
+	for _, elem := range versioned {
+		// is already no-transactional file
+		if versionedMigrationRegexNtx.MatchString(elem.base) {
+			continue
+		}
+		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data))
+		if len(warnings) > 0 {
+			for _, w := range warnings {
+				slog.Error("notx-statement-detected", slog.String("w", w))
+			}
+			slog.Error("notx-statement-detected", slog.String("cause", "This may not necessarily be an error; it could be commented-out code that was matched by a pattern."))
+			slog.Error("notx-statement-detected", slog.String("cause", "This is handled before any migration runs; otherwise, the database itself would reject to apply this file."))
+			slog.Error("notx-statement-detected", slog.String("cause", "Statements that cannot run inside a transaction should be moved to separate files."))
+			slog.Error("notx-statement-detected", slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."))
+			return fmt.Errorf("check statements in the file: [%s]",
+				filepath.ToSlash(elem.path),
+			)
+		}
+	}
 	return nil
 }
 
