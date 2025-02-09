@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 
 	"gopgmigrate/internal/migrate"
+
+	// TODO: drivers package (clickhouse, postgres)
+	_ "github.com/jackc/pgx/v5"
 )
 
 func main() {
@@ -24,17 +27,11 @@ func main() {
 	migrationDirectory := filepath.Join("examples", "basic")
 
 	// connect to the database
-	conn, err := migrate.GetDatabaseConnection(ctx, connString)
+	conn, err := migrate.GetDatabaseConnection(connString)
 	if err != nil {
 		log.Fatalf("database connection error: %v", err)
 	}
-	defer conn.Close(context.Background())
-
-	// prepare history tables
-	err = migrate.EnsureSchemaMigrationTables(conn)
-	if err != nil {
-		log.Fatalf("history tables error: %v", err)
-	}
+	defer conn.Close()
 
 	// get migration scripts
 	files, err := migrate.GetFiles(migrationDirectory)

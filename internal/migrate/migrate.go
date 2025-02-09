@@ -2,17 +2,19 @@ package migrate
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"gopgmigrate/internal/migrate_history/impl"
+
 	"gopgmigrate/internal/migrate_history"
 )
 
 // RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) error {
+func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error {
 	var err error
 
 	// Acquire advisory lock
@@ -30,10 +32,14 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) err
 
 	// repository, helper functions for history-handling
 	// works inside the same transaction as the other migration scripts
-	mhRepo := migrate_history.NewMigrateHistoryRepository(ctx, conn)
+	mhRepo := impl.NewMigrateHistoryPostgresRepository(ctx, conn, "public.migrate_history")
+	err = mhRepo.CreateHistoryTable(ctx)
+	if err != nil {
+		return err
+	}
 
 	// check that all applied migrations are present in files list
-	appliedNames, err := mhRepo.GetAppliedNames(ctx)
+	appliedNames, err := mhRepo.ListAll(ctx)
 	if err != nil {
 		return err
 	}
@@ -43,7 +49,7 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) err
 	}
 
 	// I) migrate versioned
-	versionedMigrationsToApply, err := getVersionedMigrationsToApply(ctx, files.versioned, mhRepo)
+	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files.versioned, appliedNames)
 	if err != nil {
 		return err
 	}
@@ -55,7 +61,7 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) err
 	}
 
 	// II) migrate repeatable
-	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(ctx, files.repeatable, mhRepo)
+	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(files.repeatable, appliedNames)
 	if err != nil {
 		return err
 	}
@@ -70,16 +76,16 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) err
 }
 
 // migrateOneScript applies versioned migrations for versioned/data
-func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
+func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
 	useTX := !strings.HasSuffix(file.base, "ntx.sql")
 
-	var tx pgx.Tx
+	var tx *sql.Tx
 	if useTX {
-		tx, err = conn.Begin(ctx)
+		tx, err = conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback(ctx)
+		defer tx.Rollback()
 	}
 
 	slog.Info("migration",
@@ -88,15 +94,14 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 	)
 
 	// execute migration script
-	_, err = conn.Exec(ctx, string(file.data))
+	_, err = conn.ExecContext(ctx, string(file.data))
 	if err != nil {
 		return fmt.Errorf("error applying migration %s: %v", file.base, err)
 	}
 
 	// write history
 	if mod == "r" {
-		// update history (upsert)
-		_, err = mhRepo.SaveOrUpdateRepeatable(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
+		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryRepeatableCreateInput{
 			MhName: file.base,
 			MhHash: computeHash(file.data),
 		})
@@ -108,7 +113,7 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 		if err != nil {
 			return err
 		}
-		_, err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
+		err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
 			MhVersion: version,
 			MhName:    file.base,
 			MhHash:    computeHash(file.data),
@@ -119,7 +124,7 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 	}
 
 	if useTX {
-		err := tx.Commit(ctx)
+		err := tx.Commit()
 		if err != nil {
 			return err
 		}
@@ -128,31 +133,31 @@ func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, m
 	return nil
 }
 
-func getVersionedMigrationsToApply(ctx context.Context, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) ([]migrationFile, error) {
-	applied, err := mhRepo.GetAppliedNames(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func getVersionedMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
 	var toApply []migrationFile
-
 	for _, file := range files {
 		// twice check a file given
 		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
 		if !isVersioned {
 			continue
 		}
-		// TODO: check that hash match
+
+		// TODO: simplify, optimize, index-map
 		// skip applied
-		if applied[file.base] {
+		existing := findHist(file.base, hist)
+		if existing != nil {
+			if existing.MhHash != computeHash(file.data) {
+				return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
+			}
 			continue
 		}
+
 		toApply = append(toApply, file)
 	}
 	return toApply, nil
 }
 
-func getRepeatableMigrationsToApply(ctx context.Context, files []migrationFile, mhRepo migrate_history.MigrateHistoryRepository) ([]migrationFile, error) {
+func getRepeatableMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
 	var toApply []migrationFile
 	for _, file := range files {
 		// twice check a file given
@@ -162,15 +167,9 @@ func getRepeatableMigrationsToApply(ctx context.Context, files []migrationFile, 
 		}
 		newHash := computeHash(file.data)
 
+		// TODO: simplify, optimize, index-map
 		// Get stored hash
-		var existingHash string
-		migrateHistory, err := mhRepo.FindByName(ctx, file.base)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
-		}
-		if migrateHistory != nil {
-			existingHash = migrateHistory.MhHash
-		}
+		existingHash := findHash(file.base, hist)
 
 		// Apply only if changed
 		if existingHash != newHash {
@@ -178,4 +177,22 @@ func getRepeatableMigrationsToApply(ctx context.Context, files []migrationFile, 
 		}
 	}
 	return toApply, nil
+}
+
+func findHist(base string, hist []migrate_history.MigrateHistory) *migrate_history.MigrateHistory {
+	for _, elem := range hist {
+		if elem.MhName == base {
+			return &elem
+		}
+	}
+	return nil
+}
+
+func findHash(base string, hist []migrate_history.MigrateHistory) string {
+	for _, elem := range hist {
+		if elem.MhName == base {
+			return elem.MhHash
+		}
+	}
+	return ""
 }

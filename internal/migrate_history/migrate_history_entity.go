@@ -2,6 +2,17 @@ package migrate_history
 
 import "time"
 
+type MigrateHistoryVersionedCreateInput struct {
+	MhVersion int64
+	MhName    string
+	MhHash    string
+}
+
+type MigrateHistoryRepeatableCreateInput struct {
+	MhName string
+	MhHash string
+}
+
 // MigrateHistory tracks executed migrations, ensuring version control and repeatable migrations.
 type MigrateHistory struct {
 	// Auto-incrementing primary key.
