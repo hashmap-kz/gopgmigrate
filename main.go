@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"gopgmigrate/internal/migrate_history/impl"
+
 	"gopgmigrate/internal/migrate"
 
 	// TODO: drivers package (clickhouse, postgres)
@@ -39,8 +41,12 @@ func main() {
 		log.Fatalf("collecting files error: %v", err)
 	}
 
+	// TODO: this one should be init in a factory-method
+	// repository, helper functions for history-handling
+	mhRepo := impl.NewMigrateHistoryPostgresRepository(ctx, "public.migrate_history")
+
 	// run all migrations in a single transaction
-	err = migrate.RunMigrations(ctx, conn, files)
+	err = migrate.RunMigrations(ctx, conn, files, mhRepo)
 	if err != nil {
 		log.Fatalf("migration error: %v", err)
 	}

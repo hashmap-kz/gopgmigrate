@@ -10,19 +10,17 @@ import (
 
 type migrateHistoryPostgresRepository struct {
 	tableName string
-	db        *sql.DB
 }
 
 var _ migrate_history.MigrateHistoryRepository = &migrateHistoryPostgresRepository{}
 
-func NewMigrateHistoryPostgresRepository(_ context.Context, db *sql.DB, tableName string) migrate_history.MigrateHistoryRepository {
+func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) migrate_history.MigrateHistoryRepository {
 	return &migrateHistoryPostgresRepository{
-		db:        db,
 		tableName: tableName,
 	}
 }
 
-func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Context) error {
+func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Context, tx *sql.Tx) error {
 	tag := "migrateHistoryPostgresRepository.CreateHistoryTable"
 
 	query := fmt.Sprintf(`
@@ -40,16 +38,14 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 		);
 	`, r.tableName)
 
-	_, err := r.db.ExecContext(ctx, query)
+	_, err := tx.ExecContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
 	return err
 }
 
-func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveVersioned"
-
+func versionedQuery(r *migrateHistoryPostgresRepository) string {
 	query := fmt.Sprintf(`		
 		insert into %s (
 			mh_version,
@@ -65,17 +61,30 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, in
 			mh_applied_by,
 			mh_applied_at
 		`, r.tableName)
+	return query
+}
 
-	_, err := r.db.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx *sql.Tx, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveVersioned"
+	query := versionedQuery(r)
+	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
+func (r *migrateHistoryPostgresRepository) SaveVersionedNoTx(ctx context.Context, conn *sql.DB, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveVersionedNoTx"
+	query := versionedQuery(r)
+	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
+	return nil
+}
 
+func repeatableQuery(r *migrateHistoryPostgresRepository) string {
 	query := fmt.Sprintf(`		
 		with updated as (
 			update %s
@@ -93,15 +102,30 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, i
 			   transaction_timestamp()
 		where not exists (select 1 from updated)
 		`, r.tableName, r.tableName)
+	return query
+}
 
-	_, err := r.db.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx *sql.Tx, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
+	query := repeatableQuery(r)
+	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context) ([]migrate_history.MigrateHistory, error) {
+func (r *migrateHistoryPostgresRepository) SaveRepeatableNoTx(ctx context.Context, conn *sql.DB, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveRepeatableNoTx"
+	query := repeatableQuery(r)
+	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.Tx) ([]migrate_history.MigrateHistory, error) {
 	tag := "migrateHistoryPostgresRepository.ListAll"
 
 	query := fmt.Sprintf(`		
@@ -116,7 +140,7 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context) ([]migra
 		order by mh_name
 	`, r.tableName)
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", tag, err)
 	}
