@@ -40,7 +40,7 @@ export PGMIGRATE_DIRNAME="examples/basic"
 
 ### OPTIONAL
 
-# default: public.migrate_history
+# default: public.history
 export PGMIGRATE_HISTORY_TABLE_NAME=migrate_history_dev
 
 # one of: (debug, info, warn, error)

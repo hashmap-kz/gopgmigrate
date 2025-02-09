@@ -15,6 +15,8 @@ var (
 
 	// example: 00009-fn_get_roles.r.sql
 	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(r|rntx)\.sql$`)
+
+	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(dontx|rntx)\.sql$`)
 )
 
 func parseVersionDo(basename string) (int64, error) {

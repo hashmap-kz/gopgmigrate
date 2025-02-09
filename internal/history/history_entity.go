@@ -1,8 +1,8 @@
-package migrate_history
+package history
 
 import "time"
 
-type MigrateHistoryVersionedCreateInput struct {
+type MigrateHistoryCreateInput struct {
 	MhVersion int64
 	MhName    string
 	MhHash    string

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopgmigrate/internal/migrate_history/impl"
+	"gopgmigrate/internal/history/impl"
 
 	"gopgmigrate/internal/migrate"
 

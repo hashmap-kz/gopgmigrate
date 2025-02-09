@@ -5,16 +5,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	"gopgmigrate/internal/migrate_history"
+	"gopgmigrate/internal/history"
 )
 
 type migrateHistoryPostgresRepository struct {
 	tableName string
 }
 
-var _ migrate_history.MigrateHistoryRepository = &migrateHistoryPostgresRepository{}
+var _ history.MigrateHistoryRepository = &migrateHistoryPostgresRepository{}
 
-func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) migrate_history.MigrateHistoryRepository {
+func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) history.MigrateHistoryRepository {
 	return &migrateHistoryPostgresRepository{
 		tableName: tableName,
 	}
@@ -64,7 +64,7 @@ func versionedQuery(r *migrateHistoryPostgresRepository) string {
 	return query
 }
 
-func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx *sql.Tx, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx *sql.Tx, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveVersioned"
 	query := versionedQuery(r)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
@@ -74,7 +74,7 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveVersionedNoTx(ctx context.Context, conn *sql.DB, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveVersionedNoTx(ctx context.Context, conn *sql.DB, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveVersionedNoTx"
 	query := versionedQuery(r)
 	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
@@ -105,7 +105,7 @@ func repeatableQuery(r *migrateHistoryPostgresRepository) string {
 	return query
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx *sql.Tx, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx *sql.Tx, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
 	query := repeatableQuery(r)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
@@ -115,7 +115,7 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, t
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatableNoTx(ctx context.Context, conn *sql.DB, inputEntity *migrate_history.MigrateHistoryVersionedCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveRepeatableNoTx(ctx context.Context, conn *sql.DB, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveRepeatableNoTx"
 	query := repeatableQuery(r)
 	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
@@ -125,7 +125,7 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatableNoTx(ctx context.Contex
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.Tx) ([]migrate_history.MigrateHistory, error) {
+func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.Tx) ([]history.MigrateHistory, error) {
 	tag := "migrateHistoryPostgresRepository.ListAll"
 
 	query := fmt.Sprintf(`		
@@ -146,7 +146,7 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 	}
 	defer rows.Close()
 
-	var scannedEntities []migrate_history.MigrateHistory
+	var scannedEntities []history.MigrateHistory
 	for rows.Next() {
 		scannedEntity, err := scanFullRow(rows)
 		if err != nil {
@@ -166,8 +166,8 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 // scanFullRow is expected to scan all columns from a table.
 // For simplicity, most methods scan the entire row of the table into the result entity.
 // You should adapt methods as needed (e.g., if business logic requires returning only an ID after an UPDATE).
-func scanFullRow(row *sql.Rows) (*migrate_history.MigrateHistory, error) {
-	var scannedEntity migrate_history.MigrateHistory
+func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
+	var scannedEntity history.MigrateHistory
 	err := row.Scan(
 		&scannedEntity.ID,
 		&scannedEntity.MhVersion,
