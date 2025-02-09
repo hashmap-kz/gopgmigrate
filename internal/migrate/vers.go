@@ -8,13 +8,13 @@ import (
 
 var (
 	// example: 00003-users.do.sql
-	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.do\.sql$`)
+	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(do|dontx)\.sql$`)
 
 	// example: 00003-users.undo.sql
-	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.undo\.sql$`)
+	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(undo|undontx)\.sql$`)
 
 	// any filename with '.r.sql' suffix
-	repeatableMigrationRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)\.r\.sql$`)
+	repeatableMigrationRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)\.(r|rntx)\.sql$`)
 )
 
 func parseVersionDo(basename string) (int64, error) {
@@ -31,7 +31,7 @@ func parseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
 	}
 
 	matches := re.FindStringSubmatch(basename)
-	if len(matches) != 3 {
+	if len(matches) != 4 {
 		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
 	}
 

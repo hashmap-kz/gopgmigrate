@@ -7,12 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 )
-
-type migrationFileAttrs struct {
-	notx bool
-}
 
 func GetFiles(migrationDirectory string) (*MigrationCtx, error) {
 	var err error
@@ -56,15 +51,10 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 			if err != nil {
 				return err
 			}
-			attrs, err := parseFileAttrs(sql)
-			if err != nil {
-				return err
-			}
 			files = append(files, migrationFile{
 				path: path,
 				base: filepath.Base(path),
 				data: sql,
-				notx: attrs.notx,
 			})
 		}
 		return nil
@@ -77,23 +67,6 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 		return files[i].base < files[j].base
 	})
 	return files, nil
-}
-
-func parseFileAttrs(sql []byte) (*migrationFileAttrs, error) {
-	lines, err := scanLines(string(sql))
-	if err != nil {
-		return nil, err
-	}
-	notx := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "-- pgmigrate:non_transactional") ||
-			strings.HasPrefix(line, "--pgmigrate:non_transactional") {
-			notx = true
-		}
-	}
-	return &migrationFileAttrs{
-		notx: notx,
-	}, nil
 }
 
 // stray files checking routine

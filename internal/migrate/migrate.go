@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"gopgmigrate/internal/migrate_history"
@@ -70,7 +71,7 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn, files *MigrationCtx) err
 
 // migrateOneScript applies versioned migrations for versioned/data
 func migrateOneScript(ctx context.Context, conn *pgx.Conn, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository, mod string) (err error) {
-	useTX := !file.notx
+	useTX := !strings.HasSuffix(file.base, "ntx.sql")
 
 	var tx pgx.Tx
 	if useTX {
