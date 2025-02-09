@@ -21,13 +21,7 @@ func main() {
 
 	// TODO: these are parameters (envs/cli)
 	connString := "postgres://postgres:postgres@localhost:5432/bookstore"
-	migrationDirectory := filepath.Join("migrations", "dev")
-
-	// check given directory
-	err = migrate.CheckMigrationDirectory(migrationDirectory)
-	if err != nil {
-		log.Fatalf("migration directory error: %v", err)
-	}
+	migrationDirectory := filepath.Join("examples", "basic")
 
 	// connect to the database
 	conn, err := migrate.GetDatabaseConnection(ctx, connString)
@@ -46,11 +40,6 @@ func main() {
 	files, err := migrate.GetFiles(migrationDirectory)
 	if err != nil {
 		log.Fatalf("collecting files error: %v", err)
-	}
-
-	err = migrate.CheckHistory(conn, files)
-	if err != nil {
-		log.Fatalf("migration history error: %v", err)
 	}
 
 	// run all migrations in a single transaction
