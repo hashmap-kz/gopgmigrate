@@ -1,20 +1,22 @@
 package migrate
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
-		applied     map[string]bool
+		applied     AppliedHistory
 		files       *MigrationCtx
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All applied migrations exist locally",
-			applied: map[string]bool{
-				"001-init.do.sql":  true,
-				"002-users.do.sql": true,
+			applied: AppliedHistory{
+				"001-init.do.sql":  AppliedHistoryItem{},
+				"002-users.do.sql": AppliedHistoryItem{},
 			},
 			files: &MigrationCtx{
 				versioned: []migrationFile{
@@ -27,9 +29,9 @@ func TestCheckHistory(t *testing.T) {
 		},
 		{
 			name: "Applied migration missing in local files",
-			applied: map[string]bool{
-				"001-init.do.sql": true,
-				"003-missing.sql": true, // Missing file
+			applied: AppliedHistory{
+				"001-init.do.sql": AppliedHistoryItem{},
+				"003-missing.sql": AppliedHistoryItem{}, // Missing file
 			},
 			files: &MigrationCtx{
 				versioned: []migrationFile{
@@ -64,16 +66,16 @@ func TestCheckHistory(t *testing.T) {
 func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 	tests := []struct {
 		name        string
-		migrations  map[string]bool
+		migrations  AppliedHistory
 		files       []migrationFile
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All migrations exist locally",
-			migrations: map[string]bool{
-				"001-init.do.sql":  true,
-				"002-users.do.sql": true,
+			migrations: AppliedHistory{
+				"001-init.do.sql":  AppliedHistoryItem{},
+				"002-users.do.sql": AppliedHistoryItem{},
 			},
 			files: []migrationFile{
 				{base: "001-init.do.sql"},
@@ -83,9 +85,9 @@ func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 		},
 		{
 			name: "A migration is missing locally",
-			migrations: map[string]bool{
-				"001-init.do.sql": true,
-				"003-missing.sql": true,
+			migrations: AppliedHistory{
+				"001-init.do.sql": AppliedHistoryItem{},
+				"003-missing.sql": AppliedHistoryItem{},
 			},
 			files: []migrationFile{
 				{base: "001-init.do.sql"},
@@ -148,5 +150,83 @@ func TestFound(t *testing.T) {
 				t.Errorf("found(%q) = %v, want %v", test.searchKey, result, test.wantFound)
 			}
 		})
+	}
+}
+
+// Test getVersionedMigrationsToApply function
+func TestGetVersionedMigrationsToApply(t *testing.T) {
+	mockFiles := []migrationFile{
+		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql", data: []byte("init")},
+		{base: "00002-users.do.sql", path: "/migrations/00002-users.do.sql", data: []byte("users")},
+	}
+
+	mockHistory := AppliedHistory{
+		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: computeHash([]byte("init"))},
+	}
+
+	toApply, err := getVersionedMigrationsToApply(mockFiles, mockHistory)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if len(toApply) != 1 || toApply[0].base != "00002-users.do.sql" {
+		t.Errorf("Expected only 00002-users.do.sql to apply, got: %v", toApply)
+	}
+
+	// Test hash mismatch scenario
+	mockHistory["00002-users.do.sql"] = AppliedHistoryItem{MhName: "00002-users.do.sql", MhHash: "wrong-hash"}
+	_, err = getVersionedMigrationsToApply(mockFiles, mockHistory)
+	if err == nil {
+		t.Errorf("Expected hash mismatch error but got nil")
+	}
+}
+
+// Test getRepeatableMigrationsToApply function
+func TestGetRepeatableMigrationsToApply(t *testing.T) {
+	mockFiles := []migrationFile{
+		{base: "refresh.r.sql", path: "/migrations/refresh.r.sql", data: []byte("refresh-data")},
+	}
+
+	mockHistory := AppliedHistory{
+		"refresh.r.sql": {MhName: "refresh.r.sql", MhHash: computeHash([]byte("refresh-data"))},
+	}
+
+	toApply, err := getRepeatableMigrationsToApply(mockFiles, mockHistory)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Since data has not changed, no migration should be applied
+	if len(toApply) != 0 {
+		t.Errorf("Expected no repeatable migration to apply, got: %v", toApply)
+	}
+
+	// Modify file content to force reapply
+	mockFiles[0].data = []byte("updated-refresh-data")
+	toApply, err = getRepeatableMigrationsToApply(mockFiles, mockHistory)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Now it should detect a change and apply the repeatable migration
+	if len(toApply) != 1 || toApply[0].base != "refresh.r.sql" {
+		t.Errorf("Expected refresh.r.sql to reapply, got: %v", toApply)
+	}
+}
+
+// Test findHist function
+func TestFindHist(t *testing.T) {
+	mockHistory := AppliedHistory{
+		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "hash1"},
+	}
+
+	found := findHist("00001-init.do.sql", mockHistory)
+	if found == nil || found.MhHash != "hash1" {
+		t.Errorf("Expected to find migration 00001-init.do.sql, but got nil or incorrect data")
+	}
+
+	notFound := findHist("00002-users.do.sql", mockHistory)
+	if notFound != nil {
+		t.Errorf("Expected nil for non-existent migration, but got: %v", notFound)
 	}
 }

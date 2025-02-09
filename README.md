@@ -15,6 +15,7 @@ strictly ordered.
 - **Transactional Execution**: Ensures all migrations run within a single transaction.
 
 --- 
+
 ## Naming conventions
 
 ![Migration Naming Convention](assets/migration-names.png)
@@ -236,8 +237,11 @@ We welcome contributions! To contribute: see the [Contribution](CONTRIBUTING.md)
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## TODO
+
 - no-transaction support
 - https://github.com/flyway/flyway/blob/main/flyway-database/flyway-database-postgresql/src/main/java/org/flywaydb/database/postgresql/PostgreSQLParser.java#L35
+- versioned and repeatable migrations should have order of execution, i.e. both should have a version (they may be
+  placed in different dirs, but the order is matters, when some data migrations rely on some functions).
 
 ```
 Pattern COPY_FROM_STDIN_REGEX = Pattern.compile("^COPY( .*)? FROM STDIN");

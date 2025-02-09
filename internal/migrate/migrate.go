@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
 
 	"gopgmigrate/internal/migrate_history/impl"
@@ -39,17 +38,18 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error
 	}
 
 	// check that all applied migrations are present in files list
-	appliedNames, err := mhRepo.ListAll(ctx)
+	migrateHistory, err := mhRepo.ListAll(ctx)
 	if err != nil {
 		return err
 	}
-	err = checkHistory(makeMapFromEntities(appliedNames), files)
+	appliedHistoryIndex := makeAppliedHistory(migrateHistory)
+	err = checkHistory(appliedHistoryIndex, files)
 	if err != nil {
 		return err
 	}
 
 	// I) migrate versioned
-	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files.versioned, appliedNames)
+	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files.versioned, appliedHistoryIndex)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func RunMigrations(ctx context.Context, conn *sql.DB, files *MigrationCtx) error
 	}
 
 	// II) migrate repeatable
-	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(files.repeatable, appliedNames)
+	repeatableMigrationsToApply, err := getRepeatableMigrationsToApply(files.repeatable, appliedHistoryIndex)
 	if err != nil {
 		return err
 	}
@@ -133,74 +133,13 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	return nil
 }
 
-func getVersionedMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
-	var toApply []migrationFile
-	for _, file := range files {
-		// twice check a file given
-		isVersioned := versionedMigrationRegexDo.MatchString(file.base)
-		if !isVersioned {
-			continue
-		}
-
-		// TODO: simplify, optimize, index-map
-		// skip applied
-		existing := findHist(file.base, hist)
-		if existing != nil {
-			if existing.MhHash != computeHash(file.data) {
-				return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
-			}
-			continue
-		}
-
-		toApply = append(toApply, file)
-	}
-	return toApply, nil
-}
-
-func getRepeatableMigrationsToApply(files []migrationFile, hist []migrate_history.MigrateHistory) ([]migrationFile, error) {
-	var toApply []migrationFile
-	for _, file := range files {
-		// twice check a file given
-		isRepeatable := repeatableMigrationRegex.MatchString(file.base)
-		if !isRepeatable {
-			continue
-		}
-		newHash := computeHash(file.data)
-
-		// TODO: simplify, optimize, index-map
-		// Get stored hash
-		existingHash := findHash(file.base, hist)
-
-		// Apply only if changed
-		if existingHash != newHash {
-			toApply = append(toApply, file)
-		}
-	}
-	return toApply, nil
-}
-
-func findHist(base string, hist []migrate_history.MigrateHistory) *migrate_history.MigrateHistory {
+func makeAppliedHistory(hist []migrate_history.MigrateHistory) AppliedHistory {
+	r := AppliedHistory{}
 	for _, elem := range hist {
-		if elem.MhName == base {
-			return &elem
+		r[elem.MhName] = AppliedHistoryItem{
+			MhName: elem.MhName,
+			MhHash: elem.MhHash,
 		}
-	}
-	return nil
-}
-
-func findHash(base string, hist []migrate_history.MigrateHistory) string {
-	for _, elem := range hist {
-		if elem.MhName == base {
-			return elem.MhHash
-		}
-	}
-	return ""
-}
-
-func makeMapFromEntities(names []migrate_history.MigrateHistory) map[string]bool {
-	r := map[string]bool{}
-	for _, elem := range names {
-		r[elem.MhName] = true
 	}
 	return r
 }
