@@ -106,7 +106,6 @@ func migrateVersioned(ctx context.Context, conn *pgx.Conn, files []migrationFile
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
@@ -162,7 +161,6 @@ func migrateRepeatable(ctx context.Context, conn *pgx.Conn, files []migrationFil
 					return err
 				}
 			}
-
 		}
 	}
 	return nil
