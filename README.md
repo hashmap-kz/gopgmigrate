@@ -237,3 +237,6 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## TODO
 - no-transaction support
+- https://github.com/flyway/flyway/blob/main/flyway-database/flyway-database-postgresql/src/main/java/org/flywaydb/database/postgresql/PostgreSQLParser.java#L35
+
+
