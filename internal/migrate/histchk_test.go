@@ -150,12 +150,12 @@ func TestFound(t *testing.T) {
 // Test getVersionedMigrationsToApply function
 func TestGetVersionedMigrationsToApply(t *testing.T) {
 	mockFiles := []migrationFile{
-		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql", data: []byte("init")},
+		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql", data: []byte("init"), hash: "1"},
 		{base: "00002-users.do.sql", path: "/migrations/00002-users.do.sql", data: []byte("users")},
 	}
 
 	mockHistory := AppliedHistory{
-		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: computeHash([]byte("init"))},
+		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "1"},
 	}
 
 	toApply, err := getVersionedMigrationsToApply(mockFiles, mockHistory)

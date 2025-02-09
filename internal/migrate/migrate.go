@@ -88,24 +88,20 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	}
 
 	// write history
-	version, err := parseVersionDo(file.base)
-	if err != nil {
-		return err
-	}
 	if isRepeatable(file) {
 		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
-			MhVersion: version,
+			MhVersion: file.vers,
 			MhName:    file.base,
-			MhHash:    computeHash(file.data),
+			MhHash:    file.hash,
 		})
 		if err != nil {
 			return err
 		}
 	} else {
 		err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
-			MhVersion: version,
+			MhVersion: file.vers,
 			MhName:    file.base,
-			MhHash:    computeHash(file.data),
+			MhHash:    file.hash,
 		})
 		if err != nil {
 			return err

@@ -51,7 +51,7 @@ func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) (
 
 		if isRepeatable(file) {
 			// apply only if changed
-			if existing == nil || existing.MhHash != computeHash(file.data) {
+			if existing == nil || existing.MhHash != file.hash {
 				toApply = append(toApply, file)
 			}
 		} else {
@@ -59,7 +59,7 @@ func getVersionedMigrationsToApply(files []migrationFile, hist AppliedHistory) (
 			if existing == nil {
 				toApply = append(toApply, file)
 			} else {
-				if existing.MhHash != computeHash(file.data) {
+				if existing.MhHash != file.hash {
 					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.path))
 				}
 			}

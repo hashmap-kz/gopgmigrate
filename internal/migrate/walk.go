@@ -38,15 +38,22 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 			return err
 		}
 		// Append any file we found, filter it later
-		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(filepath.Base(path)) {
+		base := filepath.Base(path)
+		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(base) {
 			sql, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
+			vers, err := parseVersionDo(base)
+			if err != nil {
+				return err
+			}
 			files = append(files, migrationFile{
+				vers: vers,
 				path: path,
-				base: filepath.Base(path),
+				base: base,
 				data: sql,
+				hash: computeHash(sql),
 			})
 		}
 		return nil
@@ -122,15 +129,10 @@ func checkFirstVersionStartsWithZeroOneOne(versioned []migrationFile) error {
 		return nil
 	}
 	first := versioned[0]
-	version, err := parseVersionDo(first.base)
-	if err != nil {
-		return err
-	}
-
-	isOk := version == 0 || version == 1
+	isOk := first.vers == 0 || first.vers == 1
 	if !isOk {
 		return fmt.Errorf("first migration should begin with 0 or 1, got: %d, check: %s",
-			version,
+			first.vers,
 			filepath.ToSlash(first.path),
 		)
 	}
@@ -140,16 +142,12 @@ func checkFirstVersionStartsWithZeroOneOne(versioned []migrationFile) error {
 func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
-		version, err := parseVersionDo(f.base)
-		if err != nil {
-			return err
-		}
-		if _, ok := seenVersions[version]; ok {
+		if _, ok := seenVersions[f.vers]; ok {
 			return fmt.Errorf("%s is used a version that already in use",
 				filepath.ToSlash(f.path),
 			)
 		}
-		seenVersions[version] = true
+		seenVersions[f.vers] = true
 	}
 	return nil
 }
@@ -159,18 +157,12 @@ func checkVersionsAreSequential(versioned []migrationFile) error {
 		return nil
 	}
 	for i := 1; i < len(versioned); i++ {
-		curVer, err := parseVersionDo(versioned[i].base)
-		if err != nil {
-			return err
-		}
-		prevVer, err := parseVersionDo(versioned[i-1].base)
-		if err != nil {
-			return err
-		}
-		if curVer != prevVer+1 {
+		curr := versioned[i]
+		prev := versioned[i-1]
+		if curr.vers != prev.vers+1 {
 			return fmt.Errorf("versions are not sequential, check %s and %s",
-				filepath.ToSlash(versioned[i-1].path),
-				filepath.ToSlash(versioned[i].path),
+				filepath.ToSlash(prev.path),
+				filepath.ToSlash(curr.path),
 			)
 		}
 	}
