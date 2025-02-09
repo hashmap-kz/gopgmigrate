@@ -109,7 +109,31 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 	if err != nil {
 		return err
 	}
+	err = checkFirstVersionStartsWithZeroOneOne(versioned)
+	if err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func checkFirstVersionStartsWithZeroOneOne(versioned []migrationFile) error {
+	if len(versioned) == 0 {
+		return nil
+	}
+	first := versioned[0]
+	version, err := parseVersionDo(first.base)
+	if err != nil {
+		return err
+	}
+
+	isOk := version == 0 || version == 1
+	if !isOk {
+		return fmt.Errorf("first migration should begin with 0 or 1, got: %d, check: %s",
+			version,
+			filepath.ToSlash(first.path),
+		)
+	}
 	return nil
 }
 
