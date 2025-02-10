@@ -14,7 +14,7 @@ type AppliedHistory map[string]AppliedHistoryItem
 
 // applied
 
-func checkHistory(appliedMigrations AppliedHistory, localFiles []migrationFile) error {
+func checkAppliedHistoryWithLocalFiles(appliedMigrations AppliedHistory, localFiles []migrationFile) error {
 	return checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations, localFiles)
 }
 

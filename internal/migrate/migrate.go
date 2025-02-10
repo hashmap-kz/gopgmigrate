@@ -29,7 +29,7 @@ func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile
 	}(ctx, conn)
 
 	// Migrate
-	versionedMigrationsToApply, err := getMigrations(ctx, conn, localFiles, mhRepo)
+	versionedMigrationsToApply, err := getPendingMigrations(ctx, conn, localFiles, mhRepo)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile
 	return nil
 }
 
-func getMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) ([]migrationFile, error) {
+func getPendingMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) ([]migrationFile, error) {
 	var err error
 
 	tx, err := conn.BeginTx(ctx, nil)
@@ -74,8 +74,8 @@ func getMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile
 		return nil, err
 	}
 
-	appliedMigrations := makeAppliedHistory(migrateHistory)
-	err = checkHistory(appliedMigrations, localFiles)
+	appliedMigrations := createAppliedHistoryIndex(migrateHistory)
+	err = checkAppliedHistoryWithLocalFiles(appliedMigrations, localFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func getModeForLog(file migrationFile) string {
 	return "VER"
 }
 
-func makeAppliedHistory(hist []history.MigrateHistory) AppliedHistory {
+func createAppliedHistoryIndex(hist []history.MigrateHistory) AppliedHistory {
 	r := AppliedHistory{}
 	for _, elem := range hist {
 		r[elem.MhName] = AppliedHistoryItem{

@@ -41,7 +41,7 @@ func TestCheckHistory(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := checkHistory(test.applied, test.files)
+			err := checkAppliedHistoryWithLocalFiles(test.applied, test.files)
 			if test.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
