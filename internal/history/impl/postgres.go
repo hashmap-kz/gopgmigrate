@@ -164,18 +164,44 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 	return scannedEntities, nil
 }
 
+func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx *sql.Tx, scriptName string) error {
+	tag := "migrateHistoryPostgresRepository.DeleteVersion"
+	query := fmt.Sprintf(`
+		delete from only %s
+		where mh_version = $1
+	`, r.tableName)
+	_, err := tx.ExecContext(ctx, query, scriptName)
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) DeleteVersionNoTx(ctx context.Context, db *sql.DB, scriptName string) error {
+	tag := "migrateHistoryPostgresRepository.DeleteVersion"
+	query := fmt.Sprintf(`
+		delete from only %s
+		where mh_version = $1
+	`, r.tableName)
+	_, err := db.ExecContext(ctx, query, scriptName)
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
+	return nil
+}
+
 // locks
 
 // AcquireMigrationLock ensures only one migration process runs at a time
-func (r *migrateHistoryPostgresRepository) AcquireMigrationLock(ctx context.Context, conn *sql.DB) (bool, error) {
+func (r *migrateHistoryPostgresRepository) AcquireMigrationLock(ctx context.Context, db *sql.DB) (bool, error) {
 	var acquired bool
-	err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
+	err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
 	return acquired, err
 }
 
 // ReleaseMigrationLock releases the advisory lock
-func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Context, conn *sql.DB) error {
-	_, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
 	return err
 }
 
