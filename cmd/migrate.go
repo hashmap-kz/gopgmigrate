@@ -42,7 +42,14 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	//////////////////////////////////////////////////////////////////////
 	// init repository
 	repo, conn := getRepoAndConn(ctx)
-	defer conn.Close()
+	defer func(conn *sql.DB) {
+		err := conn.Close()
+		if err != nil {
+			slog.Warn("conn", slog.String("status", err.Error()))
+		} else {
+			slog.Debug("conn", slog.String("status", "closed:true"))
+		}
+	}(conn)
 
 	//////////////////////////////////////////////////////////////////////
 	// acquire advisory lock
@@ -55,10 +62,14 @@ func runMigrations(cmd *cobra.Command, args []string) {
 		slog.Error("another migration process is running. exiting.")
 		os.Exit(1)
 	}
-	slog.Debug("lock", slog.String("acquired", "true"))
+	slog.Debug("lock", slog.String("status", "acquired:true"))
 	defer func(ctx context.Context, conn *sql.DB) {
-		_ = repo.ReleaseMigrationLock(ctx, conn)
-		slog.Debug("lock", slog.String("released", "true"))
+		err = repo.ReleaseMigrationLock(ctx, conn)
+		if err != nil {
+			slog.Warn("lock", slog.String("status", err.Error()))
+		} else {
+			slog.Debug("lock", slog.String("status", "released:true"))
+		}
 	}(ctx, conn)
 
 	//////////////////////////////////////////////////////////////////////
