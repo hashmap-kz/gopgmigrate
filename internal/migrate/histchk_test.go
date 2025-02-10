@@ -7,14 +7,14 @@ import (
 func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
-		applied     AppliedHistory
+		applied     AppliedHistoryUnsortedIndex
 		files       []MigrationFile
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All applied migrations exist locally",
-			applied: AppliedHistory{
+			applied: AppliedHistoryUnsortedIndex{
 				"001-init.do.sql":  AppliedHistoryItem{},
 				"002-users.do.sql": AppliedHistoryItem{},
 			},
@@ -26,7 +26,7 @@ func TestCheckHistory(t *testing.T) {
 		},
 		{
 			name: "Applied migration missing in local files",
-			applied: AppliedHistory{
+			applied: AppliedHistoryUnsortedIndex{
 				"001-init.do.sql": AppliedHistoryItem{},
 				"003-missing.sql": AppliedHistoryItem{}, // Missing file
 			},
@@ -60,14 +60,14 @@ func TestCheckHistory(t *testing.T) {
 func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 	tests := []struct {
 		name        string
-		migrations  AppliedHistory
+		migrations  AppliedHistoryUnsortedIndex
 		files       []MigrationFile
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All migrations exist locally",
-			migrations: AppliedHistory{
+			migrations: AppliedHistoryUnsortedIndex{
 				"001-init.do.sql":  AppliedHistoryItem{},
 				"002-users.do.sql": AppliedHistoryItem{},
 			},
@@ -79,7 +79,7 @@ func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 		},
 		{
 			name: "A migration is missing locally",
-			migrations: AppliedHistory{
+			migrations: AppliedHistoryUnsortedIndex{
 				"001-init.do.sql": AppliedHistoryItem{},
 				"003-missing.sql": AppliedHistoryItem{},
 			},
@@ -154,7 +154,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", data: []byte("users")},
 	}
 
-	mockHistory := AppliedHistory{
+	mockHistory := AppliedHistoryUnsortedIndex{
 		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "1"},
 	}
 
@@ -177,7 +177,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 
 // Test findHist function
 func TestFindHist(t *testing.T) {
-	mockHistory := AppliedHistory{
+	mockHistory := AppliedHistoryUnsortedIndex{
 		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "hash1"},
 	}
 

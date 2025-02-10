@@ -140,7 +140,7 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 			mh_applied_by,
 			mh_applied_at
 		from %s
-		order by mh_name
+		order by mh_version
 	`, r.tableName)
 
 	rows, err := tx.QueryContext(ctx, query)

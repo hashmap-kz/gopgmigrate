@@ -9,34 +9,30 @@ import (
 	"gopgmigrate/internal/history"
 )
 
-type AppliedHistoryItem struct {
-	MhName string
-	MhHash string
-}
-
-type AppliedHistory map[string]AppliedHistoryItem
-
 func GetPendingMigrations(
 	ctx context.Context,
 	conn *sql.DB,
 	localFiles []MigrationFile,
 	mhRepo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
-	appliedMigrations, err := fetchHistory(ctx, conn, localFiles, mhRepo)
+	hist, err := fetchHistoryAscSorted(ctx, conn, mhRepo)
 	if err != nil {
 		return nil, err
 	}
-	return getVersionedMigrationsToApply(appliedMigrations, localFiles)
+	err = checkAppliedHistoryWithLocalFiles(hist, localFiles)
+	if err != nil {
+		return nil, err
+	}
+	return getVersionedMigrationsToApply(hist, localFiles)
 }
 
 // applied
 
-func fetchHistory(
+func fetchHistoryAscSorted(
 	ctx context.Context,
 	conn *sql.DB,
-	localFiles []MigrationFile,
 	mhRepo history.MigrateHistoryRepository,
-) (AppliedHistory, error) {
+) ([]history.MigrateHistory, error) {
 	var err error
 
 	tx, err := conn.BeginTx(ctx, nil)
@@ -56,28 +52,18 @@ func fetchHistory(
 		return nil, err
 	}
 
-	appliedMigrations := createAppliedHistoryIndex(migrateHistory)
-	err = checkAppliedHistoryWithLocalFiles(appliedMigrations, localFiles)
-	if err != nil {
-		return nil, err
-	}
-
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
 
-	return appliedMigrations, nil
+	return migrateHistory, nil
 }
 
-func checkAppliedHistoryWithLocalFiles(appliedMigrations AppliedHistory, localFiles []MigrationFile) error {
-	return checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations, localFiles)
-}
-
-func checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations AppliedHistory, localFiles []MigrationFile) error {
-	for k := range appliedMigrations {
-		if !appliedMigrationPresentLocally(k, localFiles) {
-			return fmt.Errorf("detected applied migration not resolved locally: %s", k)
+func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) error {
+	for _, k := range appliedMigrations {
+		if !appliedMigrationPresentLocally(k.MhName, localFiles) {
+			return fmt.Errorf("detected applied migration not resolved locally: %s", k.MhName)
 		}
 	}
 	return nil
@@ -94,7 +80,7 @@ func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []M
 
 // to apply
 
-func getVersionedMigrationsToApply(appliedMigrations AppliedHistory, localFiles []MigrationFile) ([]MigrationFile, error) {
+func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) ([]MigrationFile, error) {
 	var toApply []MigrationFile
 	for _, file := range localFiles {
 		// twice check a file given
@@ -126,24 +112,15 @@ func getVersionedMigrationsToApply(appliedMigrations AppliedHistory, localFiles 
 
 // utils
 
-func findHist(base string, appliedMigrations AppliedHistory) *AppliedHistoryItem {
-	if existing, ok := appliedMigrations[base]; ok {
-		return &existing
+func findHist(base string, appliedMigrations []history.MigrateHistory) *history.MigrateHistory {
+	for _, elem := range appliedMigrations {
+		if elem.MhName == base {
+			return &elem
+		}
 	}
 	return nil
 }
 
 func isRepeatable(file MigrationFile) bool {
 	return repeatableMigrationRegexDo.MatchString(file.Base)
-}
-
-func createAppliedHistoryIndex(hist []history.MigrateHistory) AppliedHistory {
-	r := AppliedHistory{}
-	for _, elem := range hist {
-		r[elem.MhName] = AppliedHistoryItem{
-			MhName: elem.MhName,
-			MhHash: elem.MhHash,
-		}
-	}
-	return r
 }
