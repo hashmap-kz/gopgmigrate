@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"gopgmigrate/internal/migrate"
 	"log/slog"
 	"os"
 	"strings"
+
+	"gopgmigrate/internal/migrate"
 
 	"gopgmigrate/pkg/logger"
 
