@@ -168,7 +168,7 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 	tag := "migrateHistoryPostgresRepository.DeleteVersion"
 	query := fmt.Sprintf(`
 		delete from only %s
-		where mh_version = $1
+		where mh_name = $1
 	`, r.tableName)
 	_, err := tx.ExecContext(ctx, query, scriptName)
 	if err != nil {
@@ -178,10 +178,10 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 }
 
 func (r *migrateHistoryPostgresRepository) DeleteVersionNoTx(ctx context.Context, db *sql.DB, scriptName string) error {
-	tag := "migrateHistoryPostgresRepository.DeleteVersion"
+	tag := "migrateHistoryPostgresRepository.DeleteVersionNoTx"
 	query := fmt.Sprintf(`
 		delete from only %s
-		where mh_version = $1
+		where mh_name = $1
 	`, r.tableName)
 	_, err := db.ExecContext(ctx, query, scriptName)
 	if err != nil {
