@@ -26,6 +26,7 @@ var migrateCmd = &cobra.Command{
 }
 
 func init() {
+	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
 	rootCmd.AddCommand(migrateCmd)
 }
 

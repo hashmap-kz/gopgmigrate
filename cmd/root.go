@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"gopgmigrate/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
+
+var dryRun bool
 
 var cliOptions struct {
 	dirName          string
@@ -62,14 +65,18 @@ func Execute() {
 func init() {
 	// Define persistent flags (shared across all commands)
 	rootCmd.PersistentFlags().StringVar(&cliOptions.dirName, "dirname", "", "Directory containing migration files (required)")
-	rootCmd.PersistentFlags().StringVar(&cliOptions.connStr, "connstr", "", "Database connection string (required)")
+	rootCmd.PersistentFlags().StringVar(&cliOptions.connStr, "connstr", "", strings.TrimSpace(`
+Database connection string (required)
+postgresql: postgres://username:password@host:port/dbname
+clickhouse: clickhouse://username:password@host:port/dbname`))
 	rootCmd.PersistentFlags().StringVar(&cliOptions.config, "config", "", "Path to configuration file (optional)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logEnc, "log-enc", "text", "Log encoding format (json/text)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logLevel, "log-level", "debug", "Log level (debug/info/warn/error)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.dbms, "dbms", "postgresql", "Database management system (postgresql/clickhouse)")
 
+	// TODO:
 	// Mark required flags
-	_ = rootCmd.MarkPersistentFlagRequired("dirname")
-	_ = rootCmd.MarkPersistentFlagRequired("connstr")
+	// _ = rootCmd.MarkPersistentFlagRequired("dirname")
+	// _ = rootCmd.MarkPersistentFlagRequired("connstr")
 }

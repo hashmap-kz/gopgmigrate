@@ -27,5 +27,6 @@ var rollbackCmd = &cobra.Command{
 }
 
 func init() {
+	rollbackCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate rollback execution without applying changes")
 	rootCmd.AddCommand(rollbackCmd)
 }
