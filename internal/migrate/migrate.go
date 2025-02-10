@@ -114,7 +114,7 @@ func migrateOneScript(
 	if directionDo {
 		// DO
 		if isRepeatable(file) {
-			err = mhRepo.SaveRepeatableNoTx(ctx, db, &history.MigrateHistoryCreateInput{
+			err = mhRepo.SaveRepeatable(ctx, db, &history.MigrateHistoryCreateInput{
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.hash,
@@ -123,7 +123,7 @@ func migrateOneScript(
 				return err
 			}
 		} else {
-			err = mhRepo.SaveVersionedNoTx(ctx, db, &history.MigrateHistoryCreateInput{
+			err = mhRepo.SaveVersioned(ctx, db, &history.MigrateHistoryCreateInput{
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.hash,
@@ -134,7 +134,7 @@ func migrateOneScript(
 		}
 	} else {
 		// UNDO
-		err := mhRepo.DeleteVersionNoTx(ctx, db, file.Base)
+		err := mhRepo.DeleteVersion(ctx, db, file.Base)
 		if err != nil {
 			return err
 		}

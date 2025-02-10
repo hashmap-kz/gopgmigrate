@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 
+	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // Migration Lock Key (must be unique per application)
@@ -23,7 +26,7 @@ func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) hi
 	}
 }
 
-func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Context, tx *sql.Tx) error {
+func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Context, tx dbms.Transaction) error {
 	tag := "migrateHistoryPostgresRepository.CreateHistoryTable"
 
 	query := fmt.Sprintf(`
@@ -48,7 +51,8 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 	return err
 }
 
-func versionedQuery(r *migrateHistoryPostgresRepository) string {
+func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveVersioned"
 	query := fmt.Sprintf(`		
 		insert into %s (
 			mh_version,
@@ -64,12 +68,6 @@ func versionedQuery(r *migrateHistoryPostgresRepository) string {
 			mh_applied_by,
 			mh_applied_at
 		`, r.tableName)
-	return query
-}
-
-func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx *sql.Tx, inputEntity *history.MigrateHistoryCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveVersioned"
-	query := versionedQuery(r)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
@@ -77,17 +75,8 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveVersionedNoTx(ctx context.Context, conn *sql.DB, inputEntity *history.MigrateHistoryCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveVersionedNoTx"
-	query := versionedQuery(r)
-	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	return nil
-}
-
-func repeatableQuery(r *migrateHistoryPostgresRepository) string {
+func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
+	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
 	query := fmt.Sprintf(`		
 		with updated as (
 			update %s
@@ -105,12 +94,6 @@ func repeatableQuery(r *migrateHistoryPostgresRepository) string {
 			   transaction_timestamp()
 		where not exists (select 1 from updated)
 		`, r.tableName, r.tableName)
-	return query
-}
-
-func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx *sql.Tx, inputEntity *history.MigrateHistoryCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
-	query := repeatableQuery(r)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
@@ -118,17 +101,7 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, t
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatableNoTx(ctx context.Context, conn *sql.DB, inputEntity *history.MigrateHistoryCreateInput) error {
-	tag := "migrateHistoryPostgresRepository.SaveRepeatableNoTx"
-	query := repeatableQuery(r)
-	_, err := conn.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	return nil
-}
-
-func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.Tx) ([]history.MigrateHistory, error) {
+func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.Transaction) ([]history.MigrateHistory, error) {
 	tag := "migrateHistoryPostgresRepository.ListAll"
 
 	query := fmt.Sprintf(`		
@@ -164,7 +137,7 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 	return scannedEntities, nil
 }
 
-func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx *sql.Tx, scriptName string) error {
+func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx dbms.Transaction, scriptName string) error {
 	tag := "migrateHistoryPostgresRepository.DeleteVersion"
 	query := fmt.Sprintf(`
 		delete from only %s
@@ -177,30 +150,17 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) DeleteVersionNoTx(ctx context.Context, db *sql.DB, scriptName string) error {
-	tag := "migrateHistoryPostgresRepository.DeleteVersionNoTx"
-	query := fmt.Sprintf(`
-		delete from only %s
-		where mh_name = $1
-	`, r.tableName)
-	_, err := db.ExecContext(ctx, query, scriptName)
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	return nil
-}
-
 // locks
 
 // AcquireMigrationLock ensures only one migration process runs at a time
-func (r *migrateHistoryPostgresRepository) AcquireMigrationLock(ctx context.Context, db *sql.DB) (bool, error) {
+func (r *migrateHistoryPostgresRepository) AcquireMigrationLock(ctx context.Context, db dbms.Transaction) (bool, error) {
 	var acquired bool
 	err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
 	return acquired, err
 }
 
 // ReleaseMigrationLock releases the advisory lock
-func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Context, db *sql.DB) error {
+func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Context, db dbms.Transaction) error {
 	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
 	return err
 }

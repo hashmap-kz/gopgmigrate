@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
 	"gopgmigrate/internal/history/impl"
+
+	"gopgmigrate/internal/dbms"
 )
 
 func getRepoAndConn(ctx context.Context) (history.MigrateHistoryRepository, *sql.DB) {
