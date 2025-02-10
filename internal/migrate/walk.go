@@ -112,14 +112,7 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 	if err != nil {
 		return err
 	}
-	err = checkVersionsAreSequential(versioned)
-	if err != nil {
-		return err
-	}
-	err = checkFirstVersionStartsWithZeroOneOne(versioned)
-	if err != nil {
-		return err
-	}
+
 	err = checkPossibleNoTx(versioned)
 	if err != nil {
 		return err
@@ -152,21 +145,6 @@ func checkPossibleNoTx(versioned []migrationFile) error {
 	return nil
 }
 
-func checkFirstVersionStartsWithZeroOneOne(versioned []migrationFile) error {
-	if len(versioned) == 0 {
-		return nil
-	}
-	first := versioned[0]
-	isOk := first.vers == 0 || first.vers == 1
-	if !isOk {
-		return fmt.Errorf("first migration should begin with 0 or 1, got: %d, check: %s",
-			first.vers,
-			filepath.ToSlash(first.path),
-		)
-	}
-	return nil
-}
-
 func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
@@ -176,23 +154,6 @@ func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
 			)
 		}
 		seenVersions[f.vers] = true
-	}
-	return nil
-}
-
-func checkVersionsAreSequential(versioned []migrationFile) error {
-	if len(versioned) < 2 {
-		return nil
-	}
-	for i := 1; i < len(versioned); i++ {
-		curr := versioned[i]
-		prev := versioned[i-1]
-		if curr.vers != prev.vers+1 {
-			return fmt.Errorf("versions are not sequential, check %s and %s",
-				filepath.ToSlash(prev.path),
-				filepath.ToSlash(curr.path),
-			)
-		}
 	}
 	return nil
 }
