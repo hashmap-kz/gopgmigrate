@@ -13,27 +13,16 @@ import (
 func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) error {
 	var err error
 
-	// Migrate
 	versionedMigrationsToApply, err := getPendingMigrations(ctx, conn, localFiles, mhRepo)
 	if err != nil {
 		return err
 	}
-	applied := map[string]bool{}
+
 	for _, f := range versionedMigrationsToApply {
-		appliedFile, err := migrateOneScript(ctx, conn, f, mhRepo)
+		err := migrateOneScript(ctx, conn, f, mhRepo)
 		if err != nil {
 			return err
 		}
-		if appliedFile == nil {
-			return fmt.Errorf("unexpected, applied file result is nil")
-		}
-		applied[appliedFile.base] = true
-	}
-	if len(applied) != len(versionedMigrationsToApply) {
-		return fmt.Errorf("unexpected results, applied: %d, expected: %d",
-			len(applied),
-			len(versionedMigrationsToApply),
-		)
 	}
 
 	return nil
@@ -74,7 +63,7 @@ func getPendingMigrations(ctx context.Context, conn *sql.DB, localFiles []migrat
 }
 
 // migrateOneScript applies versioned migrations for versioned/data
-func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo history.MigrateHistoryRepository) (appliedFile *migrationFile, err error) {
+func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo history.MigrateHistoryRepository) (err error) {
 	useTX := !versionedMigrationRegexNtx.MatchString(file.base)
 
 	if useTX {
@@ -82,7 +71,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 
 		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer tx.Rollback()
 
@@ -95,7 +84,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 		// execute migration script
 		_, err = tx.ExecContext(ctx, string(file.data))
 		if err != nil {
-			return nil, fmt.Errorf("error applying migration %s: %v", file.base, err)
+			return fmt.Errorf("error applying migration %s: %v", file.base, err)
 		}
 
 		// write history
@@ -106,7 +95,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 				MhHash:    file.hash,
 			})
 			if err != nil {
-				return nil, err
+				return err
 			}
 		} else {
 			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
@@ -115,15 +104,15 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 				MhHash:    file.hash,
 			})
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 
 		err = tx.Commit()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return &file, nil
+		return nil
 	}
 
 	// NO TRANSACTION
@@ -137,7 +126,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	// execute migration script
 	_, err = conn.ExecContext(ctx, string(file.data))
 	if err != nil {
-		return nil, fmt.Errorf("error applying migration %s: %v", file.base, err)
+		return fmt.Errorf("error applying migration %s: %v", file.base, err)
 	}
 
 	// write history
@@ -148,7 +137,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 			MhHash:    file.hash,
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
 	} else {
 		err = mhRepo.SaveVersionedNoTx(ctx, conn, &history.MigrateHistoryCreateInput{
@@ -157,10 +146,10 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 			MhHash:    file.hash,
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return &file, nil
+	return nil
 }
 
 func getModeForLog(file migrationFile) string {
