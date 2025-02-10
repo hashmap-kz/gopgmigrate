@@ -22,6 +22,21 @@ func GetPendingMigrations(
 	localFiles []MigrationFile,
 	mhRepo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
+	appliedMigrations, err := fetchHistory(ctx, conn, localFiles, mhRepo)
+	if err != nil {
+		return nil, err
+	}
+	return getVersionedMigrationsToApply(appliedMigrations, localFiles)
+}
+
+// applied
+
+func fetchHistory(
+	ctx context.Context,
+	conn *sql.DB,
+	localFiles []MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+) (AppliedHistory, error) {
 	var err error
 
 	tx, err := conn.BeginTx(ctx, nil)
@@ -52,10 +67,8 @@ func GetPendingMigrations(
 		return nil, err
 	}
 
-	return getVersionedMigrationsToApply(appliedMigrations, localFiles)
+	return appliedMigrations, nil
 }
-
-// applied
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations AppliedHistory, localFiles []MigrationFile) error {
 	return checkHistoryTableIsSyncedWithLocalFiles(appliedMigrations, localFiles)
