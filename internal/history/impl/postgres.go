@@ -8,6 +8,9 @@ import (
 	"gopgmigrate/internal/history"
 )
 
+// Migration Lock Key (must be unique per application)
+const migrationLockKey = 123456
+
 type migrateHistoryPostgresRepository struct {
 	tableName string
 }
@@ -159,6 +162,21 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx *sql.
 		return nil, rows.Err()
 	}
 	return scannedEntities, nil
+}
+
+// locks
+
+// AcquireMigrationLock ensures only one migration process runs at a time
+func (r *migrateHistoryPostgresRepository) AcquireMigrationLock(ctx context.Context, conn *sql.DB) (bool, error) {
+	var acquired bool
+	err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
+	return acquired, err
+}
+
+// ReleaseMigrationLock releases the advisory lock
+func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Context, conn *sql.DB) error {
+	_, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+	return err
 }
 
 // scan utils

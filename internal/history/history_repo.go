@@ -12,4 +12,7 @@ type MigrateHistoryRepository interface {
 	SaveVersionedNoTx(ctx context.Context, conn *sql.DB, inputEntity *MigrateHistoryCreateInput) error
 	SaveRepeatableNoTx(ctx context.Context, conn *sql.DB, inputEntity *MigrateHistoryCreateInput) error
 	ListAll(ctx context.Context, tx *sql.Tx) ([]MigrateHistory, error)
+
+	AcquireMigrationLock(ctx context.Context, conn *sql.DB) (bool, error)
+	ReleaseMigrationLock(ctx context.Context, conn *sql.DB) error
 }

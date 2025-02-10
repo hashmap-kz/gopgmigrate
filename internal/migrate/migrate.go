@@ -13,21 +13,6 @@ import (
 func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) error {
 	var err error
 
-	// Acquire advisory lock
-	acquired, err := acquireMigrationLock(ctx, conn)
-	if err != nil {
-		return err
-	}
-	if !acquired {
-		slog.Error("another migration process is running. exiting.")
-		return nil
-	}
-	slog.Debug("lock", slog.String("acquired", "true"))
-	defer func(ctx context.Context, conn *sql.DB) {
-		_ = releaseMigrationLock(ctx, conn)
-		slog.Debug("lock", slog.String("released", "true"))
-	}(ctx, conn)
-
 	// Migrate
 	versionedMigrationsToApply, err := getPendingMigrations(ctx, conn, localFiles, mhRepo)
 	if err != nil {
