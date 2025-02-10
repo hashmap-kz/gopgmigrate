@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"gopgmigrate/internal/dbms"
+
 	"gopgmigrate/internal/history"
 )
 
@@ -36,56 +38,18 @@ func migrateOneScript(
 ) (err error) {
 	useTX := !versionedMigrationRegexNtx.MatchString(file.Base)
 
-	if useTX {
-		// TRANSACTION
+	// TRANSACTION
 
+	if useTX {
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
 		defer tx.Rollback()
 
-		slog.Info("migration",
-			slog.String("tx", "+"),
-			slog.String("mode", getModeForLog(directionDo)),
-			slog.String("type", getTypeForLog(file)),
-			slog.String("name", file.Base),
-		)
-
-		// execute migration script
-		_, err = tx.ExecContext(ctx, string(file.data))
+		err = migrateOneScriptFn(ctx, tx, file, mhRepo, directionDo, "+")
 		if err != nil {
-			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
-		}
-
-		// write history
-		if directionDo {
-			// DO
-			if isRepeatable(file) {
-				err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
-					MhVersion: file.Vers,
-					MhName:    file.Base,
-					MhHash:    file.hash,
-				})
-				if err != nil {
-					return err
-				}
-			} else {
-				err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
-					MhVersion: file.Vers,
-					MhName:    file.Base,
-					MhHash:    file.hash,
-				})
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			// UNDO
-			err := mhRepo.DeleteVersion(ctx, tx, file.Base)
-			if err != nil {
-				return err
-			}
+			return err
 		}
 
 		err = tx.Commit()
@@ -97,15 +61,26 @@ func migrateOneScript(
 
 	// NO TRANSACTION
 
+	return migrateOneScriptFn(ctx, db, file, mhRepo, directionDo, "N")
+}
+
+func migrateOneScriptFn(
+	ctx context.Context,
+	tx dbms.Transaction,
+	file MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+	txLogNote string,
+) (err error) {
 	slog.Info("migration",
-		slog.String("tx", "N"),
+		slog.String("tx", txLogNote),
 		slog.String("mode", getModeForLog(directionDo)),
 		slog.String("type", getTypeForLog(file)),
 		slog.String("name", file.Base),
 	)
 
 	// execute migration script
-	_, err = db.ExecContext(ctx, string(file.data))
+	_, err = tx.ExecContext(ctx, string(file.data))
 	if err != nil {
 		return fmt.Errorf("error applying migration %s: %v", file.Base, err)
 	}
@@ -114,7 +89,7 @@ func migrateOneScript(
 	if directionDo {
 		// DO
 		if isRepeatable(file) {
-			err = mhRepo.SaveRepeatable(ctx, db, &history.MigrateHistoryCreateInput{
+			err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.hash,
@@ -123,7 +98,7 @@ func migrateOneScript(
 				return err
 			}
 		} else {
-			err = mhRepo.SaveVersioned(ctx, db, &history.MigrateHistoryCreateInput{
+			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.hash,
@@ -134,7 +109,7 @@ func migrateOneScript(
 		}
 	} else {
 		// UNDO
-		err := mhRepo.DeleteVersion(ctx, db, file.Base)
+		err := mhRepo.DeleteVersion(ctx, tx, file.Base)
 		if err != nil {
 			return err
 		}
