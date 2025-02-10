@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"gopgmigrate/internal/dbms"
 	"log/slog"
 	"os"
 	"strconv"
@@ -33,20 +35,9 @@ var cliOptions struct {
 }
 
 func RunMigrations(cmd *cobra.Command, args []string) {
-	//if len(args) != 1 {
-	//	cmd.Help()
-	//	os.Exit(1)
-	//}
+	var err error
 
 	ctx := context.Background()
-
-	// connect to the database
-	conn, err := migrate.GetDatabaseConnection(cliOptions.connStr)
-	if err != nil {
-		slog.Error("database connection error", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
-	defer conn.Close()
 
 	// get migration scripts
 	files, err := migrate.GetFiles(cliOptions.dirName)
@@ -56,16 +47,23 @@ func RunMigrations(cmd *cobra.Command, args []string) {
 	}
 
 	// repository, helper functions for history-handling
-	var mhRepo history.MigrateHistoryRepository
+	var repo history.MigrateHistoryRepository
+	var conn *sql.DB
 	if cliOptions.dbms == dbmsVendorPostgres {
-		mhRepo = impl.NewMigrateHistoryPostgresRepository(ctx, cliOptions.historyTableName)
+		repo = impl.NewMigrateHistoryPostgresRepository(ctx, cliOptions.historyTableName)
+		conn, err = dbms.GetDatabaseConnectionPostgres(cliOptions.connStr)
+		if err != nil {
+			slog.Error("database connection error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
 	} else {
 		slog.Error("unknown DBMS vendor", slog.String("name", cliOptions.dbms))
 		os.Exit(1)
 	}
+	defer conn.Close()
 
 	// run all migrations in a single transaction
-	err = migrate.RunMigrations(ctx, conn, files, mhRepo)
+	err = migrate.RunMigrations(ctx, conn, files, repo)
 	if err != nil {
 		slog.Error("migration error", slog.String("err", err.Error()))
 		os.Exit(1)
@@ -112,6 +110,12 @@ func addCoreConfigFlagsToCommand(cmd *cobra.Command) {
 }
 
 func RollbackMigrations(cmd *cobra.Command, args []string) {
+
+	//if len(args) != 1 {
+	//	cmd.Help()
+	//	os.Exit(1)
+	//}
+
 	steps := 1 // Default rollback steps
 	if len(args) > 0 {
 		if num, err := strconv.Atoi(args[0]); err == nil {
