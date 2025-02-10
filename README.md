@@ -243,6 +243,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - versioned and repeatable migrations should have order of execution, i.e. both should have a version (they may be
   placed in different dirs, but the order is matters, when some data migrations rely on some functions).
 - CLI - print history, recursively traverse dir, sort files; add new; find latest; etc. etc.
+- implement plan/apply strategy (with plan table) 
 
 ```
 Pattern COPY_FROM_STDIN_REGEX = Pattern.compile("^COPY( .*)? FROM STDIN");
