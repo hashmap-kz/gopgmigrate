@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -17,6 +18,10 @@ var (
 	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(r|rntx)\.sql$`)
 
 	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(dontx|rntx)\.sql$`)
+
+	// create schema m$yschema1;
+	// create table m$yschema1.m$table (id int);
+	PostgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
 )
 
 func parseVersionDo(basename string) (int64, error) {
@@ -51,4 +56,17 @@ func parseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
 	}
 
 	return parsedResult, nil
+}
+
+// Copied from lib/pq implementation: https://github.com/lib/pq/blob/v1.9.0/conn.go#L1611
+func quoteIdentifier(name string) string {
+	end := strings.IndexRune(name, 0)
+	if end > -1 {
+		name = name[:end]
+	}
+	return `"` + strings.Replace(name, `"`, `""`, -1) + `"`
+}
+
+func quoteFullIdentifier(schema, table string) string {
+	return quoteIdentifier(schema) + "." + quoteIdentifier(table)
 }

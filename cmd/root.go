@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"gopgmigrate/internal/migrate"
 	"log/slog"
 	"os"
 	"strings"
@@ -48,6 +49,9 @@ var rootCmd = &cobra.Command{
 			cliOptions.historyTableName = os.Getenv("PGMIGRATE_HISTORY_TABLE_NAME")
 			if cliOptions.historyTableName == "" {
 				return fmt.Errorf("--history-table is required")
+			}
+			if !migrate.PostgresqlSchemaTablePathRegex.MatchString(cliOptions.historyTableName) {
+				return fmt.Errorf("--history-table expected required in format: `schema.table`")
 			}
 		}
 		return nil

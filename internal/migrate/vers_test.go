@@ -65,3 +65,30 @@ func TestParseVersionUndo(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateSchemaTable(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"public.users", true},
+		{"my_schema.table$", true},
+		{"sche$ma.table_123$456", true},
+
+		{"_schema.$table", false},  // Cannot start with $
+		{"schema.123table", false}, // Table name must start with letter or _
+		{"schema..table", false},   // Missing schema
+		{".table", false},          // Missing schema
+		{"schema.", false},         // Missing table
+		{"123schema.table", false}, // Schema must start with letter or _
+		{"schema.table$@", false},  // Invalid character
+		{"schema.reallylongtablename111111111111$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$", false}, // Too long
+	}
+
+	for _, test := range tests {
+		result := PostgresqlSchemaTablePathRegex.MatchString(test.input)
+		if result != test.expected {
+			t.Errorf("ValidateSchemaTable(%q) = %v; expected %v", test.input, result, test.expected)
+		}
+	}
+}
