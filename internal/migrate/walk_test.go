@@ -84,9 +84,9 @@ func TestGetAllStrayFiles(t *testing.T) {
 
 // Test checkFilesAreUniqueByVersion
 func TestCheckFilesAreUniqueByVersion(t *testing.T) {
-	files := []migrationFile{
-		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql", vers: 1},
-		{base: "00002-users.do.sql", path: "/migrations/00002-users.do.sql", vers: 2},
+	files := []MigrationFile{
+		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Vers: 1},
+		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Vers: 2},
 	}
 
 	err := checkFilesAreUniqueByVersion(files)
@@ -95,7 +95,7 @@ func TestCheckFilesAreUniqueByVersion(t *testing.T) {
 	}
 
 	// Introduce a duplicate version
-	files = append(files, migrationFile{base: "00001-duplicate.do.sql", path: "/migrations/00001-duplicate.do.sql", vers: 1})
+	files = append(files, MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
 	err = checkFilesAreUniqueByVersion(files)
 	if err == nil {
 		t.Errorf("Expected error due to duplicate version, but got nil")

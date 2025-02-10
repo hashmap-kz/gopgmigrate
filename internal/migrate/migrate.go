@@ -10,25 +10,27 @@ import (
 )
 
 // RunMigrations applies both versioned and repeatable migrations
-func RunMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) error {
-	var err error
-
-	versionedMigrationsToApply, err := getPendingMigrations(ctx, conn, localFiles, mhRepo)
-	if err != nil {
-		return err
-	}
-
-	for _, f := range versionedMigrationsToApply {
+func RunMigrations(
+	ctx context.Context,
+	conn *sql.DB,
+	mhRepo history.MigrateHistoryRepository,
+	pending []MigrationFile,
+) error {
+	for _, f := range pending {
 		err := migrateOneScript(ctx, conn, f, mhRepo)
 		if err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func getPendingMigrations(ctx context.Context, conn *sql.DB, localFiles []migrationFile, mhRepo history.MigrateHistoryRepository) ([]migrationFile, error) {
+func GetPendingMigrations(
+	ctx context.Context,
+	conn *sql.DB,
+	localFiles []MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+) ([]MigrationFile, error) {
 	var err error
 
 	tx, err := conn.BeginTx(ctx, nil)
@@ -63,8 +65,8 @@ func getPendingMigrations(ctx context.Context, conn *sql.DB, localFiles []migrat
 }
 
 // migrateOneScript applies versioned migrations for versioned/data
-func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo history.MigrateHistoryRepository) (err error) {
-	useTX := !versionedMigrationRegexNtx.MatchString(file.base)
+func migrateOneScript(ctx context.Context, conn *sql.DB, file MigrationFile, mhRepo history.MigrateHistoryRepository) (err error) {
+	useTX := !versionedMigrationRegexNtx.MatchString(file.Base)
 
 	if useTX {
 		// TRANSACTION
@@ -78,20 +80,20 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 		slog.Info("migration",
 			slog.String("TX", "Y"),
 			slog.String("mode", getModeForLog(file)),
-			slog.String("name", file.base),
+			slog.String("name", file.Base),
 		)
 
 		// execute migration script
 		_, err = tx.ExecContext(ctx, string(file.data))
 		if err != nil {
-			return fmt.Errorf("error applying migration %s: %v", file.base, err)
+			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
 		}
 
 		// write history
 		if isRepeatable(file) {
 			err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
-				MhVersion: file.vers,
-				MhName:    file.base,
+				MhVersion: file.Vers,
+				MhName:    file.Base,
 				MhHash:    file.hash,
 			})
 			if err != nil {
@@ -99,8 +101,8 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 			}
 		} else {
 			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
-				MhVersion: file.vers,
-				MhName:    file.base,
+				MhVersion: file.Vers,
+				MhName:    file.Base,
 				MhHash:    file.hash,
 			})
 			if err != nil {
@@ -120,20 +122,20 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	slog.Info("migration",
 		slog.String("TX", "N"),
 		slog.String("mode", getModeForLog(file)),
-		slog.String("name", file.base),
+		slog.String("name", file.Base),
 	)
 
 	// execute migration script
 	_, err = conn.ExecContext(ctx, string(file.data))
 	if err != nil {
-		return fmt.Errorf("error applying migration %s: %v", file.base, err)
+		return fmt.Errorf("error applying migration %s: %v", file.Base, err)
 	}
 
 	// write history
 	if isRepeatable(file) {
 		err = mhRepo.SaveRepeatableNoTx(ctx, conn, &history.MigrateHistoryCreateInput{
-			MhVersion: file.vers,
-			MhName:    file.base,
+			MhVersion: file.Vers,
+			MhName:    file.Base,
 			MhHash:    file.hash,
 		})
 		if err != nil {
@@ -141,8 +143,8 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 		}
 	} else {
 		err = mhRepo.SaveVersionedNoTx(ctx, conn, &history.MigrateHistoryCreateInput{
-			MhVersion: file.vers,
-			MhName:    file.base,
+			MhVersion: file.Vers,
+			MhName:    file.Base,
 			MhHash:    file.hash,
 		})
 		if err != nil {
@@ -152,7 +154,7 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	return nil
 }
 
-func getModeForLog(file migrationFile) string {
+func getModeForLog(file MigrationFile) string {
 	if isRepeatable(file) {
 		return "REP"
 	}

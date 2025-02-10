@@ -3,10 +3,14 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"text/tabwriter"
 
 	"gopgmigrate/internal/migrate"
+	"gopgmigrate/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -52,6 +56,20 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	}(conn)
 
 	//////////////////////////////////////////////////////////////////////
+	// get pending migrations
+	pendingMigrations, err := migrate.GetPendingMigrations(ctx, conn, files, repo)
+	if err != nil {
+		slog.Error("collecting pending migrations error", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	if dryRun {
+		_ = logger.DisableLogging()
+		printPending(pendingMigrations)
+		return
+	}
+
+	//////////////////////////////////////////////////////////////////////
 	// acquire advisory lock
 	acquired, err := repo.AcquireMigrationLock(ctx, conn)
 	if err != nil {
@@ -74,11 +92,20 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations
-	err = migrate.RunMigrations(ctx, conn, files, repo)
+	err = migrate.RunMigrations(ctx, conn, repo, pendingMigrations)
 	if err != nil {
 		slog.Error("migration error", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
 	slog.Info("migrations applied successfully")
+}
+
+func printPending(migrations []migrate.MigrationFile) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
+	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH\tSTATE")
+	for _, p := range migrations {
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", p.Vers, p.Base, filepath.ToSlash(p.Path), "Pending")
+	}
+	_ = w.Flush()
 }

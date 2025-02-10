@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-func GetFiles(migrationDirectory string) ([]migrationFile, error) {
+func GetFiles(migrationDirectory string) ([]MigrationFile, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
@@ -31,8 +31,8 @@ func GetFiles(migrationDirectory string) ([]migrationFile, error) {
 }
 
 // getFilesInAPath walks path, collects all *.sql files
-func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, error) {
-	var files []migrationFile
+func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]MigrationFile, error) {
+	var files []MigrationFile
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -48,10 +48,10 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 			if err != nil {
 				return err
 			}
-			files = append(files, migrationFile{
-				vers: vers,
-				path: path,
-				base: base,
+			files = append(files, MigrationFile{
+				Vers: vers,
+				Path: path,
+				Base: base,
 				data: sql,
 				hash: computeHash(sql),
 			})
@@ -63,7 +63,7 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 	}
 	// Sort by base (Ascending)
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].base < files[j].base
+		return files[i].Base < files[j].Base
 	})
 	return files, nil
 }
@@ -105,7 +105,7 @@ func getAllStrayFiles(directory string) ([]string, error) {
 
 // routine around versioned migrations
 
-func checkVersionedMigrations(versioned []migrationFile) error {
+func checkVersionedMigrations(versioned []MigrationFile) error {
 	var err error
 
 	err = checkFilesAreUniqueByVersion(versioned)
@@ -121,10 +121,10 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 	return nil
 }
 
-func checkPossibleNoTx(versioned []migrationFile) error {
+func checkPossibleNoTx(versioned []MigrationFile) error {
 	for _, elem := range versioned {
 		// is already no-transactional file
-		if versionedMigrationRegexNtx.MatchString(elem.base) {
+		if versionedMigrationRegexNtx.MatchString(elem.Base) {
 			continue
 		}
 		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data))
@@ -138,22 +138,22 @@ func checkPossibleNoTx(versioned []migrationFile) error {
 			slog.Error("notx-statement-detected", slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."))
 
 			return fmt.Errorf("check statements in the file: [%s]",
-				filepath.ToSlash(elem.path),
+				filepath.ToSlash(elem.Path),
 			)
 		}
 	}
 	return nil
 }
 
-func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
+func checkFilesAreUniqueByVersion(versioned []MigrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
-		if _, ok := seenVersions[f.vers]; ok {
+		if _, ok := seenVersions[f.Vers]; ok {
 			return fmt.Errorf("%s is used a version that already in use",
-				filepath.ToSlash(f.path),
+				filepath.ToSlash(f.Path),
 			)
 		}
-		seenVersions[f.vers] = true
+		seenVersions[f.Vers] = true
 	}
 	return nil
 }
