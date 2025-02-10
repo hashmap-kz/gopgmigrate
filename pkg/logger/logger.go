@@ -18,7 +18,7 @@ func InitLogger(enc, lvl string) *slog.Logger {
 		Level: getLoggerLevel(lvl),
 	}
 	var logger *slog.Logger
-	if enc == "console" {
+	if enc == "console" || enc == "text" {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, opts))
 	} else {
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, opts))
