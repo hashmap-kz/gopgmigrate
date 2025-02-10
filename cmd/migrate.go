@@ -92,7 +92,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations
-	err = migrate.RunMigrations(ctx, conn, repo, pendingMigrations)
+	err = migrate.RunMigrations(ctx, conn, repo, pendingMigrations, true)
 	if err != nil {
 		slog.Error("migration error", slog.String("err", err.Error()))
 		os.Exit(1)

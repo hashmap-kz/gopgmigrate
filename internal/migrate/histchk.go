@@ -1,8 +1,12 @@
 package migrate
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
+
+	"gopgmigrate/internal/history"
 )
 
 type AppliedHistoryItem struct {
@@ -11,6 +15,45 @@ type AppliedHistoryItem struct {
 }
 
 type AppliedHistory map[string]AppliedHistoryItem
+
+func GetPendingMigrations(
+	ctx context.Context,
+	conn *sql.DB,
+	localFiles []MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+) ([]MigrationFile, error) {
+	var err error
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	err = mhRepo.CreateHistoryTable(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	// check that all applied migrations are present in files list
+	migrateHistory, err := mhRepo.ListAll(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	appliedMigrations := createAppliedHistoryIndex(migrateHistory)
+	err = checkAppliedHistoryWithLocalFiles(appliedMigrations, localFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	return getVersionedMigrationsToApply(appliedMigrations, localFiles)
+}
 
 // applied
 
@@ -68,6 +111,8 @@ func getVersionedMigrationsToApply(appliedMigrations AppliedHistory, localFiles 
 	return toApply, nil
 }
 
+// utils
+
 func findHist(base string, appliedMigrations AppliedHistory) *AppliedHistoryItem {
 	if existing, ok := appliedMigrations[base]; ok {
 		return &existing
@@ -77,4 +122,15 @@ func findHist(base string, appliedMigrations AppliedHistory) *AppliedHistoryItem
 
 func isRepeatable(file MigrationFile) bool {
 	return repeatableMigrationRegexDo.MatchString(file.Base)
+}
+
+func createAppliedHistoryIndex(hist []history.MigrateHistory) AppliedHistory {
+	r := AppliedHistory{}
+	for _, elem := range hist {
+		r[elem.MhName] = AppliedHistoryItem{
+			MhName: elem.MhName,
+			MhHash: elem.MhHash,
+		}
+	}
+	return r
 }
