@@ -20,6 +20,16 @@ strictly ordered.
 
 ![Migration Naming Convention](assets/migration-names.png)
 
+### Reasons:
+
+- It is much easier to sort and maintain files by using their extensions (than using prefixes/suffixes in their names).
+- Strict distinction between do/undo/repeatable scripts: files are not mixed, and may be safely executed using bash and
+  terminal
+  without any need of any migration tool.
+- You may place files in any directory/subdirectory you want, combine undo scripts in one place, combine repeatable in
+  the other one, create versioned directories (by release name, tag-name, etc...), create envs directories (dev, stage,
+  etc...), with only one condition: **`version numbering is global`**. 
+
 ---
 
 ## Installation
