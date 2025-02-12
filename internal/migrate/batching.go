@@ -7,33 +7,22 @@ type BatchEntries struct {
 	UseTX bool
 }
 
-func parseFilesIntoBatchEntries(input []MigrationFile) ([]BatchEntries, error) {
-	var batches []BatchEntries
-	var currentBatch BatchEntries
+func parseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntries, error) {
+	var batches []*BatchEntries
+	var current []MigrationFile
 
 	for i, file := range input {
-		fileIsTx := isTx(file)
-
 		// Start a new batch if current batch is empty or if transactional status changes
-		if len(currentBatch.Files) == 0 || isTx(currentBatch.Files[len(currentBatch.Files)-1]) == fileIsTx {
-			currentBatch.Files = append(currentBatch.Files, file)
+		if len(current) == 0 || isTx(current[len(current)-1]) == isTx(file) {
+			current = append(current, file)
 		} else {
 			// Store the current batch before starting a new one
-			batches = append(batches, currentBatch)
-			currentBatch = BatchEntries{
-				Files: []MigrationFile{file},
-				UseTX: fileIsTx, // Set UseTX based on the new batch's first file
-			}
+			batches = append(batches, &BatchEntries{Files: current})
+			current = []MigrationFile{file}
 		}
-
-		// Set UseTX for the first file in a batch
-		if len(currentBatch.Files) == 1 {
-			currentBatch.UseTX = fileIsTx
-		}
-
 		// Store the last batch at the end
 		if i == len(input)-1 {
-			batches = append(batches, currentBatch)
+			batches = append(batches, &BatchEntries{Files: current})
 		}
 	}
 
@@ -44,6 +33,13 @@ func parseFilesIntoBatchEntries(input []MigrationFile) ([]BatchEntries, error) {
 	}
 	if total != len(input) {
 		return nil, fmt.Errorf("error splitting files into batches")
+	}
+
+	// Assign TX flags
+	for _, elem := range batches {
+		if len(elem.Files) > 0 {
+			elem.UseTX = isTx(elem.Files[0])
+		}
 	}
 
 	return batches, nil
