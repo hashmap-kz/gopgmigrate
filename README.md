@@ -171,17 +171,6 @@ The discovery process is recursive.
 File names **always** start with a version number (`00001-`) and have the `.sql` extension.  
 Each file's version number should increase sequentially.
 
-Example layout:
-
-  ```
-  migrations/
-    00001-init.sql
-    00002-users.sql
-    subdir/
-      00003-orders.sql
-      00004-products.sql
-  ```
-
 Since scanning is recursive, **version numbering is global** across all directories.  
 A subdirectory **cannot contain a file with a version number that is already used** in a higher-level directory.
 
