@@ -2,13 +2,13 @@ package migrate
 
 import "fmt"
 
-type BatchEntries struct {
+type BatchEntry struct {
 	Files []MigrationFile
 	UseTX bool
 }
 
-func ParseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntries, error) {
-	var batches []*BatchEntries
+func ParseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntry, error) {
+	var batches []*BatchEntry
 	var current []MigrationFile
 
 	for i, file := range input {
@@ -17,12 +17,12 @@ func ParseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntries, error) 
 			current = append(current, file)
 		} else {
 			// Store the current batch before starting a new one
-			batches = append(batches, &BatchEntries{Files: current})
+			batches = append(batches, &BatchEntry{Files: current})
 			current = []MigrationFile{file}
 		}
 		// Store the last batch at the end
 		if i == len(input)-1 {
-			batches = append(batches, &BatchEntries{Files: current})
+			batches = append(batches, &BatchEntry{Files: current})
 		}
 	}
 

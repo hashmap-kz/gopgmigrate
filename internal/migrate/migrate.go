@@ -21,12 +21,70 @@ func RunMigrations(
 	pending []MigrationFile,
 	directionDo bool,
 ) error {
-	for _, f := range pending {
-		err := migrateOneScript(ctx, db, f, mhRepo, directionDo)
+	for _, elem := range pending {
+		err := migrateOneScript(ctx, db, elem, mhRepo, directionDo)
 		if err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+// RunMigrations applies both versioned and repeatable migrations
+func RunBatchMigrations(
+	ctx context.Context,
+	db *sql.DB,
+	mhRepo history.MigrateHistoryRepository,
+	batches []*BatchEntry,
+	directionDo bool,
+) error {
+	for _, elem := range batches {
+		err := migrateOneBatch(ctx, db, elem, mhRepo, directionDo)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateOneBatch(
+	ctx context.Context,
+	db *sql.DB,
+	batch *BatchEntry,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	if batch.UseTX {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		for _, file := range batch.Files {
+			script := []string{string(file.data)}
+			err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
+			if err != nil {
+				return err
+			}
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return err
+		}
+		return nil
+
+	} else {
+		for _, file := range batch.Files {
+			script, _ := stmts.SplitSQLStatements(string(file.data))
+			err = migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -64,7 +122,7 @@ func migrateOneScript(
 
 	// NO TRANSACTION
 
-	script, _ := stmts.SplitSQLStatements2(string(file.data))
+	script, _ := stmts.SplitSQLStatements(string(file.data))
 	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
 }
 

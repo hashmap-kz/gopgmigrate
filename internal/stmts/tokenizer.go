@@ -344,7 +344,7 @@ func (p *Parser) parseSQL() []string {
 	return statements
 }
 
-func SplitSQLStatements2(sql string) ([]string, error) {
+func SplitSQLStatements(sql string) ([]string, error) {
 	// Tokenize input
 	tokenizer := &Tokenizer{sql: sql}
 	var tokens []Token

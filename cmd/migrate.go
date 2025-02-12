@@ -99,10 +99,23 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations
-	err = migrate.RunMigrations(ctx, conn, repo, pendingMigrations, true)
-	if err != nil {
-		slog.Error("migration error", slog.String("err", err.Error()))
-		os.Exit(1)
+	if migrateBatch {
+		batchEntries, err := migrate.ParseFilesIntoBatchEntries(pendingMigrations)
+		if err != nil {
+			slog.Error("migration error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+		err = migrate.RunBatchMigrations(ctx, conn, repo, batchEntries, true)
+		if err != nil {
+			slog.Error("migration error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+	} else {
+		err = migrate.RunMigrations(ctx, conn, repo, pendingMigrations, true)
+		if err != nil {
+			slog.Error("migration error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
 	}
 
 	slog.Info("migrations applied successfully")

@@ -251,7 +251,7 @@ func TestSplitSQLStatements2(t *testing.T) {
 // Utils
 
 func splitTrimSpaces(sql string) []string {
-	statements, err := SplitSQLStatements2(sql)
+	statements, err := SplitSQLStatements(sql)
 	if err != nil {
 		return []string{}
 	}
@@ -263,7 +263,7 @@ func splitTrimSpaces(sql string) []string {
 }
 
 func checkSplitStmt(inputSQL string, expected []string) bool {
-	statements, err := SplitSQLStatements2(inputSQL)
+	statements, err := SplitSQLStatements(inputSQL)
 	if err != nil {
 		return false
 	}
@@ -280,7 +280,7 @@ func checkSplitStmt(inputSQL string, expected []string) bool {
 }
 
 func checkSplit(inputSQL string) (string, int) {
-	statements, err := SplitSQLStatements2(inputSQL)
+	statements, err := SplitSQLStatements(inputSQL)
 	if err != nil {
 		return "", -1
 	}
