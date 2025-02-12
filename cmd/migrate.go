@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	dbmsVendorPostgres   = "postgresql"
+	dbmsVendorPostgresql = "postgresql"
 	dbmsVendorClickhouse = "clickhouse"
 )
 

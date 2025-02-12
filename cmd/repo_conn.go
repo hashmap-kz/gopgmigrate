@@ -17,7 +17,7 @@ func getRepoAndConn(ctx context.Context) (history.MigrateHistoryRepository, *sql
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
-	if cliOptions.dbms == dbmsVendorPostgres {
+	if cliOptions.dbms == dbmsVendorPostgresql {
 		repo = impl.NewMigrateHistoryPostgresRepository(ctx, cliOptions.historyTableName)
 		conn, err = dbms.GetDatabaseConnectionPostgres(cliOptions.connStr)
 		if err != nil {
