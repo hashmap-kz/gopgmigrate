@@ -41,7 +41,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 			mh_txid		  text 			not null default pg_current_xact_id()::text,
 			constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
 			constraint check_version_unsigned 	check (mh_version >= 0 ),
-			constraint check_filename 			check (mh_name ~ '^(\d{5})-([a-zA-Z0-9_.-]+)\.(do|dontx|r|rntx)\.sql$')
+			constraint check_filename 			check (mh_name ~ '^(\d{5})-([[:alnum:]_-]+)(?:\.ntx)?\.(do|r)\.sql$')
 		);
 	`, r.tableName)
 
