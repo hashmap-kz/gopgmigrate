@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"gopgmigrate/internal/stmts"
+
 	"gopgmigrate/internal/dbms"
 
 	"gopgmigrate/internal/history"
@@ -47,7 +49,8 @@ func migrateOneScript(
 		}
 		defer tx.Rollback()
 
-		err = migrateOneScriptFn(ctx, tx, file, mhRepo, directionDo, "+")
+		script := []string{string(file.data)}
+		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
 		if err != nil {
 			return err
 		}
@@ -61,12 +64,14 @@ func migrateOneScript(
 
 	// NO TRANSACTION
 
-	return migrateOneScriptFn(ctx, db, file, mhRepo, directionDo, "N")
+	script, _ := stmts.SplitSQLStatements2(string(file.data))
+	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
 }
 
 func migrateOneScriptFn(
 	ctx context.Context,
 	tx dbms.Transaction,
+	script []string,
 	file MigrationFile,
 	mhRepo history.MigrateHistoryRepository,
 	directionDo bool,
@@ -80,9 +85,11 @@ func migrateOneScriptFn(
 	)
 
 	// execute migration script
-	_, err = tx.ExecContext(ctx, string(file.data))
-	if err != nil {
-		return fmt.Errorf("error applying migration %s: %v", file.Base, err)
+	for _, stmt := range script {
+		_, err = tx.ExecContext(ctx, stmt)
+		if err != nil {
+			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
+		}
 	}
 
 	// write history
