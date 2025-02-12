@@ -77,8 +77,8 @@ There are three migration modes:
       into individual SQL statements, which are executed **one by one**.
 
 - **group** - Executes all pending files as a single **group**.
-    - All files must either be executed within **one transaction** (if transactional) or all must be **non-transactional
-      ** (`*.ntx.*`).
+    - All files must either be executed within **one transaction** (if transactional) or all
+      must be **non-transactional** (`*.ntx.*`).
 
 - **mixed** - Splits pending migrations into **separate transactional and non-transactional groups**.
     - If a group is **transactional**, all files within it are applied **within a single transaction**.
