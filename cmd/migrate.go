@@ -20,7 +20,7 @@ const (
 	dbmsVendorClickhouse = "clickhouse"
 )
 
-var migrateGroupMode bool
+var migrateGroupMode string
 
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
@@ -30,7 +30,7 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
-	migrateCmd.Flags().BoolVar(&migrateGroupMode, "group", false, "Perform batching during migration: execute all transactional and non-transactional sequences group by group")
+	migrateCmd.Flags().StringVar(&migrateGroupMode, "mode", "plain", "Migration mode: plain/group/mixed")
 	rootCmd.AddCommand(migrateCmd)
 }
 
@@ -68,7 +68,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	if dryRun {
 		_ = logger.DisableLogging()
-		if migrateGroupMode {
+		if migrateGroupMode == "mixed" {
 			printPendingGroups(pendingMigrations)
 		} else {
 			printPending(pendingMigrations)
@@ -99,13 +99,13 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations
-	if migrateGroupMode {
+	if migrateGroupMode == "mixed" {
 		batchEntries, err := migrate.ParseFilesIntoGroupEntries(pendingMigrations)
 		if err != nil {
 			slog.Error("migration error", slog.String("err", err.Error()))
 			os.Exit(1)
 		}
-		err = migrate.RunMigrationsGroupMode(ctx, conn, repo, batchEntries, true)
+		err = migrate.RunMigrationsMixedMode(ctx, conn, repo, batchEntries, true)
 		if err != nil {
 			slog.Error("migration error", slog.String("err", err.Error()))
 			os.Exit(1)

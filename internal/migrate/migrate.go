@@ -2,8 +2,11 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
+
+	"gopgmigrate/internal/stmts"
 
 	"gopgmigrate/internal/dbms"
 
@@ -64,6 +67,74 @@ func migrateOneScriptFn(
 		}
 	}
 
+	return nil
+}
+
+func migrateListOfFilesInTxFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, file := range files {
+		script := []string{string(file.data)}
+		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo, "+")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func migrateListOfFilesNoTxFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	for _, file := range files {
+		script, _ := stmts.SplitSQLStatements(string(file.data))
+		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateListOfFilesFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	useTx bool,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	if useTx {
+		err = migrateListOfFilesInTxFn(ctx, db, files, repo, directionDo)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	err = migrateListOfFilesNoTxFn(ctx, db, files, repo, directionDo)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
