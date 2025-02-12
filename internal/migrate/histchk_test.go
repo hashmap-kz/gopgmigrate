@@ -2,21 +2,23 @@ package migrate
 
 import (
 	"testing"
+
+	"gopgmigrate/internal/history"
 )
 
 func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
-		applied     AppliedHistoryUnsortedIndex
+		applied     []history.MigrateHistory
 		files       []MigrationFile
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All applied migrations exist locally",
-			applied: AppliedHistoryUnsortedIndex{
-				"001-init.do.sql":  AppliedHistoryItem{},
-				"002-users.do.sql": AppliedHistoryItem{},
+			applied: []history.MigrateHistory{
+				{MhName: "001-init.do.sql"},
+				{MhName: "002-users.do.sql"},
 			},
 			files: []MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -26,9 +28,9 @@ func TestCheckHistory(t *testing.T) {
 		},
 		{
 			name: "Applied migration missing in local files",
-			applied: AppliedHistoryUnsortedIndex{
-				"001-init.do.sql": AppliedHistoryItem{},
-				"003-missing.sql": AppliedHistoryItem{}, // Missing file
+			applied: []history.MigrateHistory{
+				{MhName: "001-init.do.sql"},
+				{MhName: "003-missing.sql"}, // Missing file
 			},
 			files: []MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -60,16 +62,16 @@ func TestCheckHistory(t *testing.T) {
 func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 	tests := []struct {
 		name        string
-		migrations  AppliedHistoryUnsortedIndex
+		migrations  []history.MigrateHistory
 		files       []MigrationFile
 		expectError bool
 		expectedErr string
 	}{
 		{
 			name: "All migrations exist locally",
-			migrations: AppliedHistoryUnsortedIndex{
-				"001-init.do.sql":  AppliedHistoryItem{},
-				"002-users.do.sql": AppliedHistoryItem{},
+			migrations: []history.MigrateHistory{
+				{MhName: "001-init.do.sql"},
+				{MhName: "002-users.do.sql"},
 			},
 			files: []MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -79,9 +81,9 @@ func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 		},
 		{
 			name: "A migration is missing locally",
-			migrations: AppliedHistoryUnsortedIndex{
-				"001-init.do.sql": AppliedHistoryItem{},
-				"003-missing.sql": AppliedHistoryItem{},
+			migrations: []history.MigrateHistory{
+				{MhName: "001-init.do.sql"},
+				{MhName: "003-missing.sql"},
 			},
 			files: []MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -94,7 +96,7 @@ func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := checkHistoryTableIsSyncedWithLocalFiles(test.migrations, test.files)
+			err := checkAppliedHistoryWithLocalFiles(test.migrations, test.files)
 			if test.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
@@ -154,8 +156,8 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", data: []byte("users")},
 	}
 
-	mockHistory := AppliedHistoryUnsortedIndex{
-		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "1"},
+	mockHistory := []history.MigrateHistory{
+		{MhName: "00001-init.do.sql", MhHash: "1"},
 	}
 
 	toApply, err := getVersionedMigrationsToApply(mockHistory, mockFiles)
@@ -168,7 +170,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 	}
 
 	// Test hash mismatch scenario
-	mockHistory["00002-users.do.sql"] = AppliedHistoryItem{MhName: "00002-users.do.sql", MhHash: "wrong-hash"}
+	mockHistory = append(mockHistory, history.MigrateHistory{MhName: "00002-users.do.sql", MhHash: "wrong-hash"})
 	_, err = getVersionedMigrationsToApply(mockHistory, mockFiles)
 	if err == nil {
 		t.Errorf("Expected hash mismatch error but got nil")
@@ -177,8 +179,8 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 
 // Test findHist function
 func TestFindHist(t *testing.T) {
-	mockHistory := AppliedHistoryUnsortedIndex{
-		"00001-init.do.sql": {MhName: "00001-init.do.sql", MhHash: "hash1"},
+	mockHistory := []history.MigrateHistory{
+		{MhName: "00001-init.do.sql", MhHash: "hash1"},
 	}
 
 	found := findHist("00001-init.do.sql", mockHistory)
