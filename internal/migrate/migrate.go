@@ -99,6 +99,7 @@ func migrateListOfFilesInTxFn(
 	return nil
 }
 
+// non-transactional scripts are executed statement-by-statement
 func migrateListOfFilesNoTxFn(
 	ctx context.Context,
 	db *sql.DB,
