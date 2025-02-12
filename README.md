@@ -12,8 +12,7 @@ strictly ordered.
 - **Strictness**: This tool is designed to be simple in use and strict by rules.
 - **Versioned Migrations**: Runs migrations sequentially, ensuring each version is applied once.
 - **Repeatable Migrations**: Re-applies if the SQL script changes (hash-based detection).
-- **Transactional Execution**: Ensures all migrations in a current iteration run either within a single transaction
-  either all executed non-transactional.
+- **Migration Modes**: `plain`, `group`, `mixed` modes, with robust transaction handling model.
 
 --- 
 
@@ -58,20 +57,40 @@ export PGMIGRATE_LOG_MODE=console
 ## Quick start
 
 TODO
+
 ```
-go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --group
+go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --mode=mixed
 ```
 
 ---
 
 # Migration Documentation
 
-## I. Migration Directory Structure
+## Migration Modes
+
+There are three migration modes:
+
+- **plain (default)** - Executes all pending files one by one.
+    - If a file is **transactional** (`*.do.sql`, `*.r.sql`, `*.undo.sql`), all statements within the file are executed
+      in a **single transaction**.
+    - If a file is **non-transactional** (`*.ntx.do.sql`, `*.ntx.r.sql`, `*.ntx.undo.sql`), the file's content is split
+      into individual SQL statements, which are executed **one by one**.
+
+- **group** - Executes all pending files as a single **group**.
+    - All files must either be executed within **one transaction** (if transactional) or all must be **non-transactional
+      ** (`*.ntx.*`).
+
+- **mixed** - Splits pending migrations into **separate transactional and non-transactional groups**.
+    - If a group is **transactional**, all files within it are applied **within a single transaction**.
+    - If a group is **non-transactional**, each file is executed **individually**, following the behavior of **plain
+      mode**.
+
+## Migration Directory Structure
 
 Migration files can be placed in directories and subdirectories.  
 The discovery process is recursive.
 
-File names **always** start with a version number (`000001-`) and have the `.sql` extension.  
+File names **always** start with a version number (`00001-`) and have the `.sql` extension.  
 Each file's version number should increase sequentially.
 
 Example layout:
@@ -105,27 +124,11 @@ find migrations/ -type f \( -iname \*.r.sql -o -iname \*.do.sql \) -exec basenam
 
 ---
 
-## II. Migration Iterations and Transaction Handling
+## Planning Migration Steps
 
-Each migration step is called an **iteration**.  
-An iteration can be either **transactional** or **non-transactional**.
+You are responsible for carefully planning each migration step.
 
-If an iteration consists of multiple migration files (e.g., 20 files), all of them must be applied **either**:
-
-- Within a **single transaction**, ensuring atomicity.
-- **Individually, outside of a transaction**, applied file by file (technically, statement by statement within each
-  file).
-
-You **cannot mix** transactional (`*.do.sql`) and non-transactional (`*.ntx.do.sql`) files within the same migration
-step.
-
-### Planning Migration Steps
-
-You are responsible for carefully planning each migration step.  
-If the system detects that a file **cannot be executed within a transaction** (based on content pattern matching), it
-will raise an **error with a diagnostic message**.
-
-#### Example Considerations:
+### Example Considerations:
 
 - **PostgreSQL** allows most **DDL statements** to be executed within transactions, while some other database systems do
   not.
@@ -138,9 +141,9 @@ will raise an **error with a diagnostic message**.
 
 ---
 
-## III. Handling Unexpected Database States
+## Handling Unexpected Database States
 
-This **iteration-based** approach is chosen because it is the most robust.
+This **iteration-based** approach (with group/mixed modes) is chosen because it is the most robust.
 For example, during the development process, you may need to apply multiple migrations each week.
 When applying migrations in a production environment, if a script fails, you must resolve the issue quickly, as some
 scripts may have already been applied while others have not.
@@ -168,3 +171,28 @@ We welcome contributions! To contribute: see the [Contribution](CONTRIBUTING.md)
 ## **License**
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
