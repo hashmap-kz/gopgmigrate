@@ -18,7 +18,7 @@ func RunMigrationsMixedMode(
 ) error {
 	for _, elem := range groups {
 		if elem == nil {
-			return fmt.Errorf("internal error. unexpected nil group")
+			return fmt.Errorf("internal error. unexpected nil group, func: RunMigrationsMixedMode")
 		}
 		err := migrateListOfFilesFn(ctx, db, elem.Files, elem.UseTX, repo, directionDo)
 		if err != nil {
