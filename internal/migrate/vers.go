@@ -8,16 +8,28 @@ import (
 )
 
 var (
+	// versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(do|dontx|r|rntx)\.sql$`)
+
+	// \p{L} → Matches any Unicode letter (e.g., a-z, ä, 汉)
+	// \p{N} → Matches any Unicode number (e.g., 0-9, ①)
+	// \p{Pd} → Matches dashes (-)
+	// \p{Pc} → Matches underscores (_)
+	//
 	// example: 00003-users.do.sql
-	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(do|dontx|r|rntx)\.sql$`)
+	// example: 00004-fn_list_users.r.sql
+	// example: 00005-fn-list-roles.r.sql
+	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([\p{L}\p{N}\p{Pd}\p{Pc}]+)(?:\.ntx)?\.(do|r)\.sql$`)
 
 	// example: 00003-users.undo.sql
-	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(undo|undontx)\.sql$`)
+	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-([\p{L}\p{N}\p{Pd}\p{Pc}]+)(?:\.ntx)?\.(undo)\.sql$`)
 
 	// example: 00009-fn_get_roles.r.sql
-	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(r|rntx)\.sql$`)
+	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([\p{L}\p{N}\p{Pd}\p{Pc}]+)(?:\.ntx)?\.(r)\.sql$`)
 
-	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(dontx|rntx)\.sql$`)
+	// example: 00003-vacuum-users.ntx.do.sql
+	// example: 00004-fn_alter_system_1.ntx.r.sql
+	// example: 00005-fn-alter-system-configs.ntx.r.sql
+	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-([\p{L}\p{N}\p{Pd}\p{Pc}]+)\.ntx\.(do|r)\.sql$`)
 
 	// create schema m$yschema1;
 	// create table m$yschema1.m$table (id int);
