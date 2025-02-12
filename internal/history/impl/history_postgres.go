@@ -38,6 +38,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 			mh_hash       text          not null,
 			mh_applied_by name          not null default session_user,
 			mh_applied_at timestamptz   not null default transaction_timestamp(),
+			mh_txid		  text 			not null default pg_current_xact_id()::text,
 			constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
 			constraint check_version_unsigned 	check (mh_version >= 0 ),
 			constraint check_filename 			check (mh_name ~ '^(\d{5})-([a-zA-Z0-9_.-]+)\.(do|dontx|r|rntx)\.sql$')
@@ -66,7 +67,8 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 			mh_name,
 			mh_hash,
 			mh_applied_by,
-			mh_applied_at
+			mh_applied_at,
+			mh_txid
 		`, r.tableName)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
@@ -82,7 +84,8 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, t
 			update %s
 				set mh_hash = $3,
 					mh_applied_by = session_user,
-					mh_applied_at = transaction_timestamp()
+					mh_applied_at = transaction_timestamp(),
+					mh_txid = pg_current_xact_id()::text
 				where mh_name = $2
 				returning id)
 		insert
@@ -111,7 +114,8 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.
 			mh_name,
 			mh_hash,
 			mh_applied_by,
-			mh_applied_at
+			mh_applied_at,
+			mh_txid
 		from %s
 		order by mh_version
 	`, r.tableName)
@@ -179,6 +183,7 @@ func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 		&scannedEntity.MhHash,
 		&scannedEntity.MhAppliedBy,
 		&scannedEntity.MhAppliedAt,
+		&scannedEntity.MhTxid,
 	)
 	if err != nil {
 		return nil, err
