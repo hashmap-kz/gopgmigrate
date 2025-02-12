@@ -233,7 +233,34 @@ func TestParseSQL(t *testing.T) {
 	}
 }
 
+func TestSplitSQLStatements2(t *testing.T) {
+	sql := `
+	SELECT * FROM users;
+	INSERT INTO users (name) VALUES ('Alice');
+	`
+	statements := splitTrimSpaces(sql)
+	expected := []string{
+		"SELECT * FROM users;",
+		"INSERT INTO users (name) VALUES ('Alice');",
+	}
+	if !reflect.DeepEqual(statements, expected) {
+		t.Errorf("Expected %v, got %v", expected, statements)
+	}
+}
+
 // Utils
+
+func splitTrimSpaces(sql string) []string {
+	statements, err := SplitSQLStatements2(sql)
+	if err != nil {
+		return []string{}
+	}
+	results := []string{}
+	for _, elem := range statements {
+		results = append(results, strings.TrimSpace(elem))
+	}
+	return results
+}
 
 func checkSplitStmt(inputSQL string, expected []string) bool {
 	statements, err := SplitSQLStatements2(inputSQL)
