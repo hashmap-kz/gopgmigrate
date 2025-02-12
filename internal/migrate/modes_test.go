@@ -72,7 +72,7 @@ func TestBatchResolving1(t *testing.T) {
 		},
 	}
 
-	checkBatching(t, tests)
+	checkMixedMode(t, tests)
 }
 
 func TestBatchResolving2(t *testing.T) {
@@ -105,7 +105,7 @@ func TestBatchResolving2(t *testing.T) {
 		},
 	}
 
-	checkBatching(t, tests)
+	checkMixedMode(t, tests)
 }
 
 func TestBatchResolving3(t *testing.T) {
@@ -131,7 +131,7 @@ func TestBatchResolving3(t *testing.T) {
 		},
 	}
 
-	checkBatching(t, tests)
+	checkMixedMode(t, tests)
 }
 
 func TestBatchResolving4(t *testing.T) {
@@ -157,7 +157,7 @@ func TestBatchResolving4(t *testing.T) {
 		},
 	}
 
-	checkBatching(t, tests)
+	checkMixedMode(t, tests)
 }
 
 func TestBatchResolving5(t *testing.T) {
@@ -174,10 +174,118 @@ func TestBatchResolving5(t *testing.T) {
 		},
 	}
 
-	checkBatching(t, tests)
+	checkMixedMode(t, tests)
 }
 
-func checkBatching(t *testing.T, tests []struct {
+func TestBatchResolving6(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []MigrationFile
+		expected    GroupEntry
+		expectError bool
+	}{
+		{
+			name: "group-mode-1",
+
+			input: []MigrationFile{
+				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00007-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00008-non-transactional.ntx.do.sql"}, // 1
+			},
+			expected: GroupEntry{
+				Files: []MigrationFile{
+					{Base: "00006-non-transactional.ntx.do.sql"}, // 1
+					{Base: "00007-non-transactional.ntx.do.sql"}, // 1
+					{Base: "00008-non-transactional.ntx.do.sql"}, // 1
+				},
+				UseTX: false,
+			},
+		},
+	}
+
+	checkGroupMode(t, tests)
+}
+
+func TestBatchResolving7(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []MigrationFile
+		expected    GroupEntry
+		expectError bool
+	}{
+		{
+			name: "group-mode-2",
+
+			input: []MigrationFile{
+				{Base: "00006-transactional.do.sql"}, // 1
+				{Base: "00007-transactional.do.sql"}, // 1
+				{Base: "00008-transactional.do.sql"}, // 1
+			},
+			expected: GroupEntry{
+				Files: []MigrationFile{
+					{Base: "00006-transactional.do.sql"}, // 1
+					{Base: "00007-transactional.do.sql"}, // 1
+					{Base: "00008-transactional.do.sql"}, // 1
+				},
+				UseTX: true,
+			},
+		},
+	}
+
+	checkGroupMode(t, tests)
+}
+
+func TestBatchResolving8(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []MigrationFile
+		expected    GroupEntry
+		expectError bool
+	}{
+		{
+			name: "group-mode-3",
+
+			input: []MigrationFile{
+				{Base: "00006-transactional.do.sql"},         // 1
+				{Base: "00007-non-transactional.ntx.do.sql"}, // should fail
+			},
+			expected:    GroupEntry{},
+			expectError: true,
+		},
+	}
+
+	checkGroupMode(t, tests)
+}
+
+func checkGroupMode(t *testing.T, tests []struct {
+	name        string
+	input       []MigrationFile
+	expected    GroupEntry
+	expectError bool
+},
+) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g, err := ParseFilesGroupMode(test.input)
+			if err != nil && !test.expectError {
+				t.Fatal(err)
+			}
+			if err == nil && test.expectError {
+				t.Fatalf("expect error, but got none")
+			}
+			if len(g.Files) != len(test.expected.Files) {
+				t.Fatalf("test fail: %s", test.name)
+			}
+			for i := 0; i < len(g.Files); i++ {
+				if !reflect.DeepEqual(test.expected.Files[i], g.Files[i]) {
+					t.Fatalf("expected: %+v, actual: %+v", test.expected.Files[i], g.Files[i])
+				}
+			}
+		})
+	}
+}
+
+func checkMixedMode(t *testing.T, tests []struct {
 	name     string
 	input    []MigrationFile
 	expected []*GroupEntry
