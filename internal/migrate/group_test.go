@@ -185,7 +185,7 @@ func checkBatching(t *testing.T, tests []struct {
 ) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entries, err := ParseFilesIntoGroupEntries(test.input)
+			entries, err := ParseFilesMixedMode(test.input)
 			if err != nil {
 				t.Fatal(err)
 			}

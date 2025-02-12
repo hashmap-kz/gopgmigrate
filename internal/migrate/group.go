@@ -7,7 +7,28 @@ type GroupEntry struct {
 	UseTX bool
 }
 
-func ParseFilesIntoGroupEntries(input []MigrationFile) ([]*GroupEntry, error) {
+func ParseFilesGroupMode(input []MigrationFile) (GroupEntry, error) {
+	if len(input) == 0 {
+		return GroupEntry{}, nil
+	}
+
+	var result []MigrationFile
+	useTx := isTx(input[0])
+
+	for _, elem := range input {
+		if isTx(elem) != useTx {
+			return GroupEntry{}, fmt.Errorf("in group mode all files should be either all TX either all NO-TX")
+		}
+		result = append(result, elem)
+	}
+
+	return GroupEntry{
+		Files: result,
+		UseTX: useTx,
+	}, nil
+}
+
+func ParseFilesMixedMode(input []MigrationFile) ([]*GroupEntry, error) {
 	var batches []*GroupEntry
 	var current []MigrationFile
 

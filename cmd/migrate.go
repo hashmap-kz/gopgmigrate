@@ -18,9 +18,22 @@ import (
 const (
 	dbmsVendorPostgresql = "postgresql"
 	dbmsVendorClickhouse = "clickhouse"
+
+	// MigrateModeGroup applies all pending migrations as a single "group".
+	// This means that all migrations must either be executed within a single transaction (if they are transactional)
+	// or all must be non-transactional.
+	migrateModeGroup string = "group"
+
+	// MigrateModeMixed applies all pending migrations in separate transactional and non-transactional groups.
+	// Migrations are divided into list of groups: each group contains list of files transactional or non-transactional, and each group is executed separately.
+	migrateModeMixed string = "mixed"
+
+	// MigrateModePlain executes migrations one by one, without grouping.
+	// Each migration script is applied individually in sequence.
+	migrateModePlain string = "plain"
 )
 
-var migrateGroupMode string
+var migrateMode string
 
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
@@ -30,7 +43,7 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
-	migrateCmd.Flags().StringVar(&migrateGroupMode, "mode", "plain", "Migration mode: plain/group/mixed")
+	migrateCmd.Flags().StringVar(&migrateMode, "mode", migrateModePlain, "Migration mode: plain/group/mixed")
 	rootCmd.AddCommand(migrateCmd)
 }
 
@@ -68,7 +81,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	if dryRun {
 		_ = logger.DisableLogging()
-		if migrateGroupMode == "mixed" {
+		if migrateMode == migrateModeMixed {
 			printPendingGroups(pendingMigrations)
 		} else {
 			printPending(pendingMigrations)
@@ -99,8 +112,8 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations
-	if migrateGroupMode == "mixed" {
-		batchEntries, err := migrate.ParseFilesIntoGroupEntries(pendingMigrations)
+	if migrateMode == migrateModeMixed {
+		batchEntries, err := migrate.ParseFilesMixedMode(pendingMigrations)
 		if err != nil {
 			slog.Error("migration error", slog.String("err", err.Error()))
 			os.Exit(1)
@@ -110,12 +123,26 @@ func runMigrations(cmd *cobra.Command, args []string) {
 			slog.Error("migration error", slog.String("err", err.Error()))
 			os.Exit(1)
 		}
-	} else {
+	} else if migrateMode == migrateModePlain {
 		err = migrate.RunMigrationsPlainMode(ctx, conn, repo, pendingMigrations, true)
 		if err != nil {
 			slog.Error("migration error", slog.String("err", err.Error()))
 			os.Exit(1)
 		}
+	} else if migrateMode == migrateModeGroup {
+		groupEntry, err := migrate.ParseFilesGroupMode(pendingMigrations)
+		if err != nil {
+			slog.Error("migration error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+		err = migrate.RunMigrationsGroupMode(ctx, conn, repo, groupEntry, true)
+		if err != nil {
+			slog.Error("migration error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+	} else {
+		slog.Error("migration error", slog.String("unknown-mode", migrateMode))
+		os.Exit(1)
 	}
 
 	slog.Info("migrations applied successfully")
@@ -135,7 +162,7 @@ func printEntries(migrations []migrate.MigrationFile, w *tabwriter.Writer) {
 }
 
 func printPendingGroups(migrations []migrate.MigrationFile) {
-	entries, err := migrate.ParseFilesIntoGroupEntries(migrations)
+	entries, err := migrate.ParseFilesMixedMode(migrations)
 	if err != nil {
 		return
 	}
