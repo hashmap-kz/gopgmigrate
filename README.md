@@ -75,15 +75,83 @@ There are three migration modes:
       in a **single transaction**.
     - If a file is **non-transactional** (`*.ntx.do.sql`, `*.ntx.r.sql`, `*.ntx.undo.sql`), the file's content is split
       into individual SQL statements, which are executed **one by one**.
+    - Here is an example of the `plain` mode. All these scripts were executed within a single migration step,
+      with each file running in a separate transaction (for transactional files: *.do.sql).
+      Non-transactional files were executed statement by statement.
+    ```
+    +----------------------------------+-------+
+    |mh_name                           |mh_txid|
+    +----------------------------------+-------+
+    |00000-audit-table.do.sql          |19059  |
+    |00001-users-table.do.sql          |19060  |
+    |00002-roles-table.do.sql          |19061  |
+    |00003-privileges.do.sql           |19062  |
+    |00004-users.do.sql                |19063  |
+    |00005-roles.do.sql                |19064  |
+    |00006-non-transactional.ntx.do.sql|19066  |
+    |00007-non-transactional.ntx.do.sql|19068  |
+    |00008-fn_get_users.r.sql          |19069  |
+    |00009-fn_get_roles.r.sql          |19070  |
+    |00010-alter-system.ntx.do.sql     |19071  |
+    |00011-empty.do.sql                |19072  |
+    |00012-empty.do.sql                |19073  |
+    +----------------------------------+-------+
+    ```
 
 - **group** - Executes all pending files as a single **group**.
     - All files must either be executed within **one transaction** (if transactional) or all
       must be **non-transactional** (`*.ntx.*`).
+    - Here is an example of the group mode.
+      Files 0 to 10 were executed in plain mode, while files 11 to 14 were applied in group mode, all within a single
+      transaction.
+    ```
+    +----------------------------------+-------+
+    |mh_name                           |mh_txid|
+    +----------------------------------+-------+
+    |00000-audit-table.do.sql          |19082  |
+    |00001-users-table.do.sql          |19083  |
+    |00002-roles-table.do.sql          |19084  |
+    |00003-privileges.do.sql           |19085  |
+    |00004-users.do.sql                |19086  |
+    |00005-roles.do.sql                |19087  |
+    |00006-non-transactional.ntx.do.sql|19089  |
+    |00007-non-transactional.ntx.do.sql|19091  |
+    |00008-fn_get_users.r.sql          |19092  |
+    |00009-fn_get_roles.r.sql          |19093  |
+    |00010-alter-system.ntx.do.sql     |19094  |
+    |00011-empty.do.sql                |19095  |
+    |00012-empty.do.sql                |19095  |
+    |00013-empty.do.sql                |19095  |
+    |00014-empty.do.sql                |19095  |
+    +----------------------------------+-------+
+    ```
 
 - **mixed** - Splits pending migrations into **separate transactional and non-transactional groups**.
     - If a group is **transactional**, all files within it are applied **within a single transaction**.
     - If a group is **non-transactional**, each file is executed **individually**, following the behavior of **plain
       mode**.
+    - Here is an example of the `mixed` mode. Pay attention to the mh_txid values.
+      While all these scripts were executed within a single migration step, they were grouped by type before being
+      applied.
+    ```
+    +----------------------------------+-------+
+    |mh_name                           |mh_txid|
+    +----------------------------------+-------+
+    |00000-audit-table.do.sql          |19043  |
+    |00001-users-table.do.sql          |19043  |
+    |00002-roles-table.do.sql          |19043  |
+    |00003-privileges.do.sql           |19043  |
+    |00004-users.do.sql                |19043  |
+    |00005-roles.do.sql                |19043  |
+    |00006-non-transactional.ntx.do.sql|19045  |
+    |00007-non-transactional.ntx.do.sql|19047  |
+    |00008-fn_get_users.r.sql          |19048  |
+    |00009-fn_get_roles.r.sql          |19048  |
+    |00010-alter-system.ntx.do.sql     |19049  |
+    |00011-empty.do.sql                |19050  |
+    |00012-empty.do.sql                |19050  |
+    +----------------------------------+-------+
+    ```
 
 ## Migration Directory Structure
 
