@@ -7,7 +7,7 @@ type BatchEntries struct {
 	UseTX bool
 }
 
-func parseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntries, error) {
+func ParseFilesIntoBatchEntries(input []MigrationFile) ([]*BatchEntries, error) {
 	var batches []*BatchEntries
 	var current []MigrationFile
 

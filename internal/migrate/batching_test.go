@@ -74,7 +74,7 @@ func TestBatchResolving1(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entries, err := parseFilesIntoBatchEntries(test.input)
+			entries, err := ParseFilesIntoBatchEntries(test.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestBatchResolving2(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entries, err := parseFilesIntoBatchEntries(test.input)
+			entries, err := ParseFilesIntoBatchEntries(test.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -163,7 +163,7 @@ func TestBatchResolving3(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entries, err := parseFilesIntoBatchEntries(test.input)
+			entries, err := ParseFilesIntoBatchEntries(test.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +204,7 @@ func TestBatchResolving4(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entries, err := parseFilesIntoBatchEntries(test.input)
+			entries, err := ParseFilesIntoBatchEntries(test.input)
 			if err != nil {
 				t.Fatal(err)
 			}

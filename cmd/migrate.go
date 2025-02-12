@@ -20,6 +20,8 @@ const (
 	dbmsVendorClickhouse = "clickhouse"
 )
 
+var migrateBatch bool
+
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Run database migrations",
@@ -28,6 +30,7 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
+	migrateCmd.Flags().BoolVar(&migrateBatch, "batch", false, "Perform batching during migration: execute all transactional and non-transactional sequences batch by batch")
 	rootCmd.AddCommand(migrateCmd)
 }
 
@@ -65,7 +68,11 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	if dryRun {
 		_ = logger.DisableLogging()
-		printPending(pendingMigrations)
+		if migrateBatch {
+			printPendingBatch(pendingMigrations)
+		} else {
+			printPending(pendingMigrations)
+		}
 		return
 	}
 
@@ -103,9 +110,29 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 func printPending(migrations []migrate.MigrationFile) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
-	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH\tSTATE")
+	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
 	for _, p := range migrations {
-		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", p.Vers, p.Base, filepath.ToSlash(p.Path), "Pending")
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\n", p.Vers, p.Base, filepath.ToSlash(p.Path))
 	}
+	_ = w.Flush()
+}
+
+func printPendingBatch(migrations []migrate.MigrationFile) {
+	entries, err := migrate.ParseFilesIntoBatchEntries(migrations)
+	if err != nil {
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
+
+	for batchIdx, batch := range entries {
+		_, _ = fmt.Fprintf(w, "\n-------------- BatchID: %d UseTX: %v --------------\n", batchIdx, batch.UseTX)
+
+		_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
+		for _, p := range batch.Files {
+			_, _ = fmt.Fprintf(w, "%d\t%s\t%s\n", p.Vers, p.Base, filepath.ToSlash(p.Path))
+		}
+	}
+
 	_ = w.Flush()
 }

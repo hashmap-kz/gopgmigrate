@@ -58,6 +58,9 @@ export PGMIGRATE_LOG_MODE=console
 ## Quick start
 
 TODO
+```
+go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --batch
+```
 
 ---
 
