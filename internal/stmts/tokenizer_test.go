@@ -343,10 +343,6 @@ var multilineNestedComment = `
 `
 
 var audit_stmts = `
--- https://github.com/NREL/api-umbrella/blob/5fae22f418e0ee790c419e1c129acf26acb6f810/db/pg-audit-json--1.0.1.sql
---
---
---
 -- An audit history is important on most tables. Provide an audit trigger that
 -- logs to a dedicated audit table for the major relations.
 --
@@ -363,8 +359,6 @@ var audit_stmts = `
 --
 -- Note: This method will be a supported operation of PostgreSQL 10
 --
--- Credit:
--- http://schinckel.net/2014/09/29/adding-json%28b%29-operators-to-postgresql/
 --
 CREATE OR REPLACE FUNCTION "jsonb_minus" ( "left" JSONB, "keys" TEXT[] )
   RETURNS JSONB
@@ -400,8 +394,6 @@ COMMENT ON FUNCTION jsonb_minus(JSONB, TEXT[]) IS 'Delete specificed keys';
 --
 -- Implements "JSONB- JSONB" operation to recursively delete matching pairs.
 --
--- Credit:
--- http://coussej.github.io/2016/05/24/A-Minus-Operator-For-PostgreSQLs-JSONB/
 --
 
 CREATE OR REPLACE FUNCTION "jsonb_minus" ( "left" JSONB, "right" JSONB )
@@ -446,12 +438,6 @@ CREATE SCHEMA audit;
 REVOKE ALL ON SCHEMA audit FROM public;
 COMMENT ON SCHEMA audit
   IS 'Out-of-table audit/history logging tables and trigger functions';
-
---
--- Audited data. Lots of information is available, it's just a matter of how
--- much you really want to record. See:
---
---   http://www.postgresql.org/docs/9.1/static/functions-info.html
 --
 -- Remember, every column you add takes up more audit table space and slows
 -- audit inserts.
