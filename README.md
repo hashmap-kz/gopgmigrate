@@ -171,6 +171,9 @@ The discovery process is recursive.
 File names **always** start with a version number (`00001-`) and have the `.sql` extension.  
 Each file's version number should increase sequentially.
 
+**Stray files are not allowed, an error will occur if any file inside migration directory is not conforming the naming
+rules.**
+
 Since scanning is recursive, **version numbering is global** across all directories.  
 A subdirectory **cannot contain a file with a version number that is already used** in a higher-level directory.
 
