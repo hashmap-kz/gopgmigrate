@@ -28,7 +28,7 @@ strictly ordered.
   without any need of any migration tool.
 - You may place files in any directory/subdirectory you want, combine undo scripts in one place, combine repeatable in
   the other one, create versioned directories (by release name, tag-name, etc...), create envs directories (dev, stage,
-  etc...), with only one condition: **`version numbering is global`**. 
+  etc...), with only one condition: **`version numbering is global`**.
 
 ---
 
@@ -198,6 +198,76 @@ all directories:
 
 ```sh
 find migrations/ -type f \( -iname \*.r.sql -o -iname \*.do.sql \) -exec basename {} \; | sort
+```
+
+---
+
+## Example layouts
+
+### Flat
+
+```
+migrations
+├── 00000-audit-table.do.sql
+├── 00001-users-table.do.sql
+├── 00002-roles-table.do.sql
+├── 00003-privileges.do.sql
+├── 00004-users.do.sql
+├── 00005-roles.do.sql
+├── 00008-fn_get_users.r.sql
+├── 00009-fn_get_roles.r.sql
+└── 00010-alter-system.ntx.do.sql
+```
+
+### Separate by logic modules
+
+```
+migrations
+├── data
+│   ├── 00004-users.do.sql
+│   └── 00005-roles.do.sql
+├── repeatable
+│   ├── 00008-fn_get_users.r.sql
+│   └── 00009-fn_get_roles.r.sql
+├── schema
+│   ├── 00000-audit-table.do.sql
+│   ├── 00001-users-table.do.sql
+│   ├── 00002-roles-table.do.sql
+│   ├── 00003-privileges.do.sql
+│   └── 00010-alter-system.ntx.do.sql
+└── undo
+    ├── 00000-audit-table.undo.sql
+    ├── 00001-users-table.undo.sql
+    ├── 00002-roles-table.undo.sql
+    ├── 00003-privileges.undo.sql
+    ├── 00004-users.undo.sql
+    ├── 00005-roles.undo.sql
+    └── 00008-fn_get_users.undo.sql
+```
+
+### Separate by logic modules and release-cycles
+
+```
+migrations
+├── data
+│   └── v1.0.1
+│       ├── 00004-users.do.sql
+│       └── 00005-roles.do.sql
+├── repeatable
+│   └── public
+│       ├── functions
+│       │   ├── 00008-fn_get_users.r.sql
+│       │   └── 00009-fn_get_roles.r.sql
+│       └── views
+│           └── 00011-vw_users.do.sql
+└── schema
+    ├── v1.0.1
+    │   ├── 00000-audit-table.do.sql
+    │   ├── 00001-users-table.do.sql
+    │   ├── 00002-roles-table.do.sql
+    │   └── 00003-privileges.do.sql
+    └── v1.0.2
+        └── 00010-alter-system.ntx.do.sql
 ```
 
 ---
