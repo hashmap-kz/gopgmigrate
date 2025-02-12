@@ -59,7 +59,7 @@ export PGMIGRATE_LOG_MODE=console
 
 TODO
 ```
-go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --batch
+go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --group
 ```
 
 ---
