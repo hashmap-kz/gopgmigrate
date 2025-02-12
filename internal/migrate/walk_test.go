@@ -84,9 +84,9 @@ func TestGetAllStrayFiles(t *testing.T) {
 
 // Test checkFilesAreUniqueByVersion
 func TestCheckFilesAreUniqueByVersion(t *testing.T) {
-	files := []migrationFile{
-		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql"},
-		{base: "00002-users.do.sql", path: "/migrations/00002-users.do.sql"},
+	files := []MigrationFile{
+		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Vers: 1},
+		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Vers: 2},
 	}
 
 	err := checkFilesAreUniqueByVersion(files)
@@ -95,31 +95,10 @@ func TestCheckFilesAreUniqueByVersion(t *testing.T) {
 	}
 
 	// Introduce a duplicate version
-	files = append(files, migrationFile{base: "00001-duplicate.do.sql", path: "/migrations/00001-duplicate.do.sql"})
+	files = append(files, MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
 	err = checkFilesAreUniqueByVersion(files)
 	if err == nil {
 		t.Errorf("Expected error due to duplicate version, but got nil")
-	}
-}
-
-// Test checkVersionsAreSequential
-func TestCheckVersionsAreSequential(t *testing.T) {
-	files := []migrationFile{
-		{base: "00001-init.do.sql", path: "/migrations/00001-init.do.sql"},
-		{base: "00002-users.do.sql", path: "/migrations/00002-users.do.sql"},
-		{base: "00003-roles.do.sql", path: "/migrations/00003-roles.do.sql"},
-	}
-
-	err := checkVersionsAreSequential(files)
-	if err != nil {
-		t.Errorf("Expected no error, but got: %v", err)
-	}
-
-	// Introduce a gap in versions
-	files = append(files, migrationFile{base: "00005-missing.do.sql", path: "/migrations/00005-missing.do.sql"})
-	err = checkVersionsAreSequential(files)
-	if err == nil {
-		t.Errorf("Expected error due to non-sequential versions, but got nil")
 	}
 }
 

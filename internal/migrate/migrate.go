@@ -5,115 +5,63 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strings"
 
-	"gopgmigrate/internal/migrate_history/impl"
+	"gopgmigrate/internal/stmts"
 
-	"gopgmigrate/internal/migrate_history"
+	"gopgmigrate/internal/dbms"
+
+	"gopgmigrate/internal/history"
 )
 
-// RunMigrations applies both versioned and repeatable migrations in a single transaction
-func RunMigrations(ctx context.Context, conn *sql.DB, files []migrationFile) error {
-	var err error
-
-	// Acquire advisory lock
-	acquired, err := acquireMigrationLock(ctx, conn)
-	if err != nil {
-		return err
-	}
-	if !acquired {
-		fmt.Println("Another migration process is running. Exiting.")
-		return nil
-	}
-	defer releaseMigrationLock(ctx, conn)
-
-	// TODO: simplify from here a LOT
-
-	// repository, helper functions for history-handling
-	// works inside the same transaction as the other migration scripts
-	mhRepo := impl.NewMigrateHistoryPostgresRepository(ctx, conn, "public.migrate_history")
-	err = mhRepo.CreateHistoryTable(ctx)
-	if err != nil {
-		return err
-	}
-
-	// check that all applied migrations are present in files list
-	migrateHistory, err := mhRepo.ListAll(ctx)
-	if err != nil {
-		return err
-	}
-	appliedHistoryIndex := makeAppliedHistory(migrateHistory)
-	err = checkHistory(appliedHistoryIndex, files)
-	if err != nil {
-		return err
-	}
-
-	// migrate
-	versionedMigrationsToApply, err := getVersionedMigrationsToApply(files, appliedHistoryIndex)
-	if err != nil {
-		return err
-	}
-	for _, f := range versionedMigrationsToApply {
-		err = migrateOneScript(ctx, conn, f, mhRepo)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// migrateOneScript applies versioned migrations for versioned/data
-func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhRepo migrate_history.MigrateHistoryRepository) (err error) {
-	useTX := !strings.HasSuffix(file.base, "ntx.sql")
-
-	var tx *sql.Tx
-	if useTX {
-		tx, err = conn.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-	}
-
+func migrateOneScriptFn(
+	ctx context.Context,
+	tx dbms.Transaction,
+	script []string,
+	file MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+	txLogNote string,
+) (err error) {
 	slog.Info("migration",
-		slog.String("mode", getModeForLog(file)),
-		slog.String("name", file.base),
+		slog.String("tx", txLogNote),
+		slog.String("mode", getModeForLog(directionDo)),
+		slog.String("type", getTypeForLog(file)),
+		slog.String("name", file.Base),
 	)
 
 	// execute migration script
-	_, err = conn.ExecContext(ctx, string(file.data))
-	if err != nil {
-		return fmt.Errorf("error applying migration %s: %v", file.base, err)
+	for _, stmt := range script {
+		_, err = tx.ExecContext(ctx, stmt)
+		if err != nil {
+			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
+		}
 	}
 
 	// write history
-	version, err := parseVersionDo(file.base)
-	if err != nil {
-		return err
-	}
-	if isRepeatable(file) {
-		err = mhRepo.SaveRepeatable(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
-			MhVersion: version,
-			MhName:    file.base,
-			MhHash:    computeHash(file.data),
-		})
-		if err != nil {
-			return err
+	if directionDo {
+		// DO
+		if isRepeatable(file) {
+			err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
+				MhVersion: file.Vers,
+				MhName:    file.Base,
+				MhHash:    file.hash,
+			})
+			if err != nil {
+				return err
+			}
+		} else {
+			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
+				MhVersion: file.Vers,
+				MhName:    file.Base,
+				MhHash:    file.hash,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	} else {
-		err = mhRepo.SaveVersioned(ctx, &migrate_history.MigrateHistoryVersionedCreateInput{
-			MhVersion: version,
-			MhName:    file.base,
-			MhHash:    computeHash(file.data),
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	if useTX {
-		err := tx.Commit()
+		// UNDO
+		err := mhRepo.DeleteVersion(ctx, tx, file.Base)
 		if err != nil {
 			return err
 		}
@@ -122,20 +70,85 @@ func migrateOneScript(ctx context.Context, conn *sql.DB, file migrationFile, mhR
 	return nil
 }
 
-func getModeForLog(file migrationFile) string {
-	if isRepeatable(file) {
-		return "REP"
+func migrateListOfFilesInTxFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	return "VER"
-}
+	defer tx.Rollback()
 
-func makeAppliedHistory(hist []migrate_history.MigrateHistory) AppliedHistory {
-	r := AppliedHistory{}
-	for _, elem := range hist {
-		r[elem.MhName] = AppliedHistoryItem{
-			MhName: elem.MhName,
-			MhHash: elem.MhHash,
+	for _, file := range files {
+		script := []string{string(file.data)}
+		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo, "+")
+		if err != nil {
+			return err
 		}
 	}
-	return r
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// non-transactional scripts are executed statement-by-statement
+func migrateListOfFilesNoTxFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	for _, file := range files {
+		script, _ := stmts.SplitSQLStatements(string(file.data))
+		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateListOfFilesFn(
+	ctx context.Context,
+	db *sql.DB,
+	files []MigrationFile,
+	useTx bool,
+	repo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	if useTx {
+		err = migrateListOfFilesInTxFn(ctx, db, files, repo, directionDo)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	err = migrateListOfFilesNoTxFn(ctx, db, files, repo, directionDo)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getModeForLog(directionDo bool) string {
+	if directionDo {
+		return "do"
+	}
+	return "undo"
+}
+
+func getTypeForLog(file MigrationFile) string {
+	if isRepeatable(file) {
+		return "rep"
+	}
+	return "ver"
 }

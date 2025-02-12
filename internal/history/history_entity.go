@@ -1,8 +1,8 @@
-package migrate_history
+package history
 
 import "time"
 
-type MigrateHistoryVersionedCreateInput struct {
+type MigrateHistoryCreateInput struct {
 	MhVersion int64
 	MhName    string
 	MhHash    string
@@ -27,4 +27,7 @@ type MigrateHistory struct {
 
 	// Timestamp when the migration was applied.
 	MhAppliedAt time.Time `json:"mh_applied_at" db:"mh_applied_at"`
+
+	// Current transaction ID, for debug purpose, optional, may be empty
+	MhTxid string `json:"mh_txid" db:"mh_txid"`
 }

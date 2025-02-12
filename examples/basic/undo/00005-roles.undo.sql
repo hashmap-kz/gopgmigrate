@@ -1,0 +1,1 @@
+delete from public.mtest_roles where true;

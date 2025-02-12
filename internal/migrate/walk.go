@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-func GetFiles(migrationDirectory string) ([]migrationFile, error) {
+func GetFiles(migrationDirectory string) ([]MigrationFile, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
@@ -31,22 +31,29 @@ func GetFiles(migrationDirectory string) ([]migrationFile, error) {
 }
 
 // getFilesInAPath walks path, collects all *.sql files
-func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, error) {
-	var files []migrationFile
+func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]MigrationFile, error) {
+	var files []MigrationFile
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		// Append any file we found, filter it later
-		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(filepath.Base(path)) {
+		base := filepath.Base(path)
+		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(base) {
 			sql, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			files = append(files, migrationFile{
-				path: path,
-				base: filepath.Base(path),
+			vers, err := parseVersionDo(base)
+			if err != nil {
+				return err
+			}
+			files = append(files, MigrationFile{
+				Vers: vers,
+				Path: path,
+				Base: base,
 				data: sql,
+				hash: computeHash(sql),
 			})
 		}
 		return nil
@@ -56,7 +63,7 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]migrationFile, erro
 	}
 	// Sort by base (Ascending)
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].base < files[j].base
+		return files[i].Base < files[j].Base
 	})
 	return files, nil
 }
@@ -98,14 +105,15 @@ func getAllStrayFiles(directory string) ([]string, error) {
 
 // routine around versioned migrations
 
-func checkVersionedMigrations(versioned []migrationFile) error {
+func checkVersionedMigrations(versioned []MigrationFile) error {
 	var err error
 
 	err = checkFilesAreUniqueByVersion(versioned)
 	if err != nil {
 		return err
 	}
-	err = checkVersionsAreSequential(versioned)
+
+	err = checkPossibleNoTx(versioned)
 	if err != nil {
 		return err
 	}
@@ -113,42 +121,39 @@ func checkVersionedMigrations(versioned []migrationFile) error {
 	return nil
 }
 
-func checkFilesAreUniqueByVersion(versioned []migrationFile) error {
-	seenVersions := map[int64]bool{}
-	for _, f := range versioned {
-		version, err := parseVersionDo(f.base)
-		if err != nil {
-			return err
+func checkPossibleNoTx(versioned []MigrationFile) error {
+	for _, elem := range versioned {
+		// is already no-transactional file
+		if versionedMigrationRegexNtx.MatchString(elem.Base) {
+			continue
 		}
-		if _, ok := seenVersions[version]; ok {
-			return fmt.Errorf("%s is used a version that already in use",
-				filepath.ToSlash(f.path),
+		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data))
+		if len(warnings) > 0 {
+			for _, w := range warnings {
+				slog.Error("notx-statement-detected", slog.String("cause", w))
+			}
+			slog.Error("notx-statement-detected", slog.String("cause", "This may not necessarily be an error; it could be commented-out code that was matched by a pattern."))
+			slog.Error("notx-statement-detected", slog.String("cause", "This is handled before any migration runs to prevent execution errors."))
+			slog.Error("notx-statement-detected", slog.String("cause", "Statements that cannot run inside a transaction should be moved to separate files."))
+			slog.Error("notx-statement-detected", slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."))
+
+			return fmt.Errorf("check statements in the file: [%s]",
+				filepath.ToSlash(elem.Path),
 			)
 		}
-		seenVersions[version] = true
 	}
 	return nil
 }
 
-func checkVersionsAreSequential(versioned []migrationFile) error {
-	if len(versioned) < 2 {
-		return nil
-	}
-	for i := 1; i < len(versioned); i++ {
-		curVer, err := parseVersionDo(versioned[i].base)
-		if err != nil {
-			return err
-		}
-		prevVer, err := parseVersionDo(versioned[i-1].base)
-		if err != nil {
-			return err
-		}
-		if curVer != prevVer+1 {
-			return fmt.Errorf("versions are not sequential, check %s and %s",
-				filepath.ToSlash(versioned[i-1].path),
-				filepath.ToSlash(versioned[i].path),
+func checkFilesAreUniqueByVersion(versioned []MigrationFile) error {
+	seenVersions := map[int64]bool{}
+	for _, f := range versioned {
+		if _, ok := seenVersions[f.Vers]; ok {
+			return fmt.Errorf("%s is used a version that already in use",
+				filepath.ToSlash(f.Path),
 			)
 		}
+		seenVersions[f.Vers] = true
 	}
 	return nil
 }

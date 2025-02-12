@@ -1,15 +1,14 @@
-package migrate
+package dbms
 
 import (
 	"database/sql"
 	"fmt"
 
-	// TODO: drivers package (clickhouse, postgres)
-	_ "github.com/jackc/pgx/v5/stdlib" // Import for database/sql compatibility
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// GetDatabaseConnection initializes a PostgreSQL connection
-func GetDatabaseConnection(dbURL string) (*sql.DB, error) {
+// GetDatabaseConnectionPostgres initializes a PostgreSQL connection
+func GetDatabaseConnectionPostgres(dbURL string) (*sql.DB, error) {
 	// Open connection using pgx's stdlib adapter
 	db, err := sql.Open("pgx", dbURL)
 	if err != nil {
