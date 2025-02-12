@@ -219,3 +219,35 @@ func TestBatchResolving4(t *testing.T) {
 		})
 	}
 }
+
+func TestBatchResolving5(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []MigrationFile
+		expected []*BatchEntry
+	}{
+		{
+			name: "empty-input",
+
+			input:    []MigrationFile{},
+			expected: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entries, err := ParseFilesIntoBatchEntries(test.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != len(test.expected) {
+				t.Fatalf("test fail: %s", test.name)
+			}
+			for i := 0; i < len(entries); i++ {
+				if !reflect.DeepEqual(test.expected[i], entries[i]) {
+					t.Fatalf("test fail: %s", test.name)
+				}
+			}
+		})
+	}
+}
