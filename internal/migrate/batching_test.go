@@ -72,22 +72,7 @@ func TestBatchResolving1(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries, err := ParseFilesIntoBatchEntries(test.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != len(test.expected) {
-				t.Fatalf("test fail: %s", test.name)
-			}
-			for i := 0; i < len(entries); i++ {
-				if !reflect.DeepEqual(test.expected[i], entries[i]) {
-					t.Fatalf("test fail: %s", test.name)
-				}
-			}
-		})
-	}
+	checkBatching(t, tests)
 }
 
 func TestBatchResolving2(t *testing.T) {
@@ -120,22 +105,7 @@ func TestBatchResolving2(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries, err := ParseFilesIntoBatchEntries(test.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != len(test.expected) {
-				t.Fatalf("test fail: %s", test.name)
-			}
-			for i := 0; i < len(entries); i++ {
-				if !reflect.DeepEqual(test.expected[i], entries[i]) {
-					t.Fatalf("test fail: %s", test.name)
-				}
-			}
-		})
-	}
+	checkBatching(t, tests)
 }
 
 func TestBatchResolving3(t *testing.T) {
@@ -161,22 +131,7 @@ func TestBatchResolving3(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries, err := ParseFilesIntoBatchEntries(test.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != len(test.expected) {
-				t.Fatalf("test fail: %s", test.name)
-			}
-			for i := 0; i < len(entries); i++ {
-				if !reflect.DeepEqual(test.expected[i], entries[i]) {
-					t.Fatalf("test fail: %s", test.name)
-				}
-			}
-		})
-	}
+	checkBatching(t, tests)
 }
 
 func TestBatchResolving4(t *testing.T) {
@@ -202,22 +157,7 @@ func TestBatchResolving4(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries, err := ParseFilesIntoBatchEntries(test.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != len(test.expected) {
-				t.Fatalf("test fail: %s", test.name)
-			}
-			for i := 0; i < len(entries); i++ {
-				if !reflect.DeepEqual(test.expected[i], entries[i]) {
-					t.Fatalf("test fail: %s", test.name)
-				}
-			}
-		})
-	}
+	checkBatching(t, tests)
 }
 
 func TestBatchResolving5(t *testing.T) {
@@ -234,6 +174,15 @@ func TestBatchResolving5(t *testing.T) {
 		},
 	}
 
+	checkBatching(t, tests)
+}
+
+func checkBatching(t *testing.T, tests []struct {
+	name     string
+	input    []MigrationFile
+	expected []*BatchEntry
+},
+) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			entries, err := ParseFilesIntoBatchEntries(test.input)
