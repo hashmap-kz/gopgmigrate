@@ -243,7 +243,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - versioned and repeatable migrations should have order of execution, i.e. both should have a version (they may be
   placed in different dirs, but the order is matters, when some data migrations rely on some functions).
 - CLI - print history, recursively traverse dir, sort files; add new; find latest; etc. etc.
-- implement plan/apply strategy (with plan table) 
+- implement plan/apply strategy (with plan table)
 - files may be renamed (only version matters)
 
 ```
@@ -256,3 +256,51 @@ Pattern VACUUM_REGEX = Pattern.compile("^VACUUM");
 Pattern DISCARD_ALL_REGEX = Pattern.compile("^DISCARD ALL");
 Pattern ALTER_TYPE_ADD_VALUE_REGEX = Pattern.compile("^ALTER TYPE( .*)? ADD VALUE");
 ```
+
+```
+Migration Iterations and Transaction Handling
+
+Each migration step is referred to as an iteration. 
+An iteration can be either transactional or non-transactional.
+
+If an iteration consists of multiple migration files (e.g., 20 files), all of them must be applied either:
+Within a single transaction (ensuring atomicity).
+
+Individually, outside of a transaction, executed file-by-file (technically: statement-by-statement within each file).
+You cannot mix transactional (*.do.sql) and non-transactional (*.ntx.do.sql) files within the same migration step.
+
+Planning Your Migration Steps
+It is your responsibility to plan each migration step carefully. 
+If the system detects that a file within the step cannot be executed in a transaction (based on content pattern matching), 
+it will raise an error with a diagnostic message.
+
+Example Considerations:
+PostgreSQL allows most DDL statements to be executed within transactions, while some other DBMSs do not.
+In PostgreSQL, certain statements cannot run within a transaction, such as: VACUUM, ALTER SYSTEM, REINDEX
+However, most of these are maintenance-related, making it relatively straightforward to structure your migration steps accordingly.
+
+There may be multiple reasons why this situation occurs. 
+However, the key issue is that the database is not in the expected state.
+For example, your backend services may be unable to function correctly due to an incomplete database state. 
+While the database remains ACID-compliant and technically consistent, missing migrations can lead to business rules failing to work as expected.
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
