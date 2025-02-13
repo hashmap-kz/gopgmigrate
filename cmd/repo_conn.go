@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"log/slog"
 	"os"
-	"regexp"
 
 	"gopgmigrate/internal/history"
 	"gopgmigrate/internal/history/impl"
@@ -15,15 +14,12 @@ import (
 
 // TODO: this should be an interface
 // TODO: simplify, cleanup
-func initRepo(ctx context.Context) (history.MigrateHistoryRepository, *sql.DB, map[string]*regexp.Regexp) {
+func initRepo(ctx context.Context) (history.MigrateHistoryRepository, *sql.DB) {
 	var err error
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
-	var noTxPatterns map[string]*regexp.Regexp
 
 	if cliOptions.dbms == dbmsVendorPostgresql {
-		noTxPatterns = dbms.GetNoTxPatternsPostgres()
-
 		repo = impl.NewMigrateHistoryPostgresRepository(ctx, cliOptions.historyTableName)
 		conn, err = dbms.GetDatabaseConnectionPostgres(cliOptions.connStr)
 		if err != nil {
@@ -42,5 +38,5 @@ func initRepo(ctx context.Context) (history.MigrateHistoryRepository, *sql.DB, m
 		os.Exit(1)
 	}
 
-	return repo, conn, noTxPatterns
+	return repo, conn
 }

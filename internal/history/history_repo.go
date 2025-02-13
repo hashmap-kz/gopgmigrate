@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"regexp"
 
 	"gopgmigrate/internal/dbms"
 )
@@ -16,4 +17,6 @@ type MigrateHistoryRepository interface {
 
 	AcquireMigrationLock(ctx context.Context, db dbms.Transaction) (bool, error)
 	ReleaseMigrationLock(ctx context.Context, db dbms.Transaction) error
+
+	GetNoTxPatterns() map[string]*regexp.Regexp
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
@@ -152,6 +153,21 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 	return nil
 }
 
+// utils
+
+func (r *migrateHistoryPostgresRepository) GetNoTxPatterns() map[string]*regexp.Regexp {
+	return map[string]*regexp.Regexp{
+		"CopyFromStdin":                        regexp.MustCompile(`(?i)COPY( .*)? FROM STDIN`),
+		"CreateDatabaseTablespaceSubscription": regexp.MustCompile(`(?i)(CREATE|DROP) (DATABASE|TABLESPACE|SUBSCRIPTION)`),
+		"AlterSystem":                          regexp.MustCompile(`(?i)ALTER SYSTEM`),
+		"CreateIndexConcurrently":              regexp.MustCompile(`(?i)(CREATE|DROP)( UNIQUE)? INDEX CONCURRENTLY`),
+		"Reindex":                              regexp.MustCompile(`(?i)REINDEX( VERBOSE)? (SCHEMA|DATABASE|SYSTEM)`),
+		"Vacuum":                               regexp.MustCompile(`(?i)VACUUM`),
+		"DiscardAll":                           regexp.MustCompile(`(?i)DISCARD ALL`),
+		"AlterTypeAddValue":                    regexp.MustCompile(`(?i)ALTER TYPE( .*)? ADD VALUE`),
+	}
+}
+
 // locks
 
 // AcquireMigrationLock ensures only one migration process runs at a time
@@ -169,9 +185,6 @@ func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Cont
 
 // scan utils
 
-// scanFullRow is expected to scan all columns from a table.
-// For simplicity, most methods scan the entire row of the table into the result entity.
-// You should adapt methods as needed (e.g., if business logic requires returning only an ID after an UPDATE).
 func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 	var scannedEntity history.MigrateHistory
 	err := row.Scan(

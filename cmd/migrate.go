@@ -40,7 +40,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// init repository
-	repo, conn, noTxPatterns := initRepo(ctx)
+	repo, conn := initRepo(ctx)
 	defer func(conn *sql.DB) {
 		err := conn.Close()
 		if err != nil {
@@ -52,7 +52,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	//////////////////////////////////////////////////////////////////////
 	// get pending migrations
-	pendingMigrations, err := migrate.GetPendingMigrations(ctx, conn, cliOptions.dirName, noTxPatterns, repo)
+	pendingMigrations, err := migrate.GetPendingMigrations(ctx, conn, cliOptions.dirName, repo)
 	if err != nil {
 		slog.Error("collecting pending migrations error", slog.String("err", err.Error()))
 		os.Exit(1)
