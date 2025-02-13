@@ -40,6 +40,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 		  mh_applied_by name          not null default session_user,
 		  mh_applied_at timestamptz   not null default transaction_timestamp(),
 		  mh_txid     text            not null default pg_current_xact_id()::text,
+		  mh_iter_id  uuid            not null,
 		  constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
 		  constraint check_version_unsigned   check (mh_version >= 0 ),
 		  constraint check_filename           check (mh_name ~ '^(\d{5})-([[:alnum:]_-]+)(?:\.ntx)?\.(do|r)\.sql$')
@@ -59,9 +60,10 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 		insert into %s (
 			mh_version,
 			mh_name,
-			mh_hash
+			mh_hash,
+            mh_iter_id
 		)
-		values ($1, $2, $3)
+		values ($1, $2, $3, $4)
 		returning
 			id,
 			mh_version,
@@ -69,9 +71,15 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 			mh_hash,
 			mh_applied_by,
 			mh_applied_at,
-			mh_txid
+			mh_txid,
+			mh_iter_id
 		`, r.tableName)
-	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+	_, err := tx.ExecContext(ctx, query,
+		inputEntity.MhVersion,
+		inputEntity.MhName,
+		inputEntity.MhHash,
+		inputEntity.MhIterID,
+	)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
@@ -87,16 +95,22 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, t
 			  mh_hash       = $3,
 			  mh_applied_by = session_user,
 			  mh_applied_at = transaction_timestamp(),
-			  mh_txid       = pg_current_xact_id()::text
+			  mh_txid       = pg_current_xact_id()::text,
+			  mh_iter_id    = $4
 			where mh_name   = $2
 			returning id
 		)
 		insert
-		into %s (mh_version, mh_name, mh_hash, mh_applied_by, mh_applied_at)
-		select $1, $2, $3, session_user, transaction_timestamp()
+		into %s (mh_version, mh_name, mh_hash, mh_iter_id, mh_applied_by, mh_applied_at)
+		select $1, $2, $3, $4, session_user, transaction_timestamp()
 		where not exists (select 1 from updated)
     `, r.tableName, r.tableName)
-	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
+	_, err := tx.ExecContext(ctx, query,
+		inputEntity.MhVersion,
+		inputEntity.MhName,
+		inputEntity.MhHash,
+		inputEntity.MhIterID,
+	)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
@@ -114,7 +128,8 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.
 			mh_hash,
 			mh_applied_by,
 			mh_applied_at,
-			mh_txid
+			mh_txid,
+			mh_iter_id
 		from %s
 		order by mh_version
 	`, r.tableName)
@@ -195,6 +210,7 @@ func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 		&scannedEntity.MhAppliedBy,
 		&scannedEntity.MhAppliedAt,
 		&scannedEntity.MhTxid,
+		&scannedEntity.MhIterID,
 	)
 	if err != nil {
 		return nil, err

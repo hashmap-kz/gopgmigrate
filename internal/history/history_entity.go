@@ -6,6 +6,7 @@ type MigrateHistoryCreateInput struct {
 	MhVersion int64
 	MhName    string
 	MhHash    string
+	MhIterID  string
 }
 
 // MigrateHistory tracks executed migrations, ensuring version control and repeatable migrations.
@@ -30,4 +31,7 @@ type MigrateHistory struct {
 
 	// Current transaction ID, for debug purpose, optional, may be empty
 	MhTxid string `json:"mh_txid" db:"mh_txid"`
+
+	// Iteration ID, for debug purpose, unique migration step
+	MhIterID string `json:"mh_iter_id" db:"mh_iter_id"`
 }
