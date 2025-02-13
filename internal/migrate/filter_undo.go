@@ -41,7 +41,7 @@ func getVersionedMigrationsToUndo(files []MigrationFile, hist []history.MigrateH
 	})
 
 	// create a slice of CNT after sort is applied
-	cnt := min(len(files), much)
+	cnt := xMin(len(files), much)
 	hist = hist[:cnt]
 
 	// collect UNDO scripts
@@ -82,7 +82,7 @@ func findCorrespondingUndoScript(undoScripts []MigrationFile, doScript history.M
 	return MigrationFile{}, false, nil
 }
 
-func min(a, b int) int {
+func xMin(a, b int) int {
 	if a < b {
 		return a
 	}

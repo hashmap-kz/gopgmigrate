@@ -3,6 +3,7 @@ package migrate
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"gopgmigrate/internal/history"
 )
 
@@ -30,7 +31,7 @@ func TestCheckHistory(t *testing.T) {
 			name: "Applied migration missing in local files",
 			applied: []history.MigrateHistory{
 				{MhName: "001-init.do.sql"},
-				{MhName: "003-missing.sql"}, // Missing file
+				{MhName: "003-missing.sql"},
 			},
 			files: []MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -45,68 +46,10 @@ func TestCheckHistory(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			err := checkAppliedHistoryWithLocalFiles(test.applied, test.files)
 			if test.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got nil")
-				} else if err.Error() != test.expectedErr {
-					t.Errorf("Expected error: %q, got: %q", test.expectedErr, err.Error())
-				}
+				assert.Error(t, err)
+				assert.EqualError(t, err, test.expectedErr)
 			} else {
-				if err != nil {
-					t.Errorf("Expected no error, but got: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestCheckHistoryTableIsSyncedWithLocalFiles(t *testing.T) {
-	tests := []struct {
-		name        string
-		migrations  []history.MigrateHistory
-		files       []MigrationFile
-		expectError bool
-		expectedErr string
-	}{
-		{
-			name: "All migrations exist locally",
-			migrations: []history.MigrateHistory{
-				{MhName: "001-init.do.sql"},
-				{MhName: "002-users.do.sql"},
-			},
-			files: []MigrationFile{
-				{Base: "001-init.do.sql"},
-				{Base: "002-users.do.sql"},
-			},
-			expectError: false,
-		},
-		{
-			name: "A migration is missing locally",
-			migrations: []history.MigrateHistory{
-				{MhName: "001-init.do.sql"},
-				{MhName: "003-missing.sql"},
-			},
-			files: []MigrationFile{
-				{Base: "001-init.do.sql"},
-				{Base: "002-users.do.sql"},
-			},
-			expectError: true,
-			expectedErr: "detected applied migration not resolved locally: 003-missing.sql",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := checkAppliedHistoryWithLocalFiles(test.migrations, test.files)
-			if test.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got nil")
-				} else if err.Error() != test.expectedErr {
-					t.Errorf("Expected error: %q, got: %q", test.expectedErr, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error, but got: %v", err)
-				}
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -142,14 +85,11 @@ func TestFound(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			result := appliedMigrationPresentLocally(test.searchKey, test.files)
-			if result != test.wantFound {
-				t.Errorf("found(%q) = %v, want %v", test.searchKey, result, test.wantFound)
-			}
+			assert.Equal(t, test.wantFound, result)
 		})
 	}
 }
 
-// Test getVersionedMigrationsToApply function
 func TestGetVersionedMigrationsToApply(t *testing.T) {
 	mockFiles := []MigrationFile{
 		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", data: []byte("init"), hash: "1"},
@@ -161,35 +101,25 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 	}
 
 	toApply, err := getVersionedMigrationsToApply(mockHistory, mockFiles)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	if len(toApply) != 1 || toApply[0].Base != "00002-users.do.sql" {
-		t.Errorf("Expected only 00002-users.do.sql to apply, got: %v", toApply)
-	}
+	assert.NoError(t, err)
+	assert.Len(t, toApply, 1)
+	assert.Equal(t, "00002-users.do.sql", toApply[0].Base)
 
 	// Test hash mismatch scenario
 	mockHistory = append(mockHistory, history.MigrateHistory{MhName: "00002-users.do.sql", MhHash: "wrong-hash"})
 	_, err = getVersionedMigrationsToApply(mockHistory, mockFiles)
-	if err == nil {
-		t.Errorf("Expected hash mismatch error but got nil")
-	}
+	assert.Error(t, err)
 }
 
-// Test findHist function
 func TestFindHist(t *testing.T) {
 	mockHistory := []history.MigrateHistory{
 		{MhName: "00001-init.do.sql", MhHash: "hash1"},
 	}
 
 	found := findHist("00001-init.do.sql", mockHistory)
-	if found == nil || found.MhHash != "hash1" {
-		t.Errorf("Expected to find migration 00001-init.do.sql, but got nil or incorrect data")
-	}
+	assert.NotNil(t, found)
+	assert.Equal(t, "hash1", found.MhHash)
 
 	notFound := findHist("00002-users.do.sql", mockHistory)
-	if notFound != nil {
-		t.Errorf("Expected nil for non-existent migration, but got: %v", notFound)
-	}
+	assert.Nil(t, notFound)
 }
