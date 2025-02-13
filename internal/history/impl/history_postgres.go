@@ -30,20 +30,20 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 	tag := "migrateHistoryPostgresRepository.CreateHistoryTable"
 
 	query := fmt.Sprintf(`
-		create table if not exists %s
-		(
-			id            int generated always as identity primary key,
-			mh_version    bigint unique not null,
-			mh_name       text unique   not null,
-			mh_hash       text          not null,
-			mh_applied_by name          not null default session_user,
-			mh_applied_at timestamptz   not null default transaction_timestamp(),
-			mh_txid		  text 			not null default pg_current_xact_id()::text,
-			constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
-			constraint check_version_unsigned 	check (mh_version >= 0 ),
-			constraint check_filename 			check (mh_name ~ '^(\d{5})-([[:alnum:]_-]+)(?:\.ntx)?\.(do|r)\.sql$')
-		);
-	`, r.tableName)
+    create table if not exists %s
+    (
+      id            int generated always as identity primary key,
+      mh_version    bigint unique not null,
+      mh_name       text unique   not null,
+      mh_hash       text          not null,
+      mh_applied_by name          not null default session_user,
+      mh_applied_at timestamptz   not null default transaction_timestamp(),
+      mh_txid     text            not null default pg_current_xact_id()::text,
+      constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
+      constraint check_version_unsigned   check (mh_version >= 0 ),
+      constraint check_filename           check (mh_name ~ '^(\d{5})-([[:alnum:]_-]+)(?:\.ntx)?\.(do|r)\.sql$')
+    );
+  `, r.tableName)
 
 	_, err := tx.ExecContext(ctx, query)
 	if err != nil {
@@ -79,24 +79,22 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 
 func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
-	query := fmt.Sprintf(`		
-		with updated as (
-			update %s
-				set mh_hash = $3,
-					mh_applied_by = session_user,
-					mh_applied_at = transaction_timestamp(),
-					mh_txid = pg_current_xact_id()::text
-				where mh_name = $2
-				returning id)
-		insert
-		into %s (mh_version, mh_name, mh_hash, mh_applied_by, mh_applied_at)
-		select $1,
-               $2,
-			   $3,
-			   session_user,
-			   transaction_timestamp()
-		where not exists (select 1 from updated)
-		`, r.tableName, r.tableName)
+	query := fmt.Sprintf(`    
+    with updated as (
+      update %s
+        set 
+          mh_hash       = $3,
+          mh_applied_by = session_user,
+          mh_applied_at = transaction_timestamp(),
+          mh_txid       = pg_current_xact_id()::text
+        where mh_name   = $2
+        returning id
+    )
+    insert
+    into %s (mh_version, mh_name, mh_hash, mh_applied_by, mh_applied_at)
+    select $1, $2, $3, session_user, transaction_timestamp()
+    where not exists (select 1 from updated)
+    `, r.tableName, r.tableName)
 	_, err := tx.ExecContext(ctx, query, inputEntity.MhVersion, inputEntity.MhName, inputEntity.MhHash)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)

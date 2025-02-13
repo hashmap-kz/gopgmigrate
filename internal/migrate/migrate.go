@@ -24,7 +24,7 @@ func migrateOneScriptFn(
 ) (err error) {
 	slog.Info("migration",
 		slog.String("tx", txLogNote),
-		slog.String("mode", getModeForLog(directionDo)),
+		slog.String("direction", getModeForLog(directionDo)),
 		slog.String("type", getTypeForLog(file)),
 		slog.String("name", file.Base),
 	)
