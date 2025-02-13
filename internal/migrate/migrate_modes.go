@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history/impl"
 
@@ -98,8 +100,9 @@ func runMigrationsPlainMode(
 	pendingMigrations []MigrationFile,
 	directionDo bool,
 ) error {
+	iterId := uuid.New()
 	for _, elem := range pendingMigrations {
-		err := migrateOneScript(ctx, db, elem, repo, directionDo)
+		err := migrateOneScript(ctx, db, elem, repo, directionDo, iterId)
 		if err != nil {
 			return err
 		}
@@ -119,8 +122,9 @@ func runMigrationsMixedMode(
 	if err != nil {
 		return err
 	}
+	iterId := uuid.New()
 	for _, elem := range groupEntries {
-		err := migrateListOfFilesFn(ctx, db, elem.Files, elem.UseTX, repo, directionDo)
+		err := migrateListOfFilesFn(ctx, db, elem.Files, elem.UseTX, repo, directionDo, iterId)
 		if err != nil {
 			return err
 		}
@@ -140,7 +144,7 @@ func runMigrationsGroupMode(
 	if err != nil {
 		return err
 	}
-	return migrateListOfFilesFn(ctx, db, groupEntry.Files, groupEntry.UseTX, repo, directionDo)
+	return migrateListOfFilesFn(ctx, db, groupEntry.Files, groupEntry.UseTX, repo, directionDo, uuid.New())
 }
 
 // init repo, conn
