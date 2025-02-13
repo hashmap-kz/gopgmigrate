@@ -31,8 +31,8 @@ func ExecTemplate(name, t string, data map[string]string) string {
 }
 
 var funcTemplate = strings.TrimSpace(`
-drop function if exists public.fn_get_{{.table}};
-create function public.fn_get_{{.table}}()
+drop function if exists {{.schema}}.fn_get_{{.table}};
+create function {{.schema}}.fn_get_{{.table}}()
     returns table
             (
                 id    int,
@@ -50,18 +50,18 @@ $fn$ language plpgsql;
 `)
 
 var alterTmplDo = strings.TrimSpace(`
-alter table public.{{.table}} add column xdata text;
-update public.{{.table}} set xdata = xname || '-data';
-create index ix_{{.table}}_xdata on public.{{.table}} (xdata);
+alter table {{.schema}}.{{.table}} add column xdata text;
+update {{.schema}}.{{.table}} set xdata = xname || '-data';
+create index ix_{{.table}}_xdata on {{.schema}}.{{.table}} (xdata);
 `)
 
 var alterTmplUndo = strings.TrimSpace(`
-alter table public.{{.table}} drop column xdata;
+alter table {{.schema}}.{{.table}} drop column xdata;
 `)
 
 var viewTmpl = strings.TrimSpace(`
-create view public.vw_{{.table}} as
-select * from public.{{.table}};
+create view {{.schema}}.vw_{{.table}} as
+select * from {{.schema}}.{{.table}};
 `)
 
 func main() {
@@ -74,34 +74,42 @@ func main() {
 	}
 
 	tables := []string{
-		"users",
-		"roles",
-		"permissions",
-		"groups",
-		"companies",
+		"authn.users",
+		"authn.roles",
+		"authn.permissions",
+		"authn.groups",
+		"public.companies",
 	}
 
 	filesTemplate := []MigrationFile{
-		{0, "schema", "%05d-%s_table.do.sql", `create table if not exists public.{{.table}} (id serial primary key, xname text not null);`},
-		{0, "undo", "%05d-%s_table.undo.sql", `drop table if exists public.{{.table}};`},
-		{1, "repeatable/functions", "%05d-fn_get_%s.r.sql", funcTemplate},
-		{1, "undo", "%05d-fn_get_%s.undo.sql", `drop function if exists public.fn_get_{{.table}};`},
-		{2, "repeatable/views", "%05d-vw_%s.r.sql", viewTmpl},
-		{2, "undo", "%05d-vw_%s.undo.sql", `drop view if exists public.vw_{{.table}};`},
-		{3, "data", "%05d-seed_%s.r.sql", `insert into public.{{.table}} (xname) values ('test-{{.idx}}');`},
-		{3, "undo", "%05d-seed_%s.undo.sql", `delete from public.{{.table}} where xname = 'test-{{.idx}}';`},
-		{4, "schema", "%05d-alter_%s_add_xdata.do.sql", alterTmplDo},
-		{4, "undo", "%05d-alter_%s_add_xdata.undo.sql", alterTmplUndo},
+		{1, "schema", "%05d-%s_table.do.sql", `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
+		{1, "undo", "%05d-%s_table.undo.sql", `drop table if exists {{.schema}}.{{.table}};`},
+		{2, "repeatable/functions", "%05d-fn_get_%s.r.sql", funcTemplate},
+		{2, "undo", "%05d-fn_get_%s.undo.sql", `drop function if exists {{.schema}}.fn_get_{{.table}};`},
+		{3, "repeatable/views", "%05d-vw_%s.r.sql", viewTmpl},
+		{3, "undo", "%05d-vw_%s.undo.sql", `drop view if exists {{.schema}}.vw_{{.table}};`},
+		{4, "data", "%05d-seed_%s.r.sql", `insert into {{.schema}}.{{.table}} (xname) values ('test-{{.idx}}');`},
+		{4, "undo", "%05d-seed_%s.undo.sql", `delete from {{.schema}}.{{.table}} where xname = 'test-{{.idx}}';`},
+		{5, "schema", "%05d-alter_%s_add_xdata.do.sql", alterTmplDo},
+		{5, "undo", "%05d-alter_%s_add_xdata.undo.sql", alterTmplUndo},
 	}
 
-	var fileNumber int
-	for i, tab := range tables {
+	var fileNumber = 0
+
+	for i, schTab := range tables {
+		schemaName := strings.Split(schTab, ".")[0]
+		tableName := strings.Split(schTab, ".")[1]
+
 		for _, tmpl := range filesTemplate {
-			fileNumber = i*len(filesTemplate) + tmpl.Idx
-			filename := fmt.Sprintf(tmpl.Filename, fileNumber, tab)
+			fileNumber = fileNumber + (i*len(filesTemplate) + tmpl.Idx)
+			filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
 			filePath := filepath.Join(targetDir, tmpl.Dir, filename)
-			if tmpl.Dir == "schema" || tmpl.Dir == "data" {
-				filePath = filepath.Join(targetDir, tmpl.Dir, tab, filename)
+			if tmpl.Dir != "undo" {
+				if tmpl.Dir == "schema" || tmpl.Dir == "data" {
+					filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
+				} else {
+					filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
+				}
 			}
 
 			if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
@@ -110,9 +118,10 @@ func main() {
 			}
 
 			// Write the content to the file
-			content := ExecTemplate(tab, tmpl.Content, map[string]string{
-				"table": tab,
-				"idx":   fmt.Sprintf("%d", fileNumber),
+			content := ExecTemplate(tableName, tmpl.Content, map[string]string{
+				"schema": schemaName,
+				"table":  tableName,
+				"idx":    fmt.Sprintf("%d", fileNumber),
 			})
 			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 				fmt.Println("Error writing file:", err)
