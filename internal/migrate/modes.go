@@ -6,6 +6,21 @@ import (
 	"gopgmigrate/pkg/ds"
 )
 
+const (
+	// ModeGroup applies all pending migrations as a single "group".
+	// This means that all migrations must either be executed within a single transaction (if they are transactional)
+	// or all must be non-transactional.
+	ModeGroup string = "group"
+
+	// ModeMixed applies all pending migrations in separate transactional and non-transactional groups.
+	// Migrations are divided into list of groups: each group contains list of files transactional or non-transactional, and each group is executed separately.
+	ModeMixed string = "mixed"
+
+	// ModePlain executes migrations one by one, without grouping.
+	// Each migration script is applied individually in sequence.
+	ModePlain string = "plain"
+)
+
 type GroupEntry struct {
 	Files []MigrationFile
 	UseTX bool
