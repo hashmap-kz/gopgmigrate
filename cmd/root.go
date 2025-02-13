@@ -51,7 +51,7 @@ var rootCmd = &cobra.Command{
 			if cliOptions.historyTableName == "" {
 				return fmt.Errorf("--history-table is required")
 			}
-			if !migrate.PostgresqlSchemaTablePathRegex.MatchString(cliOptions.historyTableName) {
+			if !migrate.IsSchemaTablePath(cliOptions.historyTableName) {
 				return fmt.Errorf("--history-table expected required in format: `schema.table`")
 			}
 		}

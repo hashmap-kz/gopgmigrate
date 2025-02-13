@@ -40,7 +40,7 @@ var (
 
 	// create schema m$yschema1;
 	// create table m$yschema1.m$table (id int);
-	PostgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
+	postgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
 )
 
 func parseVersionDo(basename string) (int64, error) {
@@ -77,7 +77,15 @@ func parseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
 	return parsedResult, nil
 }
 
-func isTx(cur MigrationFile) bool {
-	res := !versionedMigrationRegexNtx.MatchString(cur.Base)
+func IsSchemaTablePath(what string) bool {
+	return postgresqlSchemaTablePathRegex.MatchString(what)
+}
+
+func isTx(file MigrationFile) bool {
+	res := !versionedMigrationRegexNtx.MatchString(file.Base)
 	return res
+}
+
+func isRepeatable(file MigrationFile) bool {
+	return repeatableMigrationRegexDo.MatchString(file.Base)
 }

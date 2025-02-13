@@ -88,7 +88,3 @@ func findHist(base string, appliedMigrations []history.MigrateHistory) *history.
 	}
 	return nil
 }
-
-func isRepeatable(file MigrationFile) bool {
-	return repeatableMigrationRegexDo.MatchString(file.Base)
-}
