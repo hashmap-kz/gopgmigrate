@@ -21,8 +21,6 @@ func getMigrationsForUndo(
 		return nil, err
 	}
 
-	// TODO: limits, check is applied, etc...
-
 	hist, err := repo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
@@ -37,47 +35,51 @@ func getVersionedMigrationsToUndo(files []MigrationFile, hist []history.MigrateH
 		return nil, fmt.Errorf("rollback-count is greater that the whole history")
 	}
 
-	// TODO: !!!
-	// TODO: get undo migrations ONLY for those scripts that ARE applied at that moment
-	// TODO: !!!
-
 	// Sort history by base (DESC)
 	sort.Slice(hist, func(i, j int) bool {
 		return hist[i].MhName > hist[j].MhName
 	})
 
-	// Sort files by base (DESC)
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Base > files[j].Base
-	})
-
 	// create a slice of CNT after sort is applied
 	cnt := min(len(files), much)
-	files = files[:cnt]
 	hist = hist[:cnt]
-
-	if len(files) != len(hist) {
-		return nil, fmt.Errorf("not all rollback scripts present for undo %d steps", much)
-	}
 
 	// collect UNDO scripts
 	resultFiles := []MigrationFile{}
-	for i := 0; i < len(files); i++ {
-		fileEntry := files[i]
-		histEntry := hist[i]
-		if fileEntry.Vers != histEntry.MhVersion {
-			return nil, fmt.Errorf("cannot rollback %d steps, latest rollback script is %s, while applied script is %s",
-				much,
-				fileEntry.Base,
-				histEntry.MhName,
-			)
+	for _, elem := range hist {
+		script, found, err := findCorrespondingUndoScript(files, elem)
+		if err != nil {
+			return nil, err
 		}
-
-		// otherwise, we're able to rollback applied migration
-		resultFiles = append(resultFiles, fileEntry)
+		if !found {
+			return nil, fmt.Errorf("cannot find undo script for %s", elem.MhName)
+		}
+		resultFiles = append(resultFiles, script)
 	}
 
+	// Sort result-files by base (DESC)
+	sort.Slice(resultFiles, func(i, j int) bool {
+		return resultFiles[i].Base > resultFiles[j].Base
+	})
+
 	return resultFiles, nil
+}
+
+func findCorrespondingUndoScript(undoScripts []MigrationFile, doScript history.MigrateHistory) (MigrationFile, bool, error) {
+	versionDo, err := parseVersionDo(doScript.MhName)
+	if err != nil {
+		return MigrationFile{}, false, err
+	}
+	for _, elem := range undoScripts {
+		versionUndo, err := parseVersionUndo(elem.Base)
+		if err != nil {
+			return MigrationFile{}, false, err
+		}
+		if versionUndo == versionDo {
+			return elem, true, nil
+		}
+	}
+	return MigrationFile{}, false, nil
 }
 
 func min(a, b int) int {
