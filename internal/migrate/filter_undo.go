@@ -37,6 +37,10 @@ func getVersionedMigrationsToUndo(files []MigrationFile, hist []history.MigrateH
 		return nil, fmt.Errorf("rollback-count is greater that the whole history")
 	}
 
+	// TODO: !!!
+	// TODO: get undo migrations ONLY for those scripts that ARE applied at that moment
+	// TODO: !!!
+
 	// Sort history by base (DESC)
 	sort.Slice(hist, func(i, j int) bool {
 		return hist[i].MhName > hist[j].MhName
