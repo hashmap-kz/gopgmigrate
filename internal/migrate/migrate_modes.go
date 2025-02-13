@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"os"
+	"strings"
+
+	"gopgmigrate/internal/dbms"
+	"gopgmigrate/internal/history/impl"
 
 	"gopgmigrate/pkg/logger"
 
@@ -14,41 +17,56 @@ import (
 
 type RunMigrationCtx struct {
 	MigrateMode  string
-	DB           *sql.DB
-	Repo         history.MigrateHistoryRepository
 	DirectionDo  bool
 	MigrationDir string
 	DryRun       bool
+
+	ConnStr          string
+	HistoryTableName string
 }
 
 func RunMigrations(
 	ctx context.Context,
 	migCtx RunMigrationCtx,
 ) error {
+	// init repository
+	repo, conn, err := initRepo(ctx, migCtx)
+	if err != nil {
+		return err
+	}
+	defer func(conn *sql.DB) {
+		err := conn.Close()
+		if err != nil {
+			slog.Warn("conn", slog.String("status", err.Error()))
+		} else {
+			slog.Info("conn", slog.String("status", "closed:true"))
+		}
+	}(conn)
+
 	// lock
 
-	acquired, err := migCtx.Repo.AcquireMigrationLock(ctx, migCtx.DB)
+	acquired, err := repo.AcquireMigrationLock(ctx, conn)
 	if err != nil {
 		slog.Error("unable to acquire lock", slog.String("err", err.Error()))
-		os.Exit(1)
+		return fmt.Errorf("cannot acquire lock: %v", err)
 	}
 	if !acquired {
 		slog.Error("another migration process is running. exiting.")
-		os.Exit(1)
+		return fmt.Errorf("cannot acquire lock: %v", err)
 	}
 	slog.Info("lock", slog.String("status", "acquired:true"))
 	defer func(ctx context.Context, conn *sql.DB) {
-		err = migCtx.Repo.ReleaseMigrationLock(ctx, conn)
+		err = repo.ReleaseMigrationLock(ctx, conn)
 		if err != nil {
 			slog.Warn("lock", slog.String("status", err.Error()))
 		} else {
 			slog.Info("lock", slog.String("status", "released:true"))
 		}
-	}(ctx, migCtx.DB)
+	}(ctx, conn)
 
-	// prepare
+	// prepare migration scripts
 
-	pendingMigrations, err := getPendingMigrations(ctx, migCtx.DB, migCtx.MigrationDir, migCtx.Repo)
+	pendingMigrations, err := getPendingMigrations(ctx, conn, migCtx.MigrationDir, repo)
 	if err != nil {
 		return err
 	}
@@ -62,11 +80,11 @@ func RunMigrations(
 	// migrate
 
 	if migCtx.MigrateMode == ModeMixed {
-		return runMigrationsMixedMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
+		return runMigrationsMixedMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
 	} else if migCtx.MigrateMode == ModePlain {
-		return runMigrationsPlainMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
+		return runMigrationsPlainMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
 	} else if migCtx.MigrateMode == ModeGroup {
-		return runMigrationsGroupMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
+		return runMigrationsGroupMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
 	}
 	return fmt.Errorf("unknown mode: %s", migCtx.MigrateMode)
 }
@@ -122,4 +140,40 @@ func runMigrationsGroupMode(
 		return err
 	}
 	return migrateListOfFilesFn(ctx, db, groupEntry.Files, groupEntry.UseTX, repo, directionDo)
+}
+
+// init repo, conn
+
+// TODO: this should be an interface
+// TODO: simplify, cleanup
+func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
+	var err error
+	var repo history.MigrateHistoryRepository
+	var conn *sql.DB
+
+	if parseConnStr(migCtx.ConnStr) == DbmsVendorPostgresql {
+		repo = impl.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
+		conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = repo.CreateHistoryTable(ctx, conn)
+		if err != nil {
+			return nil, nil, err
+		}
+
+	} else {
+		slog.Error("unknown DBMS vendor", slog.String("connStr", migCtx.ConnStr))
+		return nil, nil, fmt.Errorf("unknown DBMS vendor for connStr: %s", migCtx.ConnStr)
+	}
+
+	return repo, conn, nil
+}
+
+func parseConnStr(str string) string {
+	if strings.HasPrefix(str, "postgres://") {
+		return DbmsVendorPostgresql
+	}
+	return ""
 }

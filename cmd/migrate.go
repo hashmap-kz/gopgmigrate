@@ -2,18 +2,12 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"os"
 
 	"gopgmigrate/internal/migrate"
 
 	"github.com/spf13/cobra"
-)
-
-const (
-	dbmsVendorPostgresql = "postgresql"
-	dbmsVendorClickhouse = "clickhouse"
 )
 
 var migrateMode string
@@ -34,25 +28,14 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	var err error
 	ctx := context.Background()
 
-	// init repository
-	repo, conn := initRepo(ctx)
-	defer func(conn *sql.DB) {
-		err := conn.Close()
-		if err != nil {
-			slog.Warn("conn", slog.String("status", err.Error()))
-		} else {
-			slog.Info("conn", slog.String("status", "closed:true"))
-		}
-	}(conn)
-
 	// run all migrations
 	err = migrate.RunMigrations(ctx, migrate.RunMigrationCtx{
-		MigrateMode:  migrateMode,
-		DB:           conn,
-		Repo:         repo,
-		DirectionDo:  true,
-		MigrationDir: cliOptions.dirName,
-		DryRun:       dryRun,
+		MigrateMode:      migrateMode,
+		DirectionDo:      true,
+		MigrationDir:     cliOptions.dirName,
+		DryRun:           dryRun,
+		ConnStr:          cliOptions.connStr,
+		HistoryTableName: cliOptions.historyTableName,
 	})
 	if err != nil {
 		slog.Error("migration error", slog.String("err", err.Error()))
