@@ -24,7 +24,7 @@ func TestGetFiles(t *testing.T) {
 	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
 	// Run getFiles
-	files, err := getFiles(tmpDir, map[string]*regexp.Regexp{})
+	files, err := getFiles(tmpDir, versionedMigrationRegexDo, map[string]*regexp.Regexp{})
 	if err != nil {
 		t.Fatalf("getFiles() failed: %v", err)
 	}

@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var migrateMode string
-
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Run database migrations",
@@ -38,7 +36,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 		HistoryTableName: cliOptions.historyTableName,
 	})
 	if err != nil {
-		slog.Error("migration error", slog.String("err", err.Error()))
+		slog.Error("migration", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 

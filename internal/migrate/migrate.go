@@ -66,7 +66,7 @@ func migrateOneScriptFn(
 		}
 	} else {
 		// UNDO
-		err := mhRepo.DeleteVersion(ctx, tx, file.Base)
+		err := mhRepo.DeleteVersion(ctx, tx, file.Vers)
 		if err != nil {
 			return err
 		}

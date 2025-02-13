@@ -1,8 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"os"
 	"strconv"
+
+	"gopgmigrate/internal/migrate"
 
 	"github.com/spf13/cobra"
 )
@@ -18,11 +23,15 @@ var rollbackCmd = &cobra.Command{
 
 func init() {
 	rollbackCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate rollback execution without applying changes")
+	rollbackCmd.Flags().StringVar(&migrateMode, "mode", migrate.ModePlain, "Migration mode: plain/group/mixed")
 	rollbackCmd.Flags().BoolVar(&rollbackConfirmTwice, "yes-i-really-mean-it", false, "Confirm twice before doing the real rollback")
 	rootCmd.AddCommand(rollbackCmd)
 }
 
 func runRollback(cmd *cobra.Command, args []string) {
+	var err error
+	ctx := context.Background()
+
 	steps := 1
 	if len(args) > 0 {
 		if num, err := strconv.Atoi(args[0]); err == nil {
@@ -42,6 +51,21 @@ func runRollback(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("Rolling back %d migrations in '%s' using connection: %s\n",
-		steps, cliOptions.dirName, cliOptions.connStr)
+	// run all migrations
+	err = migrate.RunMigrations(ctx, migrate.RunMigrationCtx{
+		MigrateMode:      migrateMode,
+		MigrationDir:     cliOptions.dirName,
+		DryRun:           dryRun,
+		ConnStr:          cliOptions.connStr,
+		HistoryTableName: cliOptions.historyTableName,
+
+		DirectionDo: false,
+		UndoCount:   steps,
+	})
+	if err != nil {
+		slog.Error("migration", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	slog.Info("migration", slog.String("status", "applied:ok"))
 }

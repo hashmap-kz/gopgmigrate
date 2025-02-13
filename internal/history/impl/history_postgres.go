@@ -155,15 +155,22 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.
 	return scannedEntities, nil
 }
 
-func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx dbms.Transaction, scriptName string) error {
+func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx dbms.Transaction, v int64) error {
 	tag := "migrateHistoryPostgresRepository.DeleteVersion"
 	query := fmt.Sprintf(`
 		delete from only %s
-		where mh_name = $1
+		where mh_version = $1
 	`, r.tableName)
-	_, err := tx.ExecContext(ctx, query, scriptName)
+	res, err := tx.ExecContext(ctx, query, v)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
+	if rowsAffected <= 0 {
+		return fmt.Errorf("%s: no rows were deleted for version: %d", tag, v)
 	}
 	return nil
 }

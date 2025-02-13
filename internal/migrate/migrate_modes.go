@@ -25,12 +25,16 @@ type RunMigrationCtx struct {
 
 	ConnStr          string
 	HistoryTableName string
+
+	UndoCount int
 }
 
 func RunMigrations(
 	ctx context.Context,
 	migCtx RunMigrationCtx,
 ) error {
+	var err error
+
 	// init repository
 	repo, conn, err := initRepo(ctx, migCtx)
 	if err != nil {
@@ -68,10 +72,17 @@ func RunMigrations(
 	}(ctx, conn)
 
 	// prepare migration scripts
-
-	pendingMigrations, err := getPendingMigrations(ctx, conn, migCtx.MigrationDir, repo)
-	if err != nil {
-		return err
+	var pendingMigrations []MigrationFile
+	if migCtx.DirectionDo {
+		pendingMigrations, err = getMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
+		if err != nil {
+			return err
+		}
+	} else {
+		pendingMigrations, err = getMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
+		if err != nil {
+			return err
+		}
 	}
 
 	if migCtx.DryRun {
