@@ -41,7 +41,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 		if err != nil {
 			slog.Warn("conn", slog.String("status", err.Error()))
 		} else {
-			slog.Debug("conn", slog.String("status", "closed:true"))
+			slog.Info("conn", slog.String("status", "closed:true"))
 		}
 	}(conn)
 
@@ -59,5 +59,5 @@ func runMigrations(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	slog.Info("migrations applied successfully")
+	slog.Info("migration", slog.String("status", "applied:ok"))
 }

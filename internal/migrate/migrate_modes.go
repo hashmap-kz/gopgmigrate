@@ -36,13 +36,13 @@ func RunMigrations(
 		slog.Error("another migration process is running. exiting.")
 		os.Exit(1)
 	}
-	slog.Debug("lock", slog.String("status", "acquired:true"))
+	slog.Info("lock", slog.String("status", "acquired:true"))
 	defer func(ctx context.Context, conn *sql.DB) {
 		err = migCtx.Repo.ReleaseMigrationLock(ctx, conn)
 		if err != nil {
 			slog.Warn("lock", slog.String("status", err.Error()))
 		} else {
-			slog.Debug("lock", slog.String("status", "released:true"))
+			slog.Info("lock", slog.String("status", "released:true"))
 		}
 	}(ctx, migCtx.DB)
 
