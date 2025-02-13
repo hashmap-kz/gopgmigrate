@@ -64,6 +64,16 @@ create view {{.schema}}.vw_{{.table}} as
 select * from {{.schema}}.{{.table}};
 `)
 
+func w(filePath, content string) {
+	if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+		log.Fatal(err)
+	}
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Generated:", filePath)
+}
+
 func main() {
 	targetDir := "./migrations"
 
@@ -71,6 +81,11 @@ func main() {
 	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
 		fmt.Println("Error creating directory:", err)
 		return
+	}
+
+	schemas := []string{
+		"authn",
+		"public",
 	}
 
 	tables := []string{
@@ -96,12 +111,27 @@ func main() {
 
 	var fileNumber = 0
 
+	for i, elem := range schemas {
+		fileNumber = fileNumber + i
+		filenameDo := fmt.Sprintf("%05d-%s_schema.do.sql", fileNumber, elem)
+		filenameUndo := fmt.Sprintf("%05d-%s_schema.undo.sql", fileNumber, elem)
+
+		w(filepath.Join(targetDir, "schema", filenameDo),
+			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
+				"schema": elem,
+			}))
+		w(filepath.Join(targetDir, "schema", filenameUndo),
+			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
+				"undo": elem,
+			}))
+	}
+
 	for i, schTab := range tables {
 		schemaName := strings.Split(schTab, ".")[0]
 		tableName := strings.Split(schTab, ".")[1]
 
 		for _, tmpl := range filesTemplate {
-			fileNumber = fileNumber + (i*len(filesTemplate) + tmpl.Idx)
+			fileNumber = i*len(filesTemplate) + tmpl.Idx*len(schemas)
 			filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
 			filePath := filepath.Join(targetDir, tmpl.Dir, filename)
 			if tmpl.Dir != "undo" {
@@ -111,23 +141,12 @@ func main() {
 					filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
 				}
 			}
-
-			if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-				fmt.Println("Error creating directory:", err)
-				return
-			}
-
-			// Write the content to the file
 			content := ExecTemplate(tableName, tmpl.Content, map[string]string{
 				"schema": schemaName,
 				"table":  tableName,
 				"idx":    fmt.Sprintf("%d", fileNumber),
 			})
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-				fmt.Println("Error writing file:", err)
-				return
-			}
-			fmt.Println("Generated:", filePath)
+			w(filePath, content)
 		}
 	}
 
