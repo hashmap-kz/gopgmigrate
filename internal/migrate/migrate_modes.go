@@ -34,12 +34,13 @@ func RunMigrations(
 	if err != nil {
 		return err
 	}
+	slog.Info("conn", slog.String("status", "opened"))
 	defer func(conn *sql.DB) {
 		err := conn.Close()
 		if err != nil {
 			slog.Warn("conn", slog.String("status", err.Error()))
 		} else {
-			slog.Info("conn", slog.String("status", "closed:true"))
+			slog.Info("conn", slog.String("status", "closed"))
 		}
 	}(conn)
 
@@ -54,13 +55,13 @@ func RunMigrations(
 		slog.Error("another migration process is running. exiting.")
 		return fmt.Errorf("cannot acquire lock: %v", err)
 	}
-	slog.Info("lock", slog.String("status", "acquired:true"))
+	slog.Info("lock", slog.String("status", "acquired"))
 	defer func(ctx context.Context, conn *sql.DB) {
 		err = repo.ReleaseMigrationLock(ctx, conn)
 		if err != nil {
 			slog.Warn("lock", slog.String("status", err.Error()))
 		} else {
-			slog.Info("lock", slog.String("status", "released:true"))
+			slog.Info("lock", slog.String("status", "released"))
 		}
 	}(ctx, conn)
 
