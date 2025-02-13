@@ -61,9 +61,9 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	if dryRun {
 		_ = logger.DisableLogging()
 		if migrateMode == migrate.ModeMixed {
-			printPendingGroups(pendingMigrations)
+			printPendingMixedMode(pendingMigrations)
 		} else {
-			printPending(pendingMigrations)
+			printPendingPlainMode(pendingMigrations)
 		}
 		return
 	}
@@ -79,7 +79,7 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	slog.Info("migrations applied successfully")
 }
 
-func printPending(migrations []migrate.MigrationFile) {
+func printPendingPlainMode(migrations []migrate.MigrationFile) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
 	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
 	for _, p := range migrations {
@@ -88,7 +88,7 @@ func printPending(migrations []migrate.MigrationFile) {
 	_ = w.Flush()
 }
 
-func printPendingGroups(migrations []migrate.MigrationFile) {
+func printPendingMixedMode(migrations []migrate.MigrationFile) {
 	entries, err := migrate.ParseFilesMixedMode(migrations)
 	if err != nil {
 		return
