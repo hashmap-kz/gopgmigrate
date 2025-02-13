@@ -29,7 +29,7 @@ func getMigrationsForUndo(
 	return getVersionedMigrationsToUndo(allLocalFiles, hist, howMuch)
 }
 
-// TODO: this is a prototype, working ONLY one-by-one (is the latest applied script HAS corresponding undo-script)
+// TODO: this is a prototype, working ONLY one-by-one (when the latest applied script HAS corresponding undo-script)
 func getVersionedMigrationsToUndo(files []MigrationFile, hist []history.MigrateHistory, much int) ([]MigrationFile, error) {
 	if much > len(hist) {
 		return nil, fmt.Errorf("rollback-count is greater that the whole history")
@@ -55,6 +55,10 @@ func getVersionedMigrationsToUndo(files []MigrationFile, hist []history.MigrateH
 			return nil, fmt.Errorf("cannot find undo script for %s", elem.MhName)
 		}
 		resultFiles = append(resultFiles, script)
+	}
+
+	if len(resultFiles) != len(hist) {
+		return nil, fmt.Errorf("cannot rollback, not all applied scripts have corresponding undo scripts")
 	}
 
 	// Sort result-files by base (DESC)

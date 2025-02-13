@@ -46,8 +46,8 @@ func runRollback(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if !rollbackConfirmTwice {
-		fmt.Println("You should confirm that you're really want to rollback, add --yes-i-really-mean-it. You may also check --dry-run, before applying")
+	if !rollbackConfirmTwice && !dryRun {
+		fmt.Println("You should confirm that you're really want to rollback with adding '--yes-i-really-mean-it'. You may also check --dry-run, before applying")
 		return
 	}
 
