@@ -52,16 +52,8 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	//////////////////////////////////////////////////////////////////////
-	// get migration scripts
-	files, err := migrate.GetFiles(cliOptions.dirName)
-	if err != nil {
-		slog.Error("collecting files error", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
-
-	//////////////////////////////////////////////////////////////////////
 	// init repository
-	repo, conn := getRepoAndConn(ctx)
+	repo, conn, noTxPatterns := initRepo(ctx)
 	defer func(conn *sql.DB) {
 		err := conn.Close()
 		if err != nil {
@@ -70,6 +62,14 @@ func runMigrations(cmd *cobra.Command, args []string) {
 			slog.Debug("conn", slog.String("status", "closed:true"))
 		}
 	}(conn)
+
+	//////////////////////////////////////////////////////////////////////
+	// get migration scripts
+	files, err := migrate.GetFiles(cliOptions.dirName, noTxPatterns)
+	if err != nil {
+		slog.Error("collecting files error", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
 
 	//////////////////////////////////////////////////////////////////////
 	// get pending migrations

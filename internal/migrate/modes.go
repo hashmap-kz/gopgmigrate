@@ -65,8 +65,3 @@ func ParseFilesMixedMode(input []MigrationFile) ([]*GroupEntry, error) {
 
 	return batches, nil
 }
-
-func isTx(cur MigrationFile) bool {
-	res := !versionedMigrationRegexNtx.MatchString(cur.Base)
-	return res
-}

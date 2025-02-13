@@ -1,6 +1,8 @@
 package migrate
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,7 +11,7 @@ import (
 	"sort"
 )
 
-func GetFiles(migrationDirectory string) ([]MigrationFile, error) {
+func GetFiles(migrationDirectory string, noTxPatterns map[string]*regexp.Regexp) ([]MigrationFile, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
@@ -22,7 +24,7 @@ func GetFiles(migrationDirectory string) ([]MigrationFile, error) {
 		return nil, err
 	}
 
-	err = checkVersionedMigrations(versioned)
+	err = checkVersionedMigrations(versioned, noTxPatterns)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +107,7 @@ func getAllStrayFiles(directory string) ([]string, error) {
 
 // routine around versioned migrations
 
-func checkVersionedMigrations(versioned []MigrationFile) error {
+func checkVersionedMigrations(versioned []MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
 	var err error
 
 	err = checkFilesAreUniqueByVersion(versioned)
@@ -113,7 +115,7 @@ func checkVersionedMigrations(versioned []MigrationFile) error {
 		return err
 	}
 
-	err = checkPossibleNoTx(versioned)
+	err = checkPossibleNoTx(versioned, noTxPatterns)
 	if err != nil {
 		return err
 	}
@@ -121,13 +123,16 @@ func checkVersionedMigrations(versioned []MigrationFile) error {
 	return nil
 }
 
-func checkPossibleNoTx(versioned []MigrationFile) error {
+func checkPossibleNoTx(versioned []MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
+	if len(noTxPatterns) == 0 {
+		return nil
+	}
 	for _, elem := range versioned {
 		// is already no-transactional file
 		if versionedMigrationRegexNtx.MatchString(elem.Base) {
 			continue
 		}
-		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data))
+		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.data), noTxPatterns)
 		if len(warnings) > 0 {
 			for _, w := range warnings {
 				slog.Error("notx-statement-detected", slog.String("cause", w))
@@ -145,6 +150,16 @@ func checkPossibleNoTx(versioned []MigrationFile) error {
 	return nil
 }
 
+func checkThatFileIsPossibleShouldNotUseTx(sqlContent string, noTxPatterns map[string]*regexp.Regexp) []string {
+	var warnings []string
+	for name, pattern := range noTxPatterns {
+		if pattern.MatchString(sqlContent) {
+			warnings = append(warnings, fmt.Sprintf("Warning: Detected %s pattern", name))
+		}
+	}
+	return warnings
+}
+
 func checkFilesAreUniqueByVersion(versioned []MigrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
@@ -156,4 +171,10 @@ func checkFilesAreUniqueByVersion(versioned []MigrationFile) error {
 		seenVersions[f.Vers] = true
 	}
 	return nil
+}
+
+// computeHash computes SHA256 hash of a file
+func computeHash(content []byte) string {
+	hash := sha256.Sum256(content)
+	return hex.EncodeToString(hash[:])
 }

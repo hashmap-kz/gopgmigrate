@@ -25,7 +25,7 @@ func RunMigrationsPlainMode(
 	return nil
 }
 
-// migrateOneScript applies versioned migrations for versioned/data
+// migrateOneScript applies a single script, TX/NO-TX (based on filename pattern)
 func migrateOneScript(
 	ctx context.Context,
 	db *sql.DB,
@@ -33,11 +33,9 @@ func migrateOneScript(
 	mhRepo history.MigrateHistoryRepository,
 	directionDo bool,
 ) (err error) {
-	useTX := !versionedMigrationRegexNtx.MatchString(file.Base)
-
 	// TRANSACTION
 
-	if useTX {
+	if isTx(file) {
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return err

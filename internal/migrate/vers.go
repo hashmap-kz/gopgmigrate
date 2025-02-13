@@ -4,8 +4,15 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 )
+
+type MigrationFile struct {
+	Vers int64
+	Path string
+	Base string
+	data []byte
+	hash string
+}
 
 var (
 	// versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-([a-zA-Z0-9_-]+)\.(do|dontx|r|rntx)\.sql$`)
@@ -70,15 +77,7 @@ func parseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
 	return parsedResult, nil
 }
 
-// Copied from lib/pq implementation: https://github.com/lib/pq/blob/v1.9.0/conn.go#L1611
-func quoteIdentifier(name string) string {
-	end := strings.IndexRune(name, 0)
-	if end > -1 {
-		name = name[:end]
-	}
-	return `"` + strings.Replace(name, `"`, `""`, -1) + `"`
-}
-
-func quoteFullIdentifier(schema, table string) string {
-	return quoteIdentifier(schema) + "." + quoteIdentifier(table)
+func isTx(cur MigrationFile) bool {
+	res := !versionedMigrationRegexNtx.MatchString(cur.Base)
+	return res
 }

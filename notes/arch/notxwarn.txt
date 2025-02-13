@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"fmt"
 	"regexp"
 )
 
@@ -14,14 +13,4 @@ var regexPatterns = map[string]*regexp.Regexp{
 	"Vacuum":                               regexp.MustCompile(`(?i)VACUUM`),
 	"DiscardAll":                           regexp.MustCompile(`(?i)DISCARD ALL`),
 	"AlterTypeAddValue":                    regexp.MustCompile(`(?i)ALTER TYPE( .*)? ADD VALUE`),
-}
-
-func checkThatFileIsPossibleShouldNotUseTx(sqlContent string) []string {
-	var warnings []string
-	for name, pattern := range regexPatterns {
-		if pattern.MatchString(sqlContent) {
-			warnings = append(warnings, fmt.Sprintf("Warning: Detected %s pattern", name))
-		}
-	}
-	return warnings
 }

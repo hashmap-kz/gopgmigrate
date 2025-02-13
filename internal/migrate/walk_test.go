@@ -3,6 +3,7 @@ package migrate
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -23,7 +24,7 @@ func TestGetFiles(t *testing.T) {
 	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
 	// Run GetFiles
-	files, err := GetFiles(tmpDir)
+	files, err := GetFiles(tmpDir, map[string]*regexp.Regexp{})
 	if err != nil {
 		t.Fatalf("GetFiles() failed: %v", err)
 	}

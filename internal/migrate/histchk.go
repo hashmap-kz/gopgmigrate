@@ -11,11 +11,11 @@ import (
 
 func GetPendingMigrations(
 	ctx context.Context,
-	conn *sql.DB,
+	db *sql.DB,
 	localFiles []MigrationFile,
 	mhRepo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
-	hist, err := fetchHistoryAscSorted(ctx, conn, mhRepo)
+	hist, err := mhRepo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
 	}
@@ -27,38 +27,6 @@ func GetPendingMigrations(
 }
 
 // applied
-
-func fetchHistoryAscSorted(
-	ctx context.Context,
-	conn *sql.DB,
-	mhRepo history.MigrateHistoryRepository,
-) ([]history.MigrateHistory, error) {
-	var err error
-
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	err = mhRepo.CreateHistoryTable(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	// check that all applied migrations are present in files list
-	migrateHistory, err := mhRepo.ListAll(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return nil, err
-	}
-
-	return migrateHistory, nil
-}
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) error {
 	for _, k := range appliedMigrations {
