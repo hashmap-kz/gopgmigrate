@@ -9,7 +9,7 @@ import (
 	"gopgmigrate/internal/history"
 )
 
-func GetPendingMigrations(
+func getPendingMigrations(
 	ctx context.Context,
 	db *sql.DB,
 	migrationDirectory string,

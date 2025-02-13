@@ -7,20 +7,27 @@ import (
 	"log/slog"
 	"os"
 
+	"gopgmigrate/pkg/logger"
+
 	"gopgmigrate/internal/history"
 )
 
+type RunMigrationCtx struct {
+	MigrateMode  string
+	DB           *sql.DB
+	Repo         history.MigrateHistoryRepository
+	DirectionDo  bool
+	MigrationDir string
+	DryRun       bool
+}
+
 func RunMigrations(
 	ctx context.Context,
-	migrateMode string,
-	db *sql.DB,
-	repo history.MigrateHistoryRepository,
-	pendingMigrations []MigrationFile,
-	directionDo bool,
+	migCtx RunMigrationCtx,
 ) error {
 	// lock
 
-	acquired, err := repo.AcquireMigrationLock(ctx, db)
+	acquired, err := migCtx.Repo.AcquireMigrationLock(ctx, migCtx.DB)
 	if err != nil {
 		slog.Error("unable to acquire lock", slog.String("err", err.Error()))
 		os.Exit(1)
@@ -31,24 +38,37 @@ func RunMigrations(
 	}
 	slog.Debug("lock", slog.String("status", "acquired:true"))
 	defer func(ctx context.Context, conn *sql.DB) {
-		err = repo.ReleaseMigrationLock(ctx, conn)
+		err = migCtx.Repo.ReleaseMigrationLock(ctx, conn)
 		if err != nil {
 			slog.Warn("lock", slog.String("status", err.Error()))
 		} else {
 			slog.Debug("lock", slog.String("status", "released:true"))
 		}
-	}(ctx, db)
+	}(ctx, migCtx.DB)
+
+	// prepare
+
+	pendingMigrations, err := getPendingMigrations(ctx, migCtx.DB, migCtx.MigrationDir, migCtx.Repo)
+	if err != nil {
+		return err
+	}
+
+	if migCtx.DryRun {
+		_ = logger.DisableLogging()
+		printMigrationsInfo(migCtx.MigrateMode, pendingMigrations)
+		return nil
+	}
 
 	// migrate
 
-	if migrateMode == ModeMixed {
-		return runMigrationsMixedMode(ctx, db, repo, pendingMigrations, directionDo)
-	} else if migrateMode == ModePlain {
-		return runMigrationsPlainMode(ctx, db, repo, pendingMigrations, directionDo)
-	} else if migrateMode == ModeGroup {
-		return runMigrationsGroupMode(ctx, db, repo, pendingMigrations, directionDo)
+	if migCtx.MigrateMode == ModeMixed {
+		return runMigrationsMixedMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
+	} else if migCtx.MigrateMode == ModePlain {
+		return runMigrationsPlainMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
+	} else if migCtx.MigrateMode == ModeGroup {
+		return runMigrationsGroupMode(ctx, migCtx.DB, migCtx.Repo, pendingMigrations, migCtx.DirectionDo)
 	}
-	return fmt.Errorf("unknown mode: %s", migrateMode)
+	return fmt.Errorf("unknown mode: %s", migCtx.MigrateMode)
 }
 
 // runMigrationsPlainMode applies both versioned and repeatable migrations
