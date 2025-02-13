@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"regexp"
 
 	"gopgmigrate/internal/history"
 )
@@ -12,17 +13,25 @@ import (
 func GetPendingMigrations(
 	ctx context.Context,
 	db *sql.DB,
-	localFiles []MigrationFile,
+	migrationDirectory string,
+	noTxPatterns map[string]*regexp.Regexp,
 	mhRepo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
+	localFiles, err := getFiles(migrationDirectory, noTxPatterns)
+	if err != nil {
+		return nil, err
+	}
+
 	hist, err := mhRepo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
 	}
+
 	err = checkAppliedHistoryWithLocalFiles(hist, localFiles)
 	if err != nil {
 		return nil, err
 	}
+
 	return getVersionedMigrationsToApply(hist, localFiles)
 }
 

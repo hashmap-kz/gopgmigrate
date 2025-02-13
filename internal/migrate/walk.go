@@ -11,7 +11,7 @@ import (
 	"sort"
 )
 
-func GetFiles(migrationDirectory string, noTxPatterns map[string]*regexp.Regexp) ([]MigrationFile, error) {
+func getFiles(migrationDirectory string, noTxPatterns map[string]*regexp.Regexp) ([]MigrationFile, error) {
 	var err error
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)

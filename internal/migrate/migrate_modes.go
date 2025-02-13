@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
 
 	"gopgmigrate/internal/history"
 )
@@ -16,6 +18,29 @@ func RunMigrations(
 	pendingMigrations []MigrationFile,
 	directionDo bool,
 ) error {
+	// lock
+
+	acquired, err := repo.AcquireMigrationLock(ctx, db)
+	if err != nil {
+		slog.Error("unable to acquire lock", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+	if !acquired {
+		slog.Error("another migration process is running. exiting.")
+		os.Exit(1)
+	}
+	slog.Debug("lock", slog.String("status", "acquired:true"))
+	defer func(ctx context.Context, conn *sql.DB) {
+		err = repo.ReleaseMigrationLock(ctx, conn)
+		if err != nil {
+			slog.Warn("lock", slog.String("status", err.Error()))
+		} else {
+			slog.Debug("lock", slog.String("status", "released:true"))
+		}
+	}(ctx, db)
+
+	// migrate
+
 	if migrateMode == ModeMixed {
 		return runMigrationsMixedMode(ctx, db, repo, pendingMigrations, directionDo)
 	} else if migrateMode == ModePlain {

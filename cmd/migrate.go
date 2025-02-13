@@ -51,16 +51,8 @@ func runMigrations(cmd *cobra.Command, args []string) {
 	}(conn)
 
 	//////////////////////////////////////////////////////////////////////
-	// get migration scripts
-	files, err := migrate.GetFiles(cliOptions.dirName, noTxPatterns)
-	if err != nil {
-		slog.Error("collecting files error", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
-
-	//////////////////////////////////////////////////////////////////////
 	// get pending migrations
-	pendingMigrations, err := migrate.GetPendingMigrations(ctx, conn, files, repo)
+	pendingMigrations, err := migrate.GetPendingMigrations(ctx, conn, cliOptions.dirName, noTxPatterns, repo)
 	if err != nil {
 		slog.Error("collecting pending migrations error", slog.String("err", err.Error()))
 		os.Exit(1)
@@ -75,27 +67,6 @@ func runMigrations(cmd *cobra.Command, args []string) {
 		}
 		return
 	}
-
-	//////////////////////////////////////////////////////////////////////
-	// acquire advisory lock
-	acquired, err := repo.AcquireMigrationLock(ctx, conn)
-	if err != nil {
-		slog.Error("unable to acquire lock", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
-	if !acquired {
-		slog.Error("another migration process is running. exiting.")
-		os.Exit(1)
-	}
-	slog.Debug("lock", slog.String("status", "acquired:true"))
-	defer func(ctx context.Context, conn *sql.DB) {
-		err = repo.ReleaseMigrationLock(ctx, conn)
-		if err != nil {
-			slog.Warn("lock", slog.String("status", err.Error()))
-		} else {
-			slog.Debug("lock", slog.String("status", "released:true"))
-		}
-	}(ctx, conn)
 
 	//////////////////////////////////////////////////////////////////////
 	// run all migrations

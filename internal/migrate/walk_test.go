@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Test GetFiles function
+// Test getFiles function
 func TestGetFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -23,10 +23,10 @@ func TestGetFiles(t *testing.T) {
 	// Create a valid repeatable migration file
 	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
-	// Run GetFiles
-	files, err := GetFiles(tmpDir, map[string]*regexp.Regexp{})
+	// Run getFiles
+	files, err := getFiles(tmpDir, map[string]*regexp.Regexp{})
 	if err != nil {
-		t.Fatalf("GetFiles() failed: %v", err)
+		t.Fatalf("getFiles() failed: %v", err)
 	}
 
 	// Check that migrations were correctly detected
