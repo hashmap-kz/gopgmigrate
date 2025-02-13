@@ -9,7 +9,7 @@ func TestBatchResolving1(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []MigrationFile
-		expected []*GroupEntry
+		expected []GroupEntry
 	}{
 		{
 			name: "5-batches",
@@ -29,7 +29,7 @@ func TestBatchResolving1(t *testing.T) {
 				{Base: "00011-empty.do.sql"},                 // 5
 				{Base: "00012-empty.do.sql"},                 // 5
 			},
-			expected: []*GroupEntry{
+			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
@@ -79,7 +79,7 @@ func TestBatchResolving2(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []MigrationFile
-		expected []*GroupEntry
+		expected []GroupEntry
 	}{
 		{
 			name: "mix-1",
@@ -88,7 +88,7 @@ func TestBatchResolving2(t *testing.T) {
 				{Base: "00000-audit-table.do.sql"},           // 1
 				{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 			},
-			expected: []*GroupEntry{
+			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
@@ -112,7 +112,7 @@ func TestBatchResolving3(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []MigrationFile
-		expected []*GroupEntry
+		expected []GroupEntry
 	}{
 		{
 			name: "tx-only",
@@ -120,7 +120,7 @@ func TestBatchResolving3(t *testing.T) {
 			input: []MigrationFile{
 				{Base: "00000-audit-table.do.sql"}, // 1
 			},
-			expected: []*GroupEntry{
+			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
@@ -138,7 +138,7 @@ func TestBatchResolving4(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []MigrationFile
-		expected []*GroupEntry
+		expected []GroupEntry
 	}{
 		{
 			name: "notx-only",
@@ -146,7 +146,7 @@ func TestBatchResolving4(t *testing.T) {
 			input: []MigrationFile{
 				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 			},
-			expected: []*GroupEntry{
+			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
 						{Base: "00006-non-transactional.ntx.do.sql"}, // 1
@@ -164,7 +164,7 @@ func TestBatchResolving5(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []MigrationFile
-		expected []*GroupEntry
+		expected []GroupEntry
 	}{
 		{
 			name: "empty-input",
@@ -288,7 +288,7 @@ func checkGroupMode(t *testing.T, tests []struct {
 func checkMixedMode(t *testing.T, tests []struct {
 	name     string
 	input    []MigrationFile
-	expected []*GroupEntry
+	expected []GroupEntry
 },
 ) {
 	for _, test := range tests {

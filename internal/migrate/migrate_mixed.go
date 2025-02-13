@@ -3,7 +3,6 @@ package migrate
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"gopgmigrate/internal/history"
 )
@@ -13,13 +12,10 @@ func RunMigrationsMixedMode(
 	ctx context.Context,
 	db *sql.DB,
 	repo history.MigrateHistoryRepository,
-	groups []*GroupEntry,
+	groups []GroupEntry,
 	directionDo bool,
 ) error {
 	for _, elem := range groups {
-		if elem == nil {
-			return fmt.Errorf("internal error. unexpected nil group, func: RunMigrationsMixedMode")
-		}
 		err := migrateListOfFilesFn(ctx, db, elem.Files, elem.UseTX, repo, directionDo)
 		if err != nil {
 			return err
