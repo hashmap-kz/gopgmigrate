@@ -1,0 +1,126 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
+)
+
+type MigrationFile struct {
+	Idx      int
+	Dir      string
+	Filename string
+	Content  string
+}
+
+func ExecTemplate(name, t string, data map[string]string) string {
+	var result bytes.Buffer
+	tmpl, err := template.New(name).Parse(t)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = tmpl.Execute(&result, data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return result.String()
+}
+
+var funcTemplate = strings.TrimSpace(`
+drop function if exists public.fn_get_{{.table}};
+create function public.fn_get_{{.table}}()
+    returns table
+            (
+                id    int,
+                xname text
+            )
+as
+$fn$
+begin
+    return query
+        select c.id   as id,
+               c.xname as xname
+        from {{.table}} c;
+end
+$fn$ language plpgsql;
+`)
+
+var alterTmplDo = strings.TrimSpace(`
+alter table public.{{.table}} add column xdata text;
+update public.{{.table}} set xdata = xname || '-data';
+create index ix_{{.table}}_xdata on public.{{.table}} (xdata);
+`)
+
+var alterTmplUndo = strings.TrimSpace(`
+alter table public.{{.table}} drop column xdata;
+`)
+
+var viewTmpl = strings.TrimSpace(`
+create view public.vw_{{.table}} as
+select * from public.{{.table}};
+`)
+
+func main() {
+	targetDir := "./migrations"
+
+	// Ensure the target directory exists
+	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
+		fmt.Println("Error creating directory:", err)
+		return
+	}
+
+	tables := []string{
+		"users",
+		"roles",
+		"permissions",
+		"groups",
+		"companies",
+	}
+
+	filesTemplate := []MigrationFile{
+		{0, "schema", "%05d-%s_table.do.sql", `create table if not exists public.{{.table}} (id serial primary key, xname text not null);`},
+		{0, "undo", "%05d-%s_table.undo.sql", `drop table if exists public.{{.table}};`},
+		{1, "repeatable/functions", "%05d-fn_get_%s.r.sql", funcTemplate},
+		{1, "undo", "%05d-fn_get_%s.undo.sql", `drop function if exists public.fn_get_{{.table}};`},
+		{2, "repeatable/views", "%05d-vw_%s.r.sql", viewTmpl},
+		{2, "undo", "%05d-vw_%s.undo.sql", `drop view if exists public.vw_{{.table}};`},
+		{3, "data", "%05d-seed_%s.r.sql", `insert into public.{{.table}} (xname) values ('test-{{.idx}}');`},
+		{3, "undo", "%05d-seed_%s.undo.sql", `delete from public.{{.table}} where xname = 'test-{{.idx}}';`},
+		{4, "schema", "%05d-alter_%s_add_xdata.do.sql", alterTmplDo},
+		{4, "undo", "%05d-alter_%s_add_xdata.undo.sql", alterTmplUndo},
+	}
+
+	var fileNumber int
+	for i, tab := range tables {
+		for _, tmpl := range filesTemplate {
+			fileNumber = i*len(filesTemplate) + tmpl.Idx
+			filename := fmt.Sprintf(tmpl.Filename, fileNumber, tab)
+			filePath := filepath.Join(targetDir, tmpl.Dir, filename)
+			if tmpl.Dir == "schema" || tmpl.Dir == "data" {
+				filePath = filepath.Join(targetDir, tmpl.Dir, tab, filename)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+				fmt.Println("Error creating directory:", err)
+				return
+			}
+
+			// Write the content to the file
+			content := ExecTemplate(tab, tmpl.Content, map[string]string{
+				"table": tab,
+				"idx":   fmt.Sprintf("%d", fileNumber),
+			})
+			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+				fmt.Println("Error writing file:", err)
+				return
+			}
+			fmt.Println("Generated:", filePath)
+		}
+	}
+
+	fmt.Println("Test files generated successfully!")
+}
