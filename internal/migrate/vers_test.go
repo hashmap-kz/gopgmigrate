@@ -86,7 +86,7 @@ func TestValidateSchemaTable(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := PostgresqlSchemaTablePathRegex.MatchString(test.input)
+		result := postgresqlSchemaTablePathRegex.MatchString(test.input)
 		if result != test.expected {
 			t.Errorf("ValidateSchemaTable(%q) = %v; expected %v", test.input, result, test.expected)
 		}

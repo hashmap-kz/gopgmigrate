@@ -22,7 +22,6 @@ var cliOptions struct {
 	logEnc           string
 	logLevel         string
 	historyTableName string
-	dbms             string
 }
 
 // Root command
@@ -51,7 +50,7 @@ var rootCmd = &cobra.Command{
 			if cliOptions.historyTableName == "" {
 				return fmt.Errorf("--history-table is required")
 			}
-			if !migrate.PostgresqlSchemaTablePathRegex.MatchString(cliOptions.historyTableName) {
+			if !migrate.IsSchemaTablePath(cliOptions.historyTableName) {
 				return fmt.Errorf("--history-table expected required in format: `schema.table`")
 			}
 		}
@@ -78,7 +77,6 @@ clickhouse: clickhouse://username:password@host:port/dbname`))
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logEnc, "log-enc", "text", "Log encoding format (json/text)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logLevel, "log-level", "debug", "Log level (debug/info/warn/error)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
-	rootCmd.PersistentFlags().StringVar(&cliOptions.dbms, "dbms", "postgresql", "Database management system (postgresql/clickhouse)")
 
 	// TODO:
 	// Mark required flags

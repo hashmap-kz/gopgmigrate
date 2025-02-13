@@ -9,56 +9,31 @@ import (
 	"gopgmigrate/internal/history"
 )
 
-func GetPendingMigrations(
+func getPendingMigrations(
 	ctx context.Context,
-	conn *sql.DB,
-	localFiles []MigrationFile,
-	mhRepo history.MigrateHistoryRepository,
+	db *sql.DB,
+	migrationDirectory string,
+	repo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
-	hist, err := fetchHistoryAscSorted(ctx, conn, mhRepo)
+	allLocalFiles, err := getFiles(migrationDirectory, repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
-	err = checkAppliedHistoryWithLocalFiles(hist, localFiles)
+
+	hist, err := repo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	return getVersionedMigrationsToApply(hist, localFiles)
+
+	err = checkAppliedHistoryWithLocalFiles(hist, allLocalFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	return getVersionedMigrationsToApply(hist, allLocalFiles)
 }
 
 // applied
-
-func fetchHistoryAscSorted(
-	ctx context.Context,
-	conn *sql.DB,
-	mhRepo history.MigrateHistoryRepository,
-) ([]history.MigrateHistory, error) {
-	var err error
-
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	err = mhRepo.CreateHistoryTable(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	// check that all applied migrations are present in files list
-	migrateHistory, err := mhRepo.ListAll(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return nil, err
-	}
-
-	return migrateHistory, nil
-}
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) error {
 	for _, k := range appliedMigrations {
@@ -119,8 +94,4 @@ func findHist(base string, appliedMigrations []history.MigrateHistory) *history.
 		}
 	}
 	return nil
-}
-
-func isRepeatable(file MigrationFile) bool {
-	return repeatableMigrationRegexDo.MatchString(file.Base)
 }

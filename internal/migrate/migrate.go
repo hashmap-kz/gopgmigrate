@@ -24,7 +24,7 @@ func migrateOneScriptFn(
 ) (err error) {
 	slog.Info("migration",
 		slog.String("tx", txLogNote),
-		slog.String("mode", getModeForLog(directionDo)),
+		slog.String("direction", getModeForLog(directionDo)),
 		slog.String("type", getTypeForLog(file)),
 		slog.String("name", file.Base),
 	)
@@ -137,6 +137,42 @@ func migrateListOfFilesFn(
 		return err
 	}
 	return nil
+}
+
+// migrateOneScript applies a single script, TX/NO-TX (based on filename pattern)
+func migrateOneScript(
+	ctx context.Context,
+	db *sql.DB,
+	file MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	// TRANSACTION
+
+	if isTx(file) {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		script := []string{string(file.data)}
+		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
+		if err != nil {
+			return err
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// NO TRANSACTION
+
+	script, _ := stmts.SplitSQLStatements(string(file.data))
+	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
 }
 
 func getModeForLog(directionDo bool) string {

@@ -1,0 +1,13 @@
+
+// Copied from lib/pq implementation: https://github.com/lib/pq/blob/v1.9.0/conn.go#L1611
+func quoteIdentifier(name string) string {
+	end := strings.IndexRune(name, 0)
+	if end > -1 {
+		name = name[:end]
+	}
+	return `"` + strings.Replace(name, `"`, `""`, -1) + `"`
+}
+
+func quoteFullIdentifier(schema, table string) string {
+	return quoteIdentifier(schema) + "." + quoteIdentifier(table)
+}

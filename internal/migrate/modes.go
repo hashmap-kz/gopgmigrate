@@ -1,6 +1,28 @@
 package migrate
 
-import "fmt"
+import (
+	"fmt"
+
+	"gopgmigrate/pkg/ds"
+)
+
+const (
+	// ModeGroup applies all pending migrations as a single "group".
+	// This means that all migrations must either be executed within a single transaction (if they are transactional)
+	// or all must be non-transactional.
+	ModeGroup string = "group"
+
+	// ModeMixed applies all pending migrations in separate transactional and non-transactional groups.
+	// Migrations are divided into list of groups: each group contains list of files transactional or non-transactional, and each group is executed separately.
+	ModeMixed string = "mixed"
+
+	// ModePlain executes migrations one by one, without grouping.
+	// Each migration script is applied individually in sequence.
+	ModePlain string = "plain"
+
+	DbmsVendorPostgresql = "postgresql"
+	DbmsVendorClickhouse = "clickhouse"
+)
 
 type GroupEntry struct {
 	Files []MigrationFile
@@ -28,45 +50,51 @@ func ParseFilesGroupMode(input []MigrationFile) (GroupEntry, error) {
 	}, nil
 }
 
-func ParseFilesMixedMode(input []MigrationFile) ([]*GroupEntry, error) {
-	var batches []*GroupEntry
-	var current []MigrationFile
+func ParseFilesMixedMode(input []MigrationFile) ([]GroupEntry, error) {
+	stack := ds.NewStack(input)
+	result := []GroupEntry{}
 
-	for i, file := range input {
-		// Start a new batch if current batch is empty or if transactional status changes
-		if len(current) == 0 || isTx(current[len(current)-1]) == isTx(file) {
-			current = append(current, file)
-		} else {
-			// Store the current batch before starting a new one
-			batches = append(batches, &GroupEntry{Files: current})
-			current = []MigrationFile{file}
-		}
-		// Store the last batch at the end
-		if i == len(input)-1 {
-			batches = append(batches, &GroupEntry{Files: current})
+	for !stack.IsEmpty() {
+		chain, hasElements := cutChain(stack)
+		if hasElements {
+			result = append(result, chain)
 		}
 	}
 
 	// Check that we skip nothing
 	total := 0
-	for _, elem := range batches {
+	for _, elem := range result {
 		total = total + len(elem.Files)
 	}
 	if total != len(input) {
 		return nil, fmt.Errorf("error splitting files into batches")
 	}
 
-	// Assign TX flags
-	for _, elem := range batches {
-		if len(elem.Files) > 0 {
-			elem.UseTX = isTx(elem.Files[0])
+	return result, nil
+}
+
+func cutChain(stack *ds.Stack[MigrationFile]) (GroupEntry, bool) {
+	if stack.IsEmpty() {
+		return GroupEntry{}, false
+	}
+
+	var tmp []MigrationFile
+	for !stack.IsEmpty() {
+		cur, _ := stack.Pop()
+		tmp = append(tmp, cur)
+
+		nex, _ := stack.Peek()
+		if isTx(cur) != isTx(nex) {
+			break
 		}
 	}
 
-	return batches, nil
-}
+	if len(tmp) == 0 {
+		return GroupEntry{}, false
+	}
 
-func isTx(cur MigrationFile) bool {
-	res := !versionedMigrationRegexNtx.MatchString(cur.Base)
-	return res
+	return GroupEntry{
+		Files: tmp,
+		UseTX: isTx(tmp[0]),
+	}, true
 }
