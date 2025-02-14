@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// GetDatabaseConnectionPostgres initializes a PostgreSQL connection
-func GetDatabaseConnectionPostgres(dbURL string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", dbURL)
+// GetDatabaseConnectionClickhouse initializes a Clickhouse connection
+func GetDatabaseConnectionClickhouse(dbURL string) (*sql.DB, error) {
+	db, err := sql.Open("clickhouse", dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

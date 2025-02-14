@@ -1,0 +1,1 @@
+delete from default.users;
