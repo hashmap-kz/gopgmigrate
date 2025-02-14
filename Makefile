@@ -45,3 +45,8 @@ plain-ch:
 	export PGMIGRATE_DIRNAME=examples/ch
 	go run main.go migrate --mode=plain
 
+.ONESHELL:
+r1-ch:
+	export PGMIGRATE_CONNSTR=clickhouse://default:default@10.40.240.193:9000/default
+	export PGMIGRATE_DIRNAME=examples/ch
+	go run main.go rollback-count 1 --mode=mixed --yes-i-really-mean-it

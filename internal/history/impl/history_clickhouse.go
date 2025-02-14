@@ -155,16 +155,9 @@ func (r *migrateHistoryClickhouseRepository) DeleteVersion(ctx context.Context, 
 		delete from %s
 		where mh_version = $1
 	`, r.tableName)
-	res, err := tx.ExecContext(ctx, query, v)
+	_, err := tx.ExecContext(ctx, query, v)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
-	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	if rowsAffected <= 0 {
-		return fmt.Errorf("%s: no rows were deleted for version: %d", tag, v)
 	}
 	return nil
 }

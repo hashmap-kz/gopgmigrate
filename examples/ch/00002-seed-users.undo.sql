@@ -1,1 +1,1 @@
-delete from default.users;
+delete from default.users where true;
