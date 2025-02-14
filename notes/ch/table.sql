@@ -48,6 +48,8 @@ delete from migrate_history
 where mh_version = 1
 ;
 
+select exists (select 1 from migrate_history where mh_version = 1)
+;
 
 
 

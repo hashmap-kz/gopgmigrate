@@ -76,10 +76,24 @@ func (r *migrateHistoryClickhouseRepository) SaveVersioned(ctx context.Context, 
 // TODO: simplify
 func (r *migrateHistoryClickhouseRepository) SaveRepeatable(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryClickhouseRepository.SaveRepeatable"
-	err := r.SaveVersioned(ctx, tx, inputEntity)
+
+	// upsert
+
+	exists, err := r.VersionExists(ctx, tx, inputEntity.MhVersion)
 	if err != nil {
 		return fmt.Errorf("%s: %w", tag, err)
 	}
+
+	// insert
+	if !exists {
+		err := r.SaveVersioned(ctx, tx, inputEntity)
+		if err != nil {
+			return fmt.Errorf("%s: %w", tag, err)
+		}
+		return nil
+	}
+
+	// update
 	query := fmt.Sprintf(`    
 		alter table %s
 		update
@@ -157,6 +171,18 @@ func (r *migrateHistoryClickhouseRepository) DeleteVersion(ctx context.Context, 
 		return fmt.Errorf("%s: no rows were deleted for version: %d", tag, v)
 	}
 	return nil
+}
+
+func (r *migrateHistoryClickhouseRepository) VersionExists(ctx context.Context, tx dbms.Transaction, v int64) (bool, error) {
+	var exists bool
+	query := fmt.Sprintf("select exists (select 1 from %s where mh_version = $1);", r.tableName)
+
+	err := tx.QueryRowContext(context.Background(), query, v).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }
 
 // utils

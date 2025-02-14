@@ -175,6 +175,18 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 	return nil
 }
 
+func (r *migrateHistoryPostgresRepository) VersionExists(ctx context.Context, tx dbms.Transaction, v int64) (bool, error) {
+	var exists bool
+	query := fmt.Sprintf("select exists (select 1 from %s where mh_version = $1);", r.tableName)
+
+	err := tx.QueryRowContext(context.Background(), query, v).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
 // utils
 
 func (r *migrateHistoryPostgresRepository) GetNoTxPatterns() map[string]*regexp.Regexp {
