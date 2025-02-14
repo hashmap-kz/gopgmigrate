@@ -31,13 +31,11 @@ func (r *migrateHistoryClickhouseRepository) CreateHistoryTable(ctx context.Cont
 	query := fmt.Sprintf(`
 		create table if not exists %s
 		(
-			id 				 Int64,
 			mh_version       Int64  not null,
 			mh_name          String not null,
 			mh_hash          String not null,
 			mh_applied_by    String                   default currentUser(),
 			mh_applied_at    DateTime64(3, 'UTC')     default now64(3),
-			mh_txid			 Nullable(String)		  default '',
 			mh_iter_id		 UUID not null,
 			mh_version_check UInt64 MATERIALIZED      toUInt64(left(mh_name, 5)),
 			constraint       check_filename           check mh_name REGEXP '^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$',
@@ -120,13 +118,11 @@ func (r *migrateHistoryClickhouseRepository) ListAll(ctx context.Context, tx dbm
 
 	query := fmt.Sprintf(`		
 		select
-			id,
 			mh_version,
 			mh_name,
 			mh_hash,
 			mh_applied_by,
 			mh_applied_at,
-			mh_txid,
 			mh_iter_id
 		from %s
 		order by mh_version
@@ -211,13 +207,11 @@ func (r *migrateHistoryClickhouseRepository) ReleaseMigrationLock(ctx context.Co
 func scanFullRowCh(row *sql.Rows) (*history.MigrateHistory, error) {
 	var scannedEntity history.MigrateHistory
 	err := row.Scan(
-		&scannedEntity.ID,
 		&scannedEntity.MhVersion,
 		&scannedEntity.MhName,
 		&scannedEntity.MhHash,
 		&scannedEntity.MhAppliedBy,
 		&scannedEntity.MhAppliedAt,
-		&scannedEntity.MhTxid,
 		&scannedEntity.MhIterID,
 	)
 	if err != nil {
