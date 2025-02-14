@@ -78,6 +78,24 @@ func w(filePath, content string) {
 	fmt.Println("Generated:", filePath)
 }
 
+func one(tmpl MigrationFile, fileNumber int, schemaName, tableName, targetDir string) {
+	filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
+	filePath := filepath.Join(targetDir, tmpl.Dir, filename)
+	if tmpl.Dir != "undo" {
+		if tmpl.Dir == "schema" || tmpl.Dir == "data" {
+			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
+		} else {
+			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
+		}
+	}
+	content := ExecTemplate(tableName, tmpl.Content, map[string]string{
+		"schema": schemaName,
+		"table":  tableName,
+		"idx":    fmt.Sprintf("%d", fileNumber),
+	})
+	w(filePath, content)
+}
+
 func main() {
 	targetDir := "./migrations"
 	os.RemoveAll(targetDir)
@@ -117,31 +135,31 @@ func main() {
 
 	filesTemplate := []MigrationFilePair{
 		{
-			Do:   MigrationFile{Dir: "schema", Filename: "%07d-%s_table.do.sql", Content: `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
-			Undo: MigrationFile{Dir: "undo", Filename: "%07d-%s_table.undo.sql", Content: `drop table if exists {{.schema}}.{{.table}};`},
+			Do:   MigrationFile{Dir: "schema", Filename: "%05d-%s_table.do.sql", Content: `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
+			Undo: MigrationFile{Dir: "undo", Filename: "%05d-%s_table.undo.sql", Content: `drop table if exists {{.schema}}.{{.table}};`},
 		},
 		{
-			MigrationFile{Dir: "repeatable/functions", Filename: "%07d-fn_get_%s.r.sql", Content: funcTemplate},
-			MigrationFile{Dir: "undo", Filename: "%07d-fn_get_%s.undo.sql", Content: `drop function if exists {{.schema}}.fn_get_{{.table}};`},
+			MigrationFile{Dir: "repeatable/functions", Filename: "%05d-fn_get_%s.r.sql", Content: funcTemplate},
+			MigrationFile{Dir: "undo", Filename: "%05d-fn_get_%s.undo.sql", Content: `drop function if exists {{.schema}}.fn_get_{{.table}};`},
 		},
 		{
-			MigrationFile{Dir: "repeatable/views", Filename: "%07d-vw_%s.r.sql", Content: viewTmpl},
-			MigrationFile{Dir: "undo", Filename: "%07d-vw_%s.undo.sql", Content: `drop view if exists {{.schema}}.vw_{{.table}};`},
+			MigrationFile{Dir: "repeatable/views", Filename: "%05d-vw_%s.r.sql", Content: viewTmpl},
+			MigrationFile{Dir: "undo", Filename: "%05d-vw_%s.undo.sql", Content: `drop view if exists {{.schema}}.vw_{{.table}};`},
 		},
 		{
-			MigrationFile{Dir: "data", Filename: "%07d-seed_%s.r.sql", Content: `insert into {{.schema}}.{{.table}} (xname) values ('test-{{.idx}}');`},
-			MigrationFile{Dir: "undo", Filename: "%07d-seed_%s.undo.sql", Content: `delete from {{.schema}}.{{.table}} where xname = 'test-{{.idx}}';`},
+			MigrationFile{Dir: "data", Filename: "%05d-seed_%s.r.sql", Content: `insert into {{.schema}}.{{.table}} (xname) values ('test-{{.idx}}');`},
+			MigrationFile{Dir: "undo", Filename: "%05d-seed_%s.undo.sql", Content: `delete from {{.schema}}.{{.table}} where xname = 'test-{{.idx}}';`},
 		},
 		{
-			MigrationFile{Dir: "schema", Filename: "%07d-alter_%s_add_xdata.do.sql", Content: alterTmplDo},
-			MigrationFile{Dir: "undo", Filename: "%07d-alter_%s_add_xdata.undo.sql", Content: alterTmplUndo},
+			MigrationFile{Dir: "schema", Filename: "%05d-alter_%s_add_xdata.do.sql", Content: alterTmplDo},
+			MigrationFile{Dir: "undo", Filename: "%05d-alter_%s_add_xdata.undo.sql", Content: alterTmplUndo},
 		},
 	}
 
 	for _, elem := range schemas {
 		fileNumber := getNextSeq()
-		filenameDo := fmt.Sprintf("%07d-%s_schema.do.sql", fileNumber, elem)
-		filenameUndo := fmt.Sprintf("%07d-%s_schema.undo.sql", fileNumber, elem)
+		filenameDo := fmt.Sprintf("%05d-%s_schema.do.sql", fileNumber, elem)
+		filenameUndo := fmt.Sprintf("%05d-%s_schema.undo.sql", fileNumber, elem)
 
 		w(filepath.Join(targetDir, "schema", filenameDo),
 			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
@@ -164,22 +182,4 @@ func main() {
 	}
 
 	fmt.Println("Test files generated successfully!")
-}
-
-func one(tmpl MigrationFile, fileNumber int, schemaName, tableName, targetDir string) {
-	filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
-	filePath := filepath.Join(targetDir, tmpl.Dir, filename)
-	if tmpl.Dir != "undo" {
-		if tmpl.Dir == "schema" || tmpl.Dir == "data" {
-			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
-		} else {
-			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
-		}
-	}
-	content := ExecTemplate(tableName, tmpl.Content, map[string]string{
-		"schema": schemaName,
-		"table":  tableName,
-		"idx":    fmt.Sprintf("%d", fileNumber),
-	})
-	w(filePath, content)
 }
