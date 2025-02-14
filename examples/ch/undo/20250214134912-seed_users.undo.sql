@@ -1,0 +1,1 @@
+delete from default.users where xname = 'test-20250214134912';

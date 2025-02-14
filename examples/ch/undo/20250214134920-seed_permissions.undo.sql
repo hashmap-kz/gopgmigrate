@@ -1,0 +1,1 @@
+delete from default.permissions where xname = 'test-20250214134920';

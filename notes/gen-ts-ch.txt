@@ -35,29 +35,15 @@ func ExecTemplate(name, t string, data map[string]string) string {
 	return result.String()
 }
 
-var funcTemplate = strings.TrimSpace(`
-drop function if exists {{.schema}}.fn_get_{{.table}};
-create function {{.schema}}.fn_get_{{.table}}()
-    returns table
-            (
-                id    int,
-                xname text
-            )
-as
-$fn$
-begin
-    return query
-        select c.id   as id,
-               c.xname as xname
-        from {{.table}} c;
-end
-$fn$ language plpgsql;
-`)
-
 var alterTmplDo = strings.TrimSpace(`
-alter table {{.schema}}.{{.table}} add column xdata text;
-update {{.schema}}.{{.table}} set xdata = xname || '-data';
-create index ix_{{.table}}_xdata on {{.schema}}.{{.table}} (xdata);
+alter table {{.schema}}.{{.table}} add column xdata text
+;
+
+alter table {{.schema}}.{{.table}}
+update xdata = 'data-' || xname
+where true
+settings mutations_sync = 2
+;
 `)
 
 var alterTmplUndo = strings.TrimSpace(`
@@ -67,6 +53,15 @@ alter table {{.schema}}.{{.table}} drop column xdata;
 var viewTmpl = strings.TrimSpace(`
 create view {{.schema}}.vw_{{.table}} as
 select * from {{.schema}}.{{.table}};
+`)
+
+var tableTmpl = strings.TrimSpace(`
+CREATE TABLE {{.schema}}.{{.table}}
+(
+    id         UUID     DEFAULT generateUUIDv4(),
+    xname      String
+) ENGINE = MergeTree()
+ORDER BY id;
 `)
 
 func w(filePath, content string) {
@@ -82,13 +77,6 @@ func w(filePath, content string) {
 func one(tmpl MigrationFile, fileNumber, schemaName, tableName, targetDir string) {
 	filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
 	filePath := filepath.Join(targetDir, tmpl.Dir, filename)
-	if tmpl.Dir != "undo" {
-		if tmpl.Dir == "schema" || tmpl.Dir == "data" {
-			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
-		} else {
-			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
-		}
-	}
 	content := ExecTemplate(tableName, tmpl.Content, map[string]string{
 		"schema": schemaName,
 		"table":  tableName,
@@ -131,27 +119,18 @@ func main() {
 		return ""
 	}
 
-	schemas := []string{
-		"authn",
-		"public",
-	}
-
 	tables := []string{
-		"authn.users",
-		"authn.roles",
-		"authn.permissions",
-		"authn.groups",
-		"public.companies",
+		"default.users",
+		"default.roles",
+		"default.permissions",
+		"default.groups",
+		"default.companies",
 	}
 
 	filesTemplate := []MigrationFilePair{
 		{
-			Do:   MigrationFile{Dir: "schema", Filename: "%s-%s_table.do.sql", Content: `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
+			Do:   MigrationFile{Dir: "schema", Filename: "%s-%s_table.do.sql", Content: tableTmpl},
 			Undo: MigrationFile{Dir: "undo", Filename: "%s-%s_table.undo.sql", Content: `drop table if exists {{.schema}}.{{.table}};`},
-		},
-		{
-			MigrationFile{Dir: "repeatable/functions", Filename: "%s-fn_get_%s.r.sql", Content: funcTemplate},
-			MigrationFile{Dir: "undo", Filename: "%s-fn_get_%s.undo.sql", Content: `drop function if exists {{.schema}}.fn_get_{{.table}};`},
 		},
 		{
 			MigrationFile{Dir: "repeatable/views", Filename: "%s-vw_%s.r.sql", Content: viewTmpl},
@@ -165,21 +144,6 @@ func main() {
 			MigrationFile{Dir: "schema", Filename: "%s-alter_%s_add_xdata.do.sql", Content: alterTmplDo},
 			MigrationFile{Dir: "undo", Filename: "%s-alter_%s_add_xdata.undo.sql", Content: alterTmplUndo},
 		},
-	}
-
-	for _, elem := range schemas {
-		fileNumber := getNextSeq()
-		filenameDo := fmt.Sprintf("%s-%s_schema.do.sql", fileNumber, elem)
-		filenameUndo := fmt.Sprintf("%s-%s_schema.undo.sql", fileNumber, elem)
-
-		w(filepath.Join(targetDir, "schema", filenameDo),
-			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
-				"schema": elem,
-			}))
-		w(filepath.Join(targetDir, "undo", filenameUndo),
-			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
-				"schema": elem,
-			}))
 	}
 
 	for _, schTab := range tables {

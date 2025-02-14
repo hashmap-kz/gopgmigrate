@@ -1,0 +1,1 @@
+delete from authn.permissions where xname = 'test-20250214134052';

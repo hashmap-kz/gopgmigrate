@@ -92,34 +92,34 @@ func TestFound(t *testing.T) {
 
 func TestGetVersionedMigrationsToApply(t *testing.T) {
 	mockFiles := []MigrationFile{
-		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", data: []byte("init"), hash: "1"},
-		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", data: []byte("users")},
+		{Base: "00100200300001-init.do.sql", Path: "/migrations/00100200300001-init.do.sql", data: []byte("init"), hash: "1"},
+		{Base: "00100200300002--users.do.sql", Path: "/migrations/00100200300002--users.do.sql", data: []byte("users")},
 	}
 
 	mockHistory := []history.MigrateHistory{
-		{MhName: "00001-init.do.sql", MhHash: "1"},
+		{MhName: "00100200300001-init.do.sql", MhHash: "1"},
 	}
 
 	toApply, err := getVersionedMigrationsToApply(mockHistory, mockFiles)
 	assert.NoError(t, err)
 	assert.Len(t, toApply, 1)
-	assert.Equal(t, "00002-users.do.sql", toApply[0].Base)
+	assert.Equal(t, "00100200300002--users.do.sql", toApply[0].Base)
 
 	// Test hash mismatch scenario
-	mockHistory = append(mockHistory, history.MigrateHistory{MhName: "00002-users.do.sql", MhHash: "wrong-hash"})
+	mockHistory = append(mockHistory, history.MigrateHistory{MhName: "00100200300002--users.do.sql", MhHash: "wrong-hash"})
 	_, err = getVersionedMigrationsToApply(mockHistory, mockFiles)
 	assert.Error(t, err)
 }
 
 func TestFindHist(t *testing.T) {
 	mockHistory := []history.MigrateHistory{
-		{MhName: "00001-init.do.sql", MhHash: "hash1"},
+		{MhName: "00100200300001-init.do.sql", MhHash: "hash1"},
 	}
 
-	found := findHist("00001-init.do.sql", mockHistory)
+	found := findHist("00100200300001-init.do.sql", mockHistory)
 	assert.NotNil(t, found)
 	assert.Equal(t, "hash1", found.MhHash)
 
-	notFound := findHist("00002-users.do.sql", mockHistory)
+	notFound := findHist("00100200300002--users.do.sql", mockHistory)
 	assert.Nil(t, notFound)
 }

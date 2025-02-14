@@ -1,0 +1,1 @@
+insert into public.companies (xname) values ('test-20250214134102');

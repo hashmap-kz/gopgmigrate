@@ -37,8 +37,8 @@ func (r *migrateHistoryClickhouseRepository) CreateHistoryTable(ctx context.Cont
 			mh_applied_by    String                   default currentUser(),
 			mh_applied_at    DateTime64(3, 'UTC')     default now64(3),
 			mh_iter_id		 UUID not null,
-			mh_version_check UInt64 MATERIALIZED      toUInt64(left(mh_name, 5)),
-			constraint       check_filename           check mh_name REGEXP '^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$',
+			mh_version_check UInt64 MATERIALIZED      toUInt64(left(mh_name, 14)),
+			constraint       check_filename           check mh_name REGEXP '^(\d{14})-(.*)(?:\.ntx)?\.(do|r)\.sql$',
 			constraint       check_version_unsigned   check mh_version >= 0,
 			constraint       check_version_match_name check mh_version_check = mh_version
 		)

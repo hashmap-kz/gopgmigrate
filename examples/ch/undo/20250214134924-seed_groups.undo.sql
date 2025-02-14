@@ -1,0 +1,1 @@
+delete from default.groups where xname = 'test-20250214134924';

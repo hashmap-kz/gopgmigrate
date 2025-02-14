@@ -1,0 +1,1 @@
+insert into default.groups (xname) values ('test-20250214134924');

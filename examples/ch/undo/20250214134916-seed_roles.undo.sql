@@ -1,0 +1,1 @@
+delete from default.roles where xname = 'test-20250214134916';

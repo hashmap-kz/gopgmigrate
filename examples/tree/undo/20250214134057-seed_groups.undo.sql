@@ -1,0 +1,1 @@
+delete from authn.groups where xname = 'test-20250214134057';
