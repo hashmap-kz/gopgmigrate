@@ -1,4 +1,5 @@
 drop schema if exists audit_logs cascade;
+drop schema if exists authn cascade;
 
 do
 $$
