@@ -26,10 +26,10 @@ plain:
 r1:
 	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
 	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback 1 --mode=mixed --yes-i-really-mean-it
+	go run main.go rollback-count 1 --mode=mixed --yes-i-really-mean-it
 
 .ONESHELL:
 r5:
 	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
 	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback 5 --mode=mixed --yes-i-really-mean-it
+	go run main.go rollback-count 5 --mode=mixed --yes-i-really-mean-it

@@ -15,9 +15,9 @@ import (
 var rollbackConfirmTwice bool
 
 var rollbackCmd = &cobra.Command{
-	Use:   "rollback [steps]",
+	Use:   "rollback-count [steps]",
 	Short: "Rollback database migrations",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.ExactArgs(1),
 	Run:   runRollback,
 }
 
@@ -33,14 +33,13 @@ func runRollback(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	steps := 1
-	if len(args) > 0 {
-		if num, err := strconv.Atoi(args[0]); err == nil {
-			steps = num
-		} else {
-			fmt.Println("Invalid rollback step. Please provide a number.")
-			return
-		}
+	if num, err := strconv.Atoi(args[0]); err == nil {
+		steps = num
+	} else {
+		fmt.Println("Invalid rollback step. Please provide a number.")
+		return
 	}
+
 	if steps <= 0 {
 		fmt.Println("Invalid rollback step. Please provide a number.")
 		return
