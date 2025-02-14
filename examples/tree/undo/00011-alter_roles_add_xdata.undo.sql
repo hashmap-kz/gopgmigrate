@@ -1,0 +1,1 @@
+alter table authn.roles drop column xdata;

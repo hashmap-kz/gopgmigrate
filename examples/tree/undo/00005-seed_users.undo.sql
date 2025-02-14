@@ -1,0 +1,1 @@
+delete from authn.users where xname = 'test-5';

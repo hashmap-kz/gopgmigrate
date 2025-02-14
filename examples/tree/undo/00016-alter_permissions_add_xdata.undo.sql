@@ -1,0 +1,1 @@
+alter table authn.permissions drop column xdata;

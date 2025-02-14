@@ -1,0 +1,1 @@
+delete from authn.roles where xname = 'test-10';

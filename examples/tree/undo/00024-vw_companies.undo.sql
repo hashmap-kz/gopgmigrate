@@ -1,0 +1,1 @@
+drop view if exists public.vw_companies;

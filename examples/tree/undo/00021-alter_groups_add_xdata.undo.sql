@@ -1,0 +1,1 @@
+alter table authn.groups drop column xdata;
