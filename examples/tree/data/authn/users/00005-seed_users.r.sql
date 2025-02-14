@@ -1,0 +1,1 @@
+insert into authn.users (xname) values ('test-5');

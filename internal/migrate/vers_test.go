@@ -2,6 +2,8 @@ package migrate
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseVersionDo(t *testing.T) {
@@ -25,13 +27,16 @@ func TestParseVersionDo(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result, err := parseVersionDo(test.filename)
-		if (err != nil) != test.hasError {
-			t.Errorf("parseVersionDo(%q) unexpected error status: got %v, want error: %v", test.filename, err, test.hasError)
-		}
-		if result != test.expected {
-			t.Errorf("parseVersionDo(%q) = %d, want %d", test.filename, result, test.expected)
-		}
+		t.Run(test.filename, func(t *testing.T) {
+			result, err := parseVersionDo(test.filename)
+
+			if test.hasError {
+				assert.Error(t, err, "Expected an error but got none")
+			} else {
+				assert.NoError(t, err, "Expected no error but got: %v", err)
+				assert.Equal(t, test.expected, result, "Expected version %d but got %d", test.expected, result)
+			}
+		})
 	}
 }
 
@@ -56,25 +61,144 @@ func TestParseVersionUndo(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result, err := parseVersionUndo(test.filename)
-		if (err != nil) != test.hasError {
-			t.Errorf("parseVersionUndo(%q) unexpected error status: got %v, want error: %v", test.filename, err, test.hasError)
-		}
-		if result != test.expected {
-			t.Errorf("parseVersionUndo(%q) = %d, want %d", test.filename, result, test.expected)
-		}
+		t.Run(test.filename, func(t *testing.T) {
+			result, err := parseVersionUndo(test.filename)
+
+			if test.hasError {
+				assert.Error(t, err, "Expected an error but got none")
+			} else {
+				assert.NoError(t, err, "Expected no error but got: %v", err)
+				assert.Equal(t, test.expected, result, "Expected version %d but got %d", test.expected, result)
+			}
+		})
 	}
 }
 
-func TestValidateSchemaTable(t *testing.T) {
+func TestVersionedMigrationRegexDo(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected bool
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
 	}{
+		{"00003-users.do.sql", true, "00003", "users", "do"},
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"123-invalid.sql", false, "", "", ""},
+		{"00006-wrong.do.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexDo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestVersionedMigrationRegexUndo(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00003-users.undo.sql", true, "00003", "users", "undo"},
+		{"00004-fn_list_users.undo.sql", true, "00004", "fn_list_users", "undo"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-wrong.undo.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexUndo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestRepeatableMigrationRegexDo(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00007-invalid.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := repeatableMigrationRegexDo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestVersionedMigrationRegexNtx(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00003-vacuum-users.ntx.do.sql", true, "00003", "vacuum-users", "do"},
+		{"00004-fn_alter_system_1.ntx.r.sql", true, "00004", "fn_alter_system_1", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-invalid.ntx.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexNtx.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestPostgresqlSchemaTablePathRegex(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+	}{
+		{"myschema.table", true},
+		{"m$yschema1.m$table", true},
 		{"public.users", true},
 		{"my_schema.table$", true},
 		{"sche$ma.table_123$456", true},
 
+		{"123schema.table", false}, // Invalid because schema name starts with a number
+		{"myschema..table", false}, // Invalid format
+		{"myschema-table", false},  // Invalid: should use dot separator
 		{"_schema.$table", false},  // Cannot start with $
 		{"schema.123table", false}, // Table name must start with letter or _
 		{"schema..table", false},   // Missing schema
@@ -86,9 +210,9 @@ func TestValidateSchemaTable(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := postgresqlSchemaTablePathRegex.MatchString(test.input)
-		if result != test.expected {
-			t.Errorf("ValidateSchemaTable(%q) = %v; expected %v", test.input, result, test.expected)
-		}
+		t.Run(test.input, func(t *testing.T) {
+			matches := postgresqlSchemaTablePathRegex.MatchString(test.input)
+			assert.Equal(t, test.matches, matches)
+		})
 	}
 }

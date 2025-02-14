@@ -1,0 +1,1 @@
+drop view if exists authn.vw_roles;

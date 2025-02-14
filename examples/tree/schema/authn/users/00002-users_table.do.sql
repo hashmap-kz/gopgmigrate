@@ -1,0 +1,1 @@
+create table if not exists authn.users (id serial primary key, xname text not null);

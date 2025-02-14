@@ -13,7 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var dryRun bool
+var (
+	dryRun      bool
+	migrateMode string
+)
 
 var cliOptions struct {
 	dirName          string

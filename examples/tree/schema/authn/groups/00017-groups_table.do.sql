@@ -1,0 +1,1 @@
+create table if not exists authn.groups (id serial primary key, xname text not null);

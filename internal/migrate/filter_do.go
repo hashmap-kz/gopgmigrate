@@ -9,13 +9,13 @@ import (
 	"gopgmigrate/internal/history"
 )
 
-func getPendingMigrations(
+func getMigrationsForApply(
 	ctx context.Context,
 	db *sql.DB,
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
 ) ([]MigrationFile, error) {
-	allLocalFiles, err := getFiles(migrationDirectory, repo.GetNoTxPatterns())
+	allLocalFiles, err := getFiles(migrationDirectory, versionedMigrationRegexDo, repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
@@ -32,8 +32,6 @@ func getPendingMigrations(
 
 	return getVersionedMigrationsToApply(hist, allLocalFiles)
 }
-
-// applied
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) error {
 	for _, k := range appliedMigrations {
@@ -52,8 +50,6 @@ func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []M
 	}
 	return false
 }
-
-// to apply
 
 func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) ([]MigrationFile, error) {
 	var toApply []MigrationFile

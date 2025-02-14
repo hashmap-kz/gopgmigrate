@@ -11,15 +11,24 @@ import (
 	"sort"
 )
 
-func getFiles(migrationDirectory string, noTxPatterns map[string]*regexp.Regexp) ([]MigrationFile, error) {
+func getFiles(
+	migrationDirectory string,
+	reg *regexp.Regexp,
+	noTxPatterns map[string]*regexp.Regexp,
+) ([]MigrationFile, error) {
 	var err error
+
+	isOk := reg == versionedMigrationRegexDo || reg == versionedMigrationRegexUndo
+	if !isOk {
+		return nil, fmt.Errorf("unknown regex for filtering: `%s`", reg.String())
+	}
 
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
 	if err != nil {
 		return nil, err
 	}
 
-	versioned, err := getFilesInAPathV2(migrationDirectory, versionedMigrationRegexDo)
+	versioned, err := getFilesInAPathV2(migrationDirectory, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +55,7 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]MigrationFile, erro
 			if err != nil {
 				return err
 			}
-			vers, err := parseVersionDo(base)
+			vers, err := parseVersionByRegex(base, reg)
 			if err != nil {
 				return err
 			}
@@ -63,7 +72,7 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]MigrationFile, erro
 	if err != nil {
 		return nil, err
 	}
-	// Sort by base (Ascending)
+	// Sort by base (ASC)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Base < files[j].Base
 	})
@@ -173,7 +182,6 @@ func checkFilesAreUniqueByVersion(versioned []MigrationFile) error {
 	return nil
 }
 
-// computeHash computes SHA256 hash of a file
 func computeHash(content []byte) string {
 	hash := sha256.Sum256(content)
 	return hex.EncodeToString(hash[:])

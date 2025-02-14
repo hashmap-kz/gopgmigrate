@@ -1,0 +1,1 @@
+drop function if exists authn.fn_get_groups;
