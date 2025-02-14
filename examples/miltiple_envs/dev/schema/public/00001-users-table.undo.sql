@@ -1,0 +1,1 @@
+drop table if exists public.mtest_users cascade;

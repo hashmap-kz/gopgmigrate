@@ -1,1 +1,0 @@
-insert into default.permissions (xname) values ('test-20250214134920');

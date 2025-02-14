@@ -1,1 +1,0 @@
-delete from public.companies where xname = 'test-20250214134102';

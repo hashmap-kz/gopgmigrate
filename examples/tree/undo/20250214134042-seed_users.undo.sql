@@ -1,1 +1,0 @@
-delete from authn.users where xname = 'test-20250214134042';

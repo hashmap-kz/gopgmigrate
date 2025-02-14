@@ -17,18 +17,18 @@ type MigrationFile struct {
 var (
 	// example: 00003-users.do.sql
 	// example: 00004-fn_list_users.r.sql
-	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{14})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
+	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
 
 	// example: 00003-users.undo.sql
 	// example: 00004-fn_list_users.undo.sql
-	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{14})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
+	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
 
 	// example: 00004-fn_list_users.r.sql
-	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{14})-(.*)(?:\.ntx)?\.(r)\.sql$`)
+	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(r)\.sql$`)
 
 	// example: 00003-vacuum-users.ntx.do.sql
 	// example: 00004-fn_alter_system_1.ntx.r.sql
-	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{14})-(.*)\.ntx\.(do|r)\.sql$`)
+	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-(.*)\.ntx\.(do|r)\.sql$`)
 
 	// create schema m$yschema1;
 	// create table m$yschema1.m$table (id int);

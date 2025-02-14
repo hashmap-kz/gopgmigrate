@@ -1,0 +1,1 @@
+insert into authn.groups (xname) values ('test-20');

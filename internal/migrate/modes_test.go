@@ -15,56 +15,56 @@ func TestBatchResolving1(t *testing.T) {
 			name: "5-batches",
 
 			input: []MigrationFile{
-				{Base: "00000000000000-audit-table.do.sql"},           // 1
-				{Base: "00100200300001-users-table.do.sql"},           // 1
-				{Base: "00100200300002--roles-table.do.sql"},          // 1
-				{Base: "00000000000003-privileges.do.sql"},            // 1
-				{Base: "00000000000004-users.do.sql"},                 // 1
-				{Base: "00000000000005-roles.do.sql"},                 // 1
-				{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 2
-				{Base: "00000000000007-non-transactional.ntx.do.sql"}, // 2
-				{Base: "00000000000008-fn_get_users.r.sql"},           // 3
-				{Base: "00000000000009-fn_get_roles.r.sql"},           // 3
-				{Base: "00000000000010-alter-system.ntx.do.sql"},      // 4
-				{Base: "00000000000011-empty.do.sql"},                 // 5
-				{Base: "00000000000012-empty.do.sql"},                 // 5
+				{Base: "00000-audit-table.do.sql"},           // 1
+				{Base: "00001-users-table.do.sql"},           // 1
+				{Base: "00002-roles-table.do.sql"},           // 1
+				{Base: "00003-privileges.do.sql"},            // 1
+				{Base: "00004-users.do.sql"},                 // 1
+				{Base: "00005-roles.do.sql"},                 // 1
+				{Base: "00006-non-transactional.ntx.do.sql"}, // 2
+				{Base: "00007-non-transactional.ntx.do.sql"}, // 2
+				{Base: "00008-fn_get_users.r.sql"},           // 3
+				{Base: "00009-fn_get_roles.r.sql"},           // 3
+				{Base: "00010-alter-system.ntx.do.sql"},      // 4
+				{Base: "00011-empty.do.sql"},                 // 5
+				{Base: "00012-empty.do.sql"},                 // 5
 			},
 			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000000-audit-table.do.sql"},  // 1
-						{Base: "00100200300001-users-table.do.sql"},  // 1
-						{Base: "00100200300002--roles-table.do.sql"}, // 1
-						{Base: "00000000000003-privileges.do.sql"},   // 1
-						{Base: "00000000000004-users.do.sql"},        // 1
-						{Base: "00000000000005-roles.do.sql"},        // 1
+						{Base: "00000-audit-table.do.sql"}, // 1
+						{Base: "00001-users-table.do.sql"}, // 1
+						{Base: "00002-roles-table.do.sql"}, // 1
+						{Base: "00003-privileges.do.sql"},  // 1
+						{Base: "00004-users.do.sql"},       // 1
+						{Base: "00005-roles.do.sql"},       // 1
 					},
 					UseTX: true,
 				},
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 2
-						{Base: "00000000000007-non-transactional.ntx.do.sql"}, // 2
+						{Base: "00006-non-transactional.ntx.do.sql"}, // 2
+						{Base: "00007-non-transactional.ntx.do.sql"}, // 2
 					},
 					UseTX: false,
 				},
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000008-fn_get_users.r.sql"}, // 3
-						{Base: "00000000000009-fn_get_roles.r.sql"}, // 3
+						{Base: "00008-fn_get_users.r.sql"}, // 3
+						{Base: "00009-fn_get_roles.r.sql"}, // 3
 					},
 					UseTX: true,
 				},
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000010-alter-system.ntx.do.sql"}, // 4
+						{Base: "00010-alter-system.ntx.do.sql"}, // 4
 					},
 					UseTX: false,
 				},
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000011-empty.do.sql"}, // 5
-						{Base: "00000000000012-empty.do.sql"}, // 5
+						{Base: "00011-empty.do.sql"}, // 5
+						{Base: "00012-empty.do.sql"}, // 5
 					},
 					UseTX: true,
 				},
@@ -85,19 +85,19 @@ func TestBatchResolving2(t *testing.T) {
 			name: "mix-1",
 
 			input: []MigrationFile{
-				{Base: "00000000000000-audit-table.do.sql"},           // 1
-				{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 2
+				{Base: "00000-audit-table.do.sql"},           // 1
+				{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 			},
 			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000000-audit-table.do.sql"}, // 1
+						{Base: "00000-audit-table.do.sql"}, // 1
 					},
 					UseTX: true,
 				},
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 2
+						{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 					},
 					UseTX: false,
 				},
@@ -118,12 +118,12 @@ func TestBatchResolving3(t *testing.T) {
 			name: "tx-only",
 
 			input: []MigrationFile{
-				{Base: "00000000000000-audit-table.do.sql"}, // 1
+				{Base: "00000-audit-table.do.sql"}, // 1
 			},
 			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000000-audit-table.do.sql"}, // 1
+						{Base: "00000-audit-table.do.sql"}, // 1
 					},
 					UseTX: true,
 				},
@@ -144,12 +144,12 @@ func TestBatchResolving4(t *testing.T) {
 			name: "notx-only",
 
 			input: []MigrationFile{
-				{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 			},
 			expected: []GroupEntry{
 				{
 					Files: []MigrationFile{
-						{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 1
+						{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 					},
 					UseTX: false,
 				},
@@ -188,15 +188,15 @@ func TestBatchResolving6(t *testing.T) {
 			name: "group-mode-1",
 
 			input: []MigrationFile{
-				{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 1
-				{Base: "00000000000007-non-transactional.ntx.do.sql"}, // 1
-				{Base: "00000000000008-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00007-non-transactional.ntx.do.sql"}, // 1
+				{Base: "00008-non-transactional.ntx.do.sql"}, // 1
 			},
 			expected: GroupEntry{
 				Files: []MigrationFile{
-					{Base: "00000000000006-non-transactional.ntx.do.sql"}, // 1
-					{Base: "00000000000007-non-transactional.ntx.do.sql"}, // 1
-					{Base: "00000000000008-non-transactional.ntx.do.sql"}, // 1
+					{Base: "00006-non-transactional.ntx.do.sql"}, // 1
+					{Base: "00007-non-transactional.ntx.do.sql"}, // 1
+					{Base: "00008-non-transactional.ntx.do.sql"}, // 1
 				},
 				UseTX: false,
 			},
@@ -217,15 +217,15 @@ func TestBatchResolving7(t *testing.T) {
 			name: "group-mode-2",
 
 			input: []MigrationFile{
-				{Base: "00000000000006-transactional.do.sql"}, // 1
-				{Base: "00000000000007-transactional.do.sql"}, // 1
-				{Base: "00000000000008-transactional.do.sql"}, // 1
+				{Base: "00006-transactional.do.sql"}, // 1
+				{Base: "00007-transactional.do.sql"}, // 1
+				{Base: "00008-transactional.do.sql"}, // 1
 			},
 			expected: GroupEntry{
 				Files: []MigrationFile{
-					{Base: "00000000000006-transactional.do.sql"}, // 1
-					{Base: "00000000000007-transactional.do.sql"}, // 1
-					{Base: "00000000000008-transactional.do.sql"}, // 1
+					{Base: "00006-transactional.do.sql"}, // 1
+					{Base: "00007-transactional.do.sql"}, // 1
+					{Base: "00008-transactional.do.sql"}, // 1
 				},
 				UseTX: true,
 			},
@@ -246,8 +246,8 @@ func TestBatchResolving8(t *testing.T) {
 			name: "group-mode-3",
 
 			input: []MigrationFile{
-				{Base: "00000000000006-transactional.do.sql"},         // 1
-				{Base: "00000000000007-non-transactional.ntx.do.sql"}, // should fail
+				{Base: "00006-transactional.do.sql"},         // 1
+				{Base: "00007-non-transactional.ntx.do.sql"}, // should fail
 			},
 			expected:    GroupEntry{},
 			expectError: true,

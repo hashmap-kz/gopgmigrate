@@ -12,18 +12,18 @@ func TestParseVersionDo(t *testing.T) {
 		expected int64
 		hasError bool
 	}{
-		{"00000000000001-users.do.sql", 1, false},
-		{"00000000012345-roles.do.sql", 12345, false},
-		{"00000000000000-init.do.sql", 0, false},
-		{"00000000000123-test.do.sql", 123, false},
+		{"00001-users.do.sql", 1, false},
+		{"12345-roles.do.sql", 12345, false},
+		{"00000-init.do.sql", 0, false},
+		{"00123-test.do.sql", 123, false},
 
-		{"0000000001234-users.do.sql", -1, true},      // Invalid: needs exactly 14 digits
-		{"0000000000000-users.do.sql", -1, true},      // Invalid: only 13 digits
-		{"00000000000001_users.do.sql", -1, true},     // Invalid: uses `_` instead of `-`
-		{"00000000000001-users.up.sql", -1, true},     // Invalid: wrong suffix
-		{"000000000-users.do.sql", -1, true},          // Invalid: missing version number
-		{"00000000000001-users.sql", -1, true},        // Invalid: missing `.do.sql`
-		{"00000000000001-users.do.sql.bak", -1, true}, // Invalid: additional suffix
+		{"1234-users.do.sql", -1, true},      // Invalid: needs exactly 5 digits
+		{"0000-users.do.sql", -1, true},      // Invalid: only 4 digits
+		{"00001_users.do.sql", -1, true},     // Invalid: uses `_` instead of `-`
+		{"00001-users.up.sql", -1, true},     // Invalid: wrong suffix
+		{"users.do.sql", -1, true},           // Invalid: missing version number
+		{"00001-users.sql", -1, true},        // Invalid: missing `.do.sql`
+		{"00001-users.do.sql.bak", -1, true}, // Invalid: additional suffix
 	}
 
 	for _, test := range tests {
@@ -46,17 +46,18 @@ func TestParseVersionUndo(t *testing.T) {
 		expected int64
 		hasError bool
 	}{
-		{"00000000000001-users.undo.sql", 1, false},
-		{"00000000012345-roles.undo.sql", 12345, false},
-		{"00000000000000-init.undo.sql", 0, false},
-		{"00000000000123-test.undo.sql", 123, false},
-		{"0000000001234-users.undo.sql", -1, true},      // Invalid: needs exactly 5 digits
-		{"0000000000000-users.undo.sql", -1, true},      // Invalid: only 4 digits
-		{"00000000000001_users.undo.sql", -1, true},     // Invalid: uses `_` instead of `-`
-		{"00000000000001-users.down.sql", -1, true},     // Invalid: wrong suffix
-		{"000000000-users.undo.sql", -1, true},          // Invalid: missing version number
-		{"00000000000001-users.sql", -1, true},          // Invalid: missing `.undo.sql`
-		{"00000000000001-users.undo.sql.bak", -1, true}, // Invalid: additional suffix
+		{"00001-users.undo.sql", 1, false},
+		{"12345-roles.undo.sql", 12345, false},
+		{"00000-init.undo.sql", 0, false},
+		{"00123-test.undo.sql", 123, false},
+
+		{"1234-users.undo.sql", -1, true},      // Invalid: needs exactly 5 digits
+		{"0000-users.undo.sql", -1, true},      // Invalid: only 4 digits
+		{"00001_users.undo.sql", -1, true},     // Invalid: uses `_` instead of `-`
+		{"00001-users.down.sql", -1, true},     // Invalid: wrong suffix
+		{"users.undo.sql", -1, true},           // Invalid: missing version number
+		{"00001-users.sql", -1, true},          // Invalid: missing `.undo.sql`
+		{"00001-users.undo.sql.bak", -1, true}, // Invalid: additional suffix
 	}
 
 	for _, test := range tests {
@@ -81,10 +82,10 @@ func TestVersionedMigrationRegexDo(t *testing.T) {
 		name    string
 		migType string
 	}{
-		{"00000000000003-users.do.sql", true, "00000000000003", "users", "do"},
-		{"00000000000004-fn_list_users.r.sql", true, "00000000000004", "fn_list_users", "r"},
-		{"000000000123-invalid.sql", false, "", "", ""},
-		{"00000000000006-wrong.do.txt", false, "", "", ""},
+		{"00003-users.do.sql", true, "00003", "users", "do"},
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"123-invalid.sql", false, "", "", ""},
+		{"00006-wrong.do.txt", false, "", "", ""},
 	}
 
 	for _, test := range tests {
@@ -109,10 +110,10 @@ func TestVersionedMigrationRegexUndo(t *testing.T) {
 		name    string
 		migType string
 	}{
-		{"00000000000003-users.undo.sql", true, "00000000000003", "users", "undo"},
-		{"00000000000004-fn_list_users.undo.sql", true, "00000000000004", "fn_list_users", "undo"},
-		{"00000000000005-users.do.sql", false, "", "", ""},
-		{"00000000000006-wrong.undo.txt", false, "", "", ""},
+		{"00003-users.undo.sql", true, "00003", "users", "undo"},
+		{"00004-fn_list_users.undo.sql", true, "00004", "fn_list_users", "undo"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-wrong.undo.txt", false, "", "", ""},
 	}
 
 	for _, test := range tests {
@@ -137,9 +138,9 @@ func TestRepeatableMigrationRegexDo(t *testing.T) {
 		name    string
 		migType string
 	}{
-		{"00000000000004-fn_list_users.r.sql", true, "00000000000004", "fn_list_users", "r"},
-		{"00000000000005-users.do.sql", false, "", "", ""},
-		{"00000000000007-invalid.txt", false, "", "", ""},
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00007-invalid.txt", false, "", "", ""},
 	}
 
 	for _, test := range tests {
@@ -164,10 +165,10 @@ func TestVersionedMigrationRegexNtx(t *testing.T) {
 		name    string
 		migType string
 	}{
-		{"00000000000003-vacuum-users.ntx.do.sql", true, "00000000000003", "vacuum-users", "do"},
-		{"00000000000004-fn_alter_system_1.ntx.r.sql", true, "00000000000004", "fn_alter_system_1", "r"},
-		{"00000000000005-users.do.sql", false, "", "", ""},
-		{"00000000000006-invalid.ntx.txt", false, "", "", ""},
+		{"00003-vacuum-users.ntx.do.sql", true, "00003", "vacuum-users", "do"},
+		{"00004-fn_alter_system_1.ntx.r.sql", true, "00004", "fn_alter_system_1", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-invalid.ntx.txt", false, "", "", ""},
 	}
 
 	for _, test := range tests {

@@ -1,1 +1,0 @@
-insert into authn.users (xname) values ('test-20250214134042');

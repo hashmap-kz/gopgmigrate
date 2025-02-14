@@ -35,15 +35,15 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 		(
 		  id            int generated always as identity primary key,
 		  mh_version    bigint unique not null,
-		  mh_name       text   unique not null,
+		  mh_name       text unique   not null,
 		  mh_hash       text          not null,
 		  mh_applied_by name          not null default session_user,
 		  mh_applied_at timestamptz   not null default transaction_timestamp(),
 		  mh_txid     text            not null default pg_current_xact_id()::text,
 		  mh_iter_id  uuid            not null,
-		  constraint check_version_match_name check (left(mh_name, 14)::bigint = mh_version),
+		  constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
 		  constraint check_version_unsigned   check (mh_version >= 0 ),
-		  constraint check_filename           check (mh_name ~ '^(\d{14})-(.*)(?:\.ntx)?\.(do|r)\.sql$')
+		  constraint check_filename           check (mh_name ~ '^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$')
 		);
   `, r.tableName)
 

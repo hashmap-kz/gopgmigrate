@@ -1,1 +1,0 @@
-delete from authn.roles where xname = 'test-20250214134047';

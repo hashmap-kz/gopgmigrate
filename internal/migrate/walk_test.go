@@ -13,15 +13,15 @@ func TestGetFiles(t *testing.T) {
 
 	// Create valid versioned migration files
 	validFiles := []string{
-		"00100200300001-init.do.sql",
-		"00100200300002--users.do.sql",
+		"00001-init.do.sql",
+		"00002-users.do.sql",
 	}
 	for _, f := range validFiles {
 		createTestFile(t, tmpDir, f, "-- SQL content")
 	}
 
 	// Create a valid repeatable migration file
-	createTestFile(t, tmpDir, "00000000000003-refresh.r.sql", "-- SQL content")
+	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
 	// Run getFiles
 	files, err := getFiles(tmpDir, versionedMigrationRegexDo, map[string]*regexp.Regexp{})
@@ -40,7 +40,7 @@ func TestCheckMigrationDirectoryDoesNotContainStrayFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a valid migration file
-	createTestFile(t, tmpDir, "00100200300001-init.do.sql", "-- SQL content")
+	createTestFile(t, tmpDir, "00001-init.do.sql", "-- SQL content")
 
 	// Create a stray file
 	createTestFile(t, tmpDir, "random.txt", "stray content")
@@ -57,8 +57,8 @@ func TestGetAllStrayFiles(t *testing.T) {
 
 	// Create valid migration files
 	validFiles := []string{
-		"00100200300001-init.do.sql",
-		"00100200300002--refresh.r.sql",
+		"00001-init.do.sql",
+		"00002-refresh.r.sql",
 	}
 	for _, f := range validFiles {
 		createTestFile(t, tmpDir, f, "-- SQL content")
@@ -86,8 +86,8 @@ func TestGetAllStrayFiles(t *testing.T) {
 // Test checkFilesAreUniqueByVersion
 func TestCheckFilesAreUniqueByVersion(t *testing.T) {
 	files := []MigrationFile{
-		{Base: "00100200300001-init.do.sql", Path: "/migrations/00100200300001-init.do.sql", Vers: 1},
-		{Base: "00100200300002--users.do.sql", Path: "/migrations/00100200300002--users.do.sql", Vers: 2},
+		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Vers: 1},
+		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Vers: 2},
 	}
 
 	err := checkFilesAreUniqueByVersion(files)
@@ -96,7 +96,7 @@ func TestCheckFilesAreUniqueByVersion(t *testing.T) {
 	}
 
 	// Introduce a duplicate version
-	files = append(files, MigrationFile{Base: "00100200300001-duplicate.do.sql", Path: "/migrations/00100200300001-duplicate.do.sql", Vers: 1})
+	files = append(files, MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
 	err = checkFilesAreUniqueByVersion(files)
 	if err == nil {
 		t.Errorf("Expected error due to duplicate version, but got nil")
