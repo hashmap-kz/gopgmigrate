@@ -9,7 +9,7 @@ fmt:
 build:
 	go build ./main.go
 
-test:
+test: fmt
 	go test -cover ./...
 
 # go run main.go migrate --dirname=examples/tree --connstr postgres://postgres:postgres@localhost:5432/bookstore --mode=mixed

@@ -24,6 +24,7 @@ func NewMigrateHistoryClickhouseRepository(_ context.Context, tableName string) 
 	}
 }
 
+// TODO: simplify
 func (r *migrateHistoryClickhouseRepository) CreateHistoryTable(ctx context.Context, tx dbms.Transaction) error {
 	tag := "migrateHistoryClickhouseRepository.CreateHistoryTable"
 
@@ -72,8 +73,13 @@ func (r *migrateHistoryClickhouseRepository) SaveVersioned(ctx context.Context, 
 	return nil
 }
 
+// TODO: simplify
 func (r *migrateHistoryClickhouseRepository) SaveRepeatable(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryClickhouseRepository.SaveRepeatable"
+	err := r.SaveVersioned(ctx, tx, inputEntity)
+	if err != nil {
+		return fmt.Errorf("%s: %w", tag, err)
+	}
 	query := fmt.Sprintf(`    
 		alter table %s
 		update
@@ -84,7 +90,7 @@ func (r *migrateHistoryClickhouseRepository) SaveRepeatable(ctx context.Context,
 			mh_version = $1
 			settings mutations_sync = 2
     `, r.tableName)
-	_, err := tx.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		inputEntity.MhVersion,
 		inputEntity.MhHash,
 		inputEntity.MhIterID,
