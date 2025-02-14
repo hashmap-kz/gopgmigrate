@@ -76,7 +76,7 @@ clickhouse: clickhouse://username:password@host:port/dbname`))
 	rootCmd.PersistentFlags().StringVar(&cliOptions.config, "config", "", "Path to configuration file (optional)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logEnc, "log-enc", "text", "Log encoding format (json/text)")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.logLevel, "log-level", "debug", "Log level (debug/info/warn/error)")
-	rootCmd.PersistentFlags().StringVar(&cliOptions.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
+	rootCmd.PersistentFlags().StringVar(&cliOptions.historyTableName, "history-table", "migrate_history", "Migration history table name")
 
 	// TODO:
 	// Mark required flags

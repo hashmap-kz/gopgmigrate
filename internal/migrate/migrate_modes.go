@@ -179,6 +179,18 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 			return nil, nil, err
 		}
 
+	} else if parseConnStr(migCtx.ConnStr) == DbmsVendorClickhouse {
+		repo = impl.NewMigrateHistoryClickhouseRepository(ctx, migCtx.HistoryTableName)
+		conn, err = dbms.GetDatabaseConnectionClickhouse(migCtx.ConnStr)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = repo.CreateHistoryTable(ctx, conn)
+		if err != nil {
+			return nil, nil, err
+		}
+
 	} else {
 		slog.Error("unknown DBMS vendor", slog.String("connStr", migCtx.ConnStr))
 		return nil, nil, fmt.Errorf("unknown DBMS vendor for connStr: %s", migCtx.ConnStr)
@@ -190,6 +202,9 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 func parseConnStr(str string) string {
 	if strings.HasPrefix(str, "postgres://") {
 		return DbmsVendorPostgresql
+	}
+	if strings.HasPrefix(str, "clickhouse://") {
+		return DbmsVendorClickhouse
 	}
 	return ""
 }
