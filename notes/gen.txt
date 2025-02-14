@@ -11,10 +11,14 @@ import (
 )
 
 type MigrationFile struct {
-	Idx      int
 	Dir      string
 	Filename string
 	Content  string
+}
+
+type MigrationFilePair struct {
+	Do   MigrationFile
+	Undo MigrationFile
 }
 
 func ExecTemplate(name, t string, data map[string]string) string {
@@ -76,11 +80,26 @@ func w(filePath, content string) {
 
 func main() {
 	targetDir := "./migrations"
+	os.RemoveAll(targetDir)
 
 	// Ensure the target directory exists
 	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
 		fmt.Println("Error creating directory:", err)
 		return
+	}
+
+	numbers := []int{}
+	for i := 0; i < 1000; i++ {
+		numbers = append(numbers, i)
+	}
+	getNextSeq := func() int {
+		if len(numbers) > 0 {
+			first := numbers[0]
+			numbers = numbers[1:]
+			return first
+		}
+		log.Fatalf("out of bounds")
+		return -1
 	}
 
 	schemas := []string{
@@ -96,59 +115,71 @@ func main() {
 		"public.companies",
 	}
 
-	filesTemplate := []MigrationFile{
-		{1, "schema", "%05d-%s_table.do.sql", `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
-		{1, "undo", "%05d-%s_table.undo.sql", `drop table if exists {{.schema}}.{{.table}};`},
-		{2, "repeatable/functions", "%05d-fn_get_%s.r.sql", funcTemplate},
-		{2, "undo", "%05d-fn_get_%s.undo.sql", `drop function if exists {{.schema}}.fn_get_{{.table}};`},
-		{3, "repeatable/views", "%05d-vw_%s.r.sql", viewTmpl},
-		{3, "undo", "%05d-vw_%s.undo.sql", `drop view if exists {{.schema}}.vw_{{.table}};`},
-		{4, "data", "%05d-seed_%s.r.sql", `insert into {{.schema}}.{{.table}} (xname) values ('test-{{.idx}}');`},
-		{4, "undo", "%05d-seed_%s.undo.sql", `delete from {{.schema}}.{{.table}} where xname = 'test-{{.idx}}';`},
-		{5, "schema", "%05d-alter_%s_add_xdata.do.sql", alterTmplDo},
-		{5, "undo", "%05d-alter_%s_add_xdata.undo.sql", alterTmplUndo},
+	filesTemplate := []MigrationFilePair{
+		{
+			Do:   MigrationFile{Dir: "schema", Filename: "%07d-%s_table.do.sql", Content: `create table if not exists {{.schema}}.{{.table}} (id serial primary key, xname text not null);`},
+			Undo: MigrationFile{Dir: "undo", Filename: "%07d-%s_table.undo.sql", Content: `drop table if exists {{.schema}}.{{.table}};`},
+		},
+		{
+			MigrationFile{Dir: "repeatable/functions", Filename: "%07d-fn_get_%s.r.sql", Content: funcTemplate},
+			MigrationFile{Dir: "undo", Filename: "%07d-fn_get_%s.undo.sql", Content: `drop function if exists {{.schema}}.fn_get_{{.table}};`},
+		},
+		{
+			MigrationFile{Dir: "repeatable/views", Filename: "%07d-vw_%s.r.sql", Content: viewTmpl},
+			MigrationFile{Dir: "undo", Filename: "%07d-vw_%s.undo.sql", Content: `drop view if exists {{.schema}}.vw_{{.table}};`},
+		},
+		{
+			MigrationFile{Dir: "data", Filename: "%07d-seed_%s.r.sql", Content: `insert into {{.schema}}.{{.table}} (xname) values ('test-{{.idx}}');`},
+			MigrationFile{Dir: "undo", Filename: "%07d-seed_%s.undo.sql", Content: `delete from {{.schema}}.{{.table}} where xname = 'test-{{.idx}}';`},
+		},
+		{
+			MigrationFile{Dir: "schema", Filename: "%07d-alter_%s_add_xdata.do.sql", Content: alterTmplDo},
+			MigrationFile{Dir: "undo", Filename: "%07d-alter_%s_add_xdata.undo.sql", Content: alterTmplUndo},
+		},
 	}
 
-	var fileNumber = 0
-
-	for i, elem := range schemas {
-		fileNumber = fileNumber + i
-		filenameDo := fmt.Sprintf("%05d-%s_schema.do.sql", fileNumber, elem)
-		filenameUndo := fmt.Sprintf("%05d-%s_schema.undo.sql", fileNumber, elem)
+	for _, elem := range schemas {
+		fileNumber := getNextSeq()
+		filenameDo := fmt.Sprintf("%07d-%s_schema.do.sql", fileNumber, elem)
+		filenameUndo := fmt.Sprintf("%07d-%s_schema.undo.sql", fileNumber, elem)
 
 		w(filepath.Join(targetDir, "schema", filenameDo),
 			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
 				"schema": elem,
 			}))
-		w(filepath.Join(targetDir, "schema", filenameUndo),
+		w(filepath.Join(targetDir, "undo", filenameUndo),
 			ExecTemplate(elem, `create schema if not exists {{.schema}};`, map[string]string{
-				"undo": elem,
+				"schema": elem,
 			}))
 	}
 
-	for i, schTab := range tables {
+	for _, schTab := range tables {
 		schemaName := strings.Split(schTab, ".")[0]
 		tableName := strings.Split(schTab, ".")[1]
-
 		for _, tmpl := range filesTemplate {
-			fileNumber = i*len(filesTemplate) + tmpl.Idx*len(schemas)
-			filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
-			filePath := filepath.Join(targetDir, tmpl.Dir, filename)
-			if tmpl.Dir != "undo" {
-				if tmpl.Dir == "schema" || tmpl.Dir == "data" {
-					filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
-				} else {
-					filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
-				}
-			}
-			content := ExecTemplate(tableName, tmpl.Content, map[string]string{
-				"schema": schemaName,
-				"table":  tableName,
-				"idx":    fmt.Sprintf("%d", fileNumber),
-			})
-			w(filePath, content)
+			fileNumber := getNextSeq()
+			one(tmpl.Do, fileNumber, schemaName, tableName, targetDir)
+			one(tmpl.Undo, fileNumber, schemaName, tableName, targetDir)
 		}
 	}
 
 	fmt.Println("Test files generated successfully!")
+}
+
+func one(tmpl MigrationFile, fileNumber int, schemaName, tableName, targetDir string) {
+	filename := fmt.Sprintf(tmpl.Filename, fileNumber, tableName)
+	filePath := filepath.Join(targetDir, tmpl.Dir, filename)
+	if tmpl.Dir != "undo" {
+		if tmpl.Dir == "schema" || tmpl.Dir == "data" {
+			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, tableName, filename)
+		} else {
+			filePath = filepath.Join(targetDir, tmpl.Dir, schemaName, filename)
+		}
+	}
+	content := ExecTemplate(tableName, tmpl.Content, map[string]string{
+		"schema": schemaName,
+		"table":  tableName,
+		"idx":    fmt.Sprintf("%d", fileNumber),
+	})
+	w(filePath, content)
 }
