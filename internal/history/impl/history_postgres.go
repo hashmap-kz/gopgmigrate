@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/google/uuid"
+
 	"gopgmigrate/internal/modes"
 	"gopgmigrate/internal/vers"
 
@@ -248,6 +250,13 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
 	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
+	iterId := uuid.New()
+	for _, elem := range pendingMigrations {
+		err := history.MigrateOneScriptDecideTxNoTx(ctx, db, elem, r, directionDo, iterId)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -257,6 +266,13 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
 	groupEntries []modes.GroupEntry,
 	directionDo bool,
 ) error {
+	iterId := uuid.New()
+	for _, elem := range groupEntries {
+		err := history.MigrateListOfFiles(ctx, db, elem.Files, elem.UseTX, r, directionDo, iterId)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -266,5 +282,5 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
 	groupEntry modes.GroupEntry,
 	directionDo bool,
 ) error {
-	return nil
+	return history.MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())
 }

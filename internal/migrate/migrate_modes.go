@@ -11,8 +11,6 @@ import (
 
 	"gopgmigrate/internal/vers"
 
-	"github.com/google/uuid"
-
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history/impl"
 
@@ -115,14 +113,7 @@ func runMigrationsPlainMode(
 	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
-	iterId := uuid.New()
-	for _, elem := range pendingMigrations {
-		err := migrateOneScript(ctx, db, elem, repo, directionDo, iterId)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return repo.RunMigrationsPlainMode(ctx, db, pendingMigrations, directionDo)
 }
 
 // runMigrationsMixedMode applies all pending migrations, wrapping in TX (for tx-based), and no-tx (for *.ntx.)
@@ -137,14 +128,7 @@ func runMigrationsMixedMode(
 	if err != nil {
 		return err
 	}
-	iterId := uuid.New()
-	for _, elem := range groupEntries {
-		err := migrateListOfFilesFn(ctx, db, elem.Files, elem.UseTX, repo, directionDo, iterId)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return repo.RunMigrationsMixedMode(ctx, db, groupEntries, directionDo)
 }
 
 // runMigrationsGroupMode applies all pending migrations, wrapping in TX (for tx-based), or no-tx (for *.ntx.)
@@ -159,7 +143,7 @@ func runMigrationsGroupMode(
 	if err != nil {
 		return err
 	}
-	return migrateListOfFilesFn(ctx, db, groupEntry.Files, groupEntry.UseTX, repo, directionDo, uuid.New())
+	return repo.RunMigrationsGroupMode(ctx, db, groupEntry, directionDo)
 }
 
 // init repo, conn
