@@ -1,0 +1,132 @@
+package main
+
+import (
+	"fmt"
+	"math/big"
+	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+)
+
+var VersionRegex = regexp.MustCompile(`^\d+(\.\d+)*$`)
+
+// Custom split function: Splits at '.' only if followed by a digit
+func splitAtDotFollowedByDigit(r rune, next rune) bool {
+	return r == '.' && unicode.IsDigit(next)
+}
+
+func splitVersion(version string) []string {
+	var parts []string
+	currentPart := strings.Builder{}
+
+	for i, r := range version {
+		// Check if the next character exists and is a digit
+		var next rune
+		if i+1 < len(version) {
+			next = rune(version[i+1])
+		}
+
+		if splitAtDotFollowedByDigit(r, next) {
+			parts = append(parts, currentPart.String())
+			currentPart.Reset()
+		} else {
+			currentPart.WriteRune(r)
+		}
+	}
+
+	// Append last part
+	if currentPart.Len() > 0 {
+		parts = append(parts, currentPart.String())
+	}
+
+	return parts
+}
+
+// tokenize splits a version string into a slice of *big.Int
+func parseVersion(versionStr string) []*big.Int {
+	versionStr = strings.ReplaceAll(versionStr, "_", ".")
+	parts := splitVersion(versionStr)
+
+	var parsed []*big.Int
+	for _, part := range parts {
+		parsed = append(parsed, toBigInteger(part))
+	}
+
+	// Remove trailing zeros
+	for i := len(parsed) - 1; i > 0; i-- {
+		if parsed[i].Cmp(big.NewInt(0)) != 0 {
+			break
+		}
+		parsed = parsed[:i] // Trim the last zero element
+	}
+
+	return parsed
+}
+
+// toBigInteger converts a string to a *big.Int
+func toBigInteger(part string) *big.Int {
+	n := new(big.Int)
+	n.SetString(part, 10)
+	return n
+}
+
+// compareVersions compares two Flyway-style version strings
+func compareVersions(v1, v2 string) bool {
+	p1 := parseVersion(v1)
+	p2 := parseVersion(v2)
+
+	// Compare each numeric part
+	maxLen := max(len(p1), len(p2))
+	for i := 0; i < maxLen; i++ {
+		n1 := getOrZero(p1, i)
+		n2 := getOrZero(p2, i)
+		if n1.Cmp(n2) != 0 {
+			return n1.Cmp(n2) < 0
+		}
+	}
+	return false
+}
+
+// getOrZero returns the nth part of the version or zero if missing
+func getOrZero(parts []*big.Int, i int) *big.Int {
+	if i < len(parts) {
+		return parts[i]
+	}
+	return big.NewInt(0)
+}
+
+// Helper to get max of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func main() {
+	versions := []string{
+		strings.TrimSpace("201004200021"),
+		strings.TrimSpace("1           "),
+		strings.TrimSpace("1.1         "),
+		strings.TrimSpace("1.1.2.3     "),
+		strings.TrimSpace("1.2         "),
+		strings.TrimSpace("2           "),
+		strings.TrimSpace("2.1         "),
+		strings.TrimSpace("005         "),
+		strings.TrimSpace("6.0         "),
+		strings.TrimSpace("6.0.1       "),
+		strings.TrimSpace("6.0.1.0.0   "),
+	}
+
+	// Sort using custom comparison
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j])
+	})
+
+	// Print sorted versions
+	fmt.Println("Sorted versions:")
+	for _, v := range versions {
+		fmt.Println(v)
+	}
+}
