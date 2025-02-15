@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"gopgmigrate/internal/filters"
+
 	"gopgmigrate/internal/modes"
 
 	"gopgmigrate/internal/vers"
@@ -73,15 +75,28 @@ func RunMigrations(
 		}
 	}(ctx, conn)
 
+	// migrate
+
+	return runMigrations(ctx, migCtx, conn, repo)
+}
+
+func runMigrations(ctx context.Context,
+	migCtx RunMigrationCtx,
+	conn *sql.DB,
+	repo history.MigrateHistoryRepository,
+) error {
+	var err error
+
 	// prepare migration scripts
+
 	var pendingMigrations []vers.MigrationFile
 	if migCtx.DirectionDo {
-		pendingMigrations, err = getMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
+		pendingMigrations, err = filters.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
 		if err != nil {
 			return err
 		}
 	} else {
-		pendingMigrations, err = getMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
+		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
 		if err != nil {
 			return err
 		}
@@ -96,54 +111,22 @@ func RunMigrations(
 	// migrate
 
 	if migCtx.MigrateMode == modes.ModeMixed {
-		return runMigrationsMixedMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
+		groupEntries, err := modes.ParseFilesMixedMode(pendingMigrations)
+		if err != nil {
+			return err
+		}
+		return repo.RunMigrationsMixedMode(ctx, conn, groupEntries, migCtx.DirectionDo)
 	} else if migCtx.MigrateMode == modes.ModePlain {
-		return runMigrationsPlainMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
+		return repo.RunMigrationsPlainMode(ctx, conn, pendingMigrations, migCtx.DirectionDo)
 	} else if migCtx.MigrateMode == modes.ModeGroup {
-		return runMigrationsGroupMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
+		groupEntry, err := modes.ParseFilesGroupMode(pendingMigrations)
+		if err != nil {
+			return err
+		}
+		return repo.RunMigrationsGroupMode(ctx, conn, groupEntry, migCtx.DirectionDo)
 	}
+
 	return fmt.Errorf("unknown mode: %s", migCtx.MigrateMode)
-}
-
-// runMigrationsPlainMode applies both versioned and repeatable migrations
-func runMigrationsPlainMode(
-	ctx context.Context,
-	db *sql.DB,
-	repo history.MigrateHistoryRepository,
-	pendingMigrations []vers.MigrationFile,
-	directionDo bool,
-) error {
-	return repo.RunMigrationsPlainMode(ctx, db, pendingMigrations, directionDo)
-}
-
-// runMigrationsMixedMode applies all pending migrations, wrapping in TX (for tx-based), and no-tx (for *.ntx.)
-func runMigrationsMixedMode(
-	ctx context.Context,
-	db *sql.DB,
-	repo history.MigrateHistoryRepository,
-	pendingMigrations []vers.MigrationFile,
-	directionDo bool,
-) error {
-	groupEntries, err := modes.ParseFilesMixedMode(pendingMigrations)
-	if err != nil {
-		return err
-	}
-	return repo.RunMigrationsMixedMode(ctx, db, groupEntries, directionDo)
-}
-
-// runMigrationsGroupMode applies all pending migrations, wrapping in TX (for tx-based), or no-tx (for *.ntx.)
-func runMigrationsGroupMode(
-	ctx context.Context,
-	db *sql.DB,
-	repo history.MigrateHistoryRepository,
-	pendingMigrations []vers.MigrationFile,
-	directionDo bool,
-) error {
-	groupEntry, err := modes.ParseFilesGroupMode(pendingMigrations)
-	if err != nil {
-		return err
-	}
-	return repo.RunMigrationsGroupMode(ctx, db, groupEntry, directionDo)
 }
 
 // init repo, conn

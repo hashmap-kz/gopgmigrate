@@ -1,4 +1,4 @@
-package migrate
+package filters
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"gopgmigrate/internal/history"
 )
 
-func getMigrationsForApply(
+func GetMigrationsForApply(
 	ctx context.Context,
 	db *sql.DB,
 	migrationDirectory string,
