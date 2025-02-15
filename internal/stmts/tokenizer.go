@@ -121,7 +121,35 @@ func (t *Tokenizer) readBlockComment() string {
 }
 
 // Read a single-quoted string
-func (t *Tokenizer) readString(stop rune) string {
+func (t *Tokenizer) readString1() string {
+	var sb strings.Builder
+	sb.WriteRune('\'')
+	for {
+		r, _, ok := t.nextRune()
+		if !ok {
+			break
+		}
+		sb.WriteRune(r)
+		if r == '\'' {
+			// Handle escaped single quotes ('') for PostgreSQL
+			if next, _, ok := t.peekRune(); ok && next == '\'' {
+				t.nextRune()
+				sb.WriteRune(next)
+			} else {
+				break
+			}
+		} else if r == '\\' { // Handle backslash escaping for ClickHouse
+			if next, _, ok := t.peekRune(); ok && (next == '\'' || next == '\\') {
+				t.nextRune()
+				sb.WriteRune(next)
+			}
+		}
+	}
+	return sb.String()
+}
+
+// Read a double-quoted, or backtick-quoted string
+func (t *Tokenizer) readString2(stop rune) string {
 	var sb strings.Builder
 	sb.WriteRune(stop)
 	for {
@@ -131,13 +159,7 @@ func (t *Tokenizer) readString(stop rune) string {
 		}
 		sb.WriteRune(r)
 		if r == stop {
-			// Handle escaped single quote ('')
-			if next, _, ok := t.peekRune(); ok && next == stop {
-				t.nextRune()
-				sb.WriteRune(next)
-			} else {
-				break
-			}
+			break
 		}
 	}
 	return sb.String()
@@ -216,7 +238,7 @@ func (t *Tokenizer) readRaw() string {
 	var sb strings.Builder
 	for {
 		r, _, ok := t.peekRune()
-		isSpecial := r == '-' || r == '/' || r == '\'' || r == '$' || r == ';' || r == '"'
+		isSpecial := r == '-' || r == '/' || r == '\'' || r == '$' || r == ';' || r == '"' || r == '`'
 		if !ok || isSpecial {
 			break
 		}
@@ -258,9 +280,14 @@ func (t *Tokenizer) NextToken() Token {
 	}
 
 	// Handle single-quoted strings
-	if r1 == '\'' || r1 == '"' {
+	if r1 == '\'' {
 		t.nextRune()
-		return Token{Type: TokenString, Value: t.readString(r1)}
+		return Token{Type: TokenString, Value: t.readString1()}
+	}
+	// Handle double-quoted or backtick-quoted strings
+	if r1 == '"' || r2 == '`' {
+		t.nextRune()
+		return Token{Type: TokenString, Value: t.readString2(r1)}
 	}
 
 	// Handle dollar-quoted strings

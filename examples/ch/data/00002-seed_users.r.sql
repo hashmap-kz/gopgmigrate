@@ -1,0 +1,1 @@
+insert into default.users (xname) values ('test-00002');

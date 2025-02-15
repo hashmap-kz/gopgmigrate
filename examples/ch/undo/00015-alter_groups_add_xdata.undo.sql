@@ -1,0 +1,1 @@
+alter table default.groups drop column xdata;
