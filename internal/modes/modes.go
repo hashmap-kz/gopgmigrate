@@ -21,9 +21,6 @@ const (
 	// ModePlain executes migrations one by one, without grouping.
 	// Each migration script is applied individually in sequence.
 	ModePlain string = "plain"
-
-	DbmsVendorPostgresql = "postgresql"
-	DbmsVendorClickhouse = "clickhouse"
 )
 
 type GroupEntry struct {

@@ -138,7 +138,7 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
-	if parseConnStr(migCtx.ConnStr) == modes.DbmsVendorPostgresql {
+	if parseConnStr(migCtx.ConnStr) == dbms.VendorPostgresql {
 		repo = impl.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
 		conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
 		if err != nil {
@@ -150,7 +150,7 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 			return nil, nil, err
 		}
 
-	} else if parseConnStr(migCtx.ConnStr) == modes.DbmsVendorClickhouse {
+	} else if parseConnStr(migCtx.ConnStr) == dbms.VendorClickhouse {
 		repo = impl.NewMigrateHistoryClickhouseRepository(ctx, migCtx.HistoryTableName)
 		conn, err = dbms.GetDatabaseConnectionClickhouse(migCtx.ConnStr)
 		if err != nil {
@@ -172,10 +172,10 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 
 func parseConnStr(str string) string {
 	if strings.HasPrefix(str, "postgres://") {
-		return modes.DbmsVendorPostgresql
+		return dbms.VendorPostgresql
 	}
 	if strings.HasPrefix(str, "clickhouse://") {
-		return modes.DbmsVendorClickhouse
+		return dbms.VendorClickhouse
 	}
 	return ""
 }
