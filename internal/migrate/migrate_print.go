@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"text/tabwriter"
 
+	"gopgmigrate/internal/modes"
+
 	"gopgmigrate/internal/vers"
 )
 
 func printMigrationsInfo(migrateMode string, pendingMigrations []vers.MigrationFile) {
-	if migrateMode == ModeMixed {
+	if migrateMode == modes.ModeMixed {
 		printPendingMixedMode(pendingMigrations)
 	} else {
 		printPendingPlainMode(pendingMigrations)
@@ -27,7 +29,7 @@ func printPendingPlainMode(migrations []vers.MigrationFile) {
 }
 
 func printPendingMixedMode(migrations []vers.MigrationFile) {
-	entries, err := ParseFilesMixedMode(migrations)
+	entries, err := modes.ParseFilesMixedMode(migrations)
 	if err != nil {
 		return
 	}

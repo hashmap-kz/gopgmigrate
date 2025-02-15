@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"gopgmigrate/internal/modes"
+
 	"gopgmigrate/internal/vers"
 
 	"github.com/google/uuid"
@@ -95,11 +97,11 @@ func RunMigrations(
 
 	// migrate
 
-	if migCtx.MigrateMode == ModeMixed {
+	if migCtx.MigrateMode == modes.ModeMixed {
 		return runMigrationsMixedMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == ModePlain {
+	} else if migCtx.MigrateMode == modes.ModePlain {
 		return runMigrationsPlainMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == ModeGroup {
+	} else if migCtx.MigrateMode == modes.ModeGroup {
 		return runMigrationsGroupMode(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
 	}
 	return fmt.Errorf("unknown mode: %s", migCtx.MigrateMode)
@@ -131,7 +133,7 @@ func runMigrationsMixedMode(
 	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
-	groupEntries, err := ParseFilesMixedMode(pendingMigrations)
+	groupEntries, err := modes.ParseFilesMixedMode(pendingMigrations)
 	if err != nil {
 		return err
 	}
@@ -153,7 +155,7 @@ func runMigrationsGroupMode(
 	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
-	groupEntry, err := ParseFilesGroupMode(pendingMigrations)
+	groupEntry, err := modes.ParseFilesGroupMode(pendingMigrations)
 	if err != nil {
 		return err
 	}
@@ -169,7 +171,7 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
-	if parseConnStr(migCtx.ConnStr) == DbmsVendorPostgresql {
+	if parseConnStr(migCtx.ConnStr) == modes.DbmsVendorPostgresql {
 		repo = impl.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
 		conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
 		if err != nil {
@@ -181,7 +183,7 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 			return nil, nil, err
 		}
 
-	} else if parseConnStr(migCtx.ConnStr) == DbmsVendorClickhouse {
+	} else if parseConnStr(migCtx.ConnStr) == modes.DbmsVendorClickhouse {
 		repo = impl.NewMigrateHistoryClickhouseRepository(ctx, migCtx.HistoryTableName)
 		conn, err = dbms.GetDatabaseConnectionClickhouse(migCtx.ConnStr)
 		if err != nil {
@@ -203,10 +205,10 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 
 func parseConnStr(str string) string {
 	if strings.HasPrefix(str, "postgres://") {
-		return DbmsVendorPostgresql
+		return modes.DbmsVendorPostgresql
 	}
 	if strings.HasPrefix(str, "clickhouse://") {
-		return DbmsVendorClickhouse
+		return modes.DbmsVendorClickhouse
 	}
 	return ""
 }
