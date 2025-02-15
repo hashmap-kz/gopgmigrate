@@ -90,7 +90,7 @@ func TestVersionedMigrationRegexDo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			matches := VersionedMigrationRegexDo.FindStringSubmatch(test.input)
+			matches := versionedMigrationRegexDo.FindStringSubmatch(test.input)
 			assert.Equal(t, test.matches, matches != nil)
 
 			if test.matches {
@@ -118,7 +118,7 @@ func TestVersionedMigrationRegexUndo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			matches := VersionedMigrationRegexUndo.FindStringSubmatch(test.input)
+			matches := versionedMigrationRegexUndo.FindStringSubmatch(test.input)
 			assert.Equal(t, test.matches, matches != nil)
 
 			if test.matches {

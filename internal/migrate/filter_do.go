@@ -18,7 +18,7 @@ func getMigrationsForApply(
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
 ) ([]vers.MigrationFile, error) {
-	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexDo, repo.GetNoTxPatterns())
+	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexDo(), repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, l
 	var toApply []vers.MigrationFile
 	for _, file := range localFiles {
 		// twice check a file given
-		isVersioned := vers.VersionedMigrationRegexDo.MatchString(file.Base)
+		isVersioned := vers.IsVersioned(file.Base)
 		if !isVersioned {
 			continue
 		}

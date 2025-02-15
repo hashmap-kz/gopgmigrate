@@ -17,11 +17,11 @@ type MigrationFile struct {
 var (
 	// example: 00003-users.do.sql
 	// example: 00004-fn_list_users.r.sql
-	VersionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
+	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
 
 	// example: 00003-users.undo.sql
 	// example: 00004-fn_list_users.undo.sql
-	VersionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
+	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
 
 	// example: 00004-fn_list_users.r.sql
 	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(r)\.sql$`)
@@ -36,11 +36,11 @@ var (
 )
 
 func ParseVersionDo(basename string) (int64, error) {
-	return ParseVersionByRegex(basename, VersionedMigrationRegexDo)
+	return ParseVersionByRegex(basename, versionedMigrationRegexDo)
 }
 
 func ParseVersionUndo(basename string) (int64, error) {
-	return ParseVersionByRegex(basename, VersionedMigrationRegexUndo)
+	return ParseVersionByRegex(basename, versionedMigrationRegexUndo)
 }
 
 func ParseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
@@ -78,16 +78,24 @@ func IsTx(file MigrationFile) bool {
 	return res
 }
 
+func VersionedMigrationRegexDo() *regexp.Regexp {
+	return versionedMigrationRegexDo
+}
+
+func VersionedMigrationRegexUndo() *regexp.Regexp {
+	return versionedMigrationRegexUndo
+}
+
 func IsRepeatable(file MigrationFile) bool {
 	return repeatableMigrationRegexDo.MatchString(file.Base)
 }
 
 func IsVersioned(base string) bool {
-	return VersionedMigrationRegexDo.MatchString(base)
+	return versionedMigrationRegexDo.MatchString(base)
 }
 
 func IsUndo(base string) bool {
-	return VersionedMigrationRegexUndo.MatchString(base)
+	return versionedMigrationRegexUndo.MatchString(base)
 }
 
 func IsNonTransaction(base string) bool {
@@ -96,7 +104,7 @@ func IsNonTransaction(base string) bool {
 
 func IsOurRegex(r ...*regexp.Regexp) bool {
 	for _, elem := range r {
-		isOk := elem == VersionedMigrationRegexDo || elem == VersionedMigrationRegexUndo
+		isOk := elem == versionedMigrationRegexDo || elem == versionedMigrationRegexUndo
 		if isOk {
 			return true
 		}

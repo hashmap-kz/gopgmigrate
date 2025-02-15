@@ -19,7 +19,7 @@ func getMigrationsForUndo(
 	repo history.MigrateHistoryRepository,
 	howMuch int,
 ) ([]vers.MigrationFile, error) {
-	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexUndo, repo.GetNoTxPatterns())
+	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexUndo(), repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
