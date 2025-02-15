@@ -1,4 +1,4 @@
-package migrate
+package vers
 
 import (
 	"testing"
@@ -28,7 +28,7 @@ func TestParseVersionDo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.filename, func(t *testing.T) {
-			result, err := parseVersionDo(test.filename)
+			result, err := ParseVersionDo(test.filename)
 
 			if test.hasError {
 				assert.Error(t, err, "Expected an error but got none")
@@ -62,7 +62,7 @@ func TestParseVersionUndo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.filename, func(t *testing.T) {
-			result, err := parseVersionUndo(test.filename)
+			result, err := ParseVersionUndo(test.filename)
 
 			if test.hasError {
 				assert.Error(t, err, "Expected an error but got none")
@@ -90,7 +90,7 @@ func TestVersionedMigrationRegexDo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			matches := versionedMigrationRegexDo.FindStringSubmatch(test.input)
+			matches := VersionedMigrationRegexDo.FindStringSubmatch(test.input)
 			assert.Equal(t, test.matches, matches != nil)
 
 			if test.matches {
@@ -118,7 +118,7 @@ func TestVersionedMigrationRegexUndo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			matches := versionedMigrationRegexUndo.FindStringSubmatch(test.input)
+			matches := VersionedMigrationRegexUndo.FindStringSubmatch(test.input)
 			assert.Equal(t, test.matches, matches != nil)
 
 			if test.matches {

@@ -3,18 +3,20 @@ package migrate
 import (
 	"reflect"
 	"testing"
+
+	"gopgmigrate/internal/vers"
 )
 
 func TestBatchResolving1(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []MigrationFile
+		input    []vers.MigrationFile
 		expected []GroupEntry
 	}{
 		{
 			name: "5-batches",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00000-audit-table.do.sql"},           // 1
 				{Base: "00001-users-table.do.sql"},           // 1
 				{Base: "00002-roles-table.do.sql"},           // 1
@@ -31,7 +33,7 @@ func TestBatchResolving1(t *testing.T) {
 			},
 			expected: []GroupEntry{
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
 						{Base: "00001-users-table.do.sql"}, // 1
 						{Base: "00002-roles-table.do.sql"}, // 1
@@ -42,27 +44,27 @@ func TestBatchResolving1(t *testing.T) {
 					UseTX: true,
 				},
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 						{Base: "00007-non-transactional.ntx.do.sql"}, // 2
 					},
 					UseTX: false,
 				},
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00008-fn_get_users.r.sql"}, // 3
 						{Base: "00009-fn_get_roles.r.sql"}, // 3
 					},
 					UseTX: true,
 				},
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00010-alter-system.ntx.do.sql"}, // 4
 					},
 					UseTX: false,
 				},
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00011-empty.do.sql"}, // 5
 						{Base: "00012-empty.do.sql"}, // 5
 					},
@@ -78,25 +80,25 @@ func TestBatchResolving1(t *testing.T) {
 func TestBatchResolving2(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []MigrationFile
+		input    []vers.MigrationFile
 		expected []GroupEntry
 	}{
 		{
 			name: "mix-1",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00000-audit-table.do.sql"},           // 1
 				{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 			},
 			expected: []GroupEntry{
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
 					},
 					UseTX: true,
 				},
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00006-non-transactional.ntx.do.sql"}, // 2
 					},
 					UseTX: false,
@@ -111,18 +113,18 @@ func TestBatchResolving2(t *testing.T) {
 func TestBatchResolving3(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []MigrationFile
+		input    []vers.MigrationFile
 		expected []GroupEntry
 	}{
 		{
 			name: "tx-only",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00000-audit-table.do.sql"}, // 1
 			},
 			expected: []GroupEntry{
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00000-audit-table.do.sql"}, // 1
 					},
 					UseTX: true,
@@ -137,18 +139,18 @@ func TestBatchResolving3(t *testing.T) {
 func TestBatchResolving4(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []MigrationFile
+		input    []vers.MigrationFile
 		expected []GroupEntry
 	}{
 		{
 			name: "notx-only",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 			},
 			expected: []GroupEntry{
 				{
-					Files: []MigrationFile{
+					Files: []vers.MigrationFile{
 						{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 					},
 					UseTX: false,
@@ -163,13 +165,13 @@ func TestBatchResolving4(t *testing.T) {
 func TestBatchResolving5(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []MigrationFile
+		input    []vers.MigrationFile
 		expected []GroupEntry
 	}{
 		{
 			name: "empty-input",
 
-			input:    []MigrationFile{},
+			input:    []vers.MigrationFile{},
 			expected: nil,
 		},
 	}
@@ -180,20 +182,20 @@ func TestBatchResolving5(t *testing.T) {
 func TestBatchResolving6(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       []MigrationFile
+		input       []vers.MigrationFile
 		expected    GroupEntry
 		expectError bool
 	}{
 		{
 			name: "group-mode-1",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 				{Base: "00007-non-transactional.ntx.do.sql"}, // 1
 				{Base: "00008-non-transactional.ntx.do.sql"}, // 1
 			},
 			expected: GroupEntry{
-				Files: []MigrationFile{
+				Files: []vers.MigrationFile{
 					{Base: "00006-non-transactional.ntx.do.sql"}, // 1
 					{Base: "00007-non-transactional.ntx.do.sql"}, // 1
 					{Base: "00008-non-transactional.ntx.do.sql"}, // 1
@@ -209,20 +211,20 @@ func TestBatchResolving6(t *testing.T) {
 func TestBatchResolving7(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       []MigrationFile
+		input       []vers.MigrationFile
 		expected    GroupEntry
 		expectError bool
 	}{
 		{
 			name: "group-mode-2",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00006-transactional.do.sql"}, // 1
 				{Base: "00007-transactional.do.sql"}, // 1
 				{Base: "00008-transactional.do.sql"}, // 1
 			},
 			expected: GroupEntry{
-				Files: []MigrationFile{
+				Files: []vers.MigrationFile{
 					{Base: "00006-transactional.do.sql"}, // 1
 					{Base: "00007-transactional.do.sql"}, // 1
 					{Base: "00008-transactional.do.sql"}, // 1
@@ -238,14 +240,14 @@ func TestBatchResolving7(t *testing.T) {
 func TestBatchResolving8(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       []MigrationFile
+		input       []vers.MigrationFile
 		expected    GroupEntry
 		expectError bool
 	}{
 		{
 			name: "group-mode-3",
 
-			input: []MigrationFile{
+			input: []vers.MigrationFile{
 				{Base: "00006-transactional.do.sql"},         // 1
 				{Base: "00007-non-transactional.ntx.do.sql"}, // should fail
 			},
@@ -259,7 +261,7 @@ func TestBatchResolving8(t *testing.T) {
 
 func checkGroupMode(t *testing.T, tests []struct {
 	name        string
-	input       []MigrationFile
+	input       []vers.MigrationFile
 	expected    GroupEntry
 	expectError bool
 },
@@ -287,7 +289,7 @@ func checkGroupMode(t *testing.T, tests []struct {
 
 func checkMixedMode(t *testing.T, tests []struct {
 	name     string
-	input    []MigrationFile
+	input    []vers.MigrationFile
 	expected []GroupEntry
 },
 ) {

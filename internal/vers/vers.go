@@ -1,4 +1,4 @@
-package migrate
+package vers
 
 import (
 	"fmt"
@@ -10,18 +10,18 @@ type MigrationFile struct {
 	Vers int64
 	Path string
 	Base string
-	data []byte
-	hash string
+	Data []byte
+	Hash string
 }
 
 var (
 	// example: 00003-users.do.sql
 	// example: 00004-fn_list_users.r.sql
-	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
+	VersionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
 
 	// example: 00003-users.undo.sql
 	// example: 00004-fn_list_users.undo.sql
-	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
+	VersionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
 
 	// example: 00004-fn_list_users.r.sql
 	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(r)\.sql$`)
@@ -35,15 +35,15 @@ var (
 	postgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
 )
 
-func parseVersionDo(basename string) (int64, error) {
-	return parseVersionByRegex(basename, versionedMigrationRegexDo)
+func ParseVersionDo(basename string) (int64, error) {
+	return ParseVersionByRegex(basename, VersionedMigrationRegexDo)
 }
 
-func parseVersionUndo(basename string) (int64, error) {
-	return parseVersionByRegex(basename, versionedMigrationRegexUndo)
+func ParseVersionUndo(basename string) (int64, error) {
+	return ParseVersionByRegex(basename, VersionedMigrationRegexUndo)
 }
 
-func parseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
+func ParseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
 	if !re.MatchString(basename) {
 		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
 	}
@@ -73,11 +73,33 @@ func IsSchemaTablePath(what string) bool {
 	return postgresqlSchemaTablePathRegex.MatchString(what)
 }
 
-func isTx(file MigrationFile) bool {
+func IsTx(file MigrationFile) bool {
 	res := !versionedMigrationRegexNtx.MatchString(file.Base)
 	return res
 }
 
-func isRepeatable(file MigrationFile) bool {
+func IsRepeatable(file MigrationFile) bool {
 	return repeatableMigrationRegexDo.MatchString(file.Base)
+}
+
+func IsVersioned(base string) bool {
+	return VersionedMigrationRegexDo.MatchString(base)
+}
+
+func IsUndo(base string) bool {
+	return VersionedMigrationRegexUndo.MatchString(base)
+}
+
+func IsNonTransaction(base string) bool {
+	return versionedMigrationRegexNtx.MatchString(base)
+}
+
+func IsOurRegex(r ...*regexp.Regexp) bool {
+	for _, elem := range r {
+		isOk := elem == VersionedMigrationRegexDo || elem == VersionedMigrationRegexUndo
+		if isOk {
+			return true
+		}
+	}
+	return false
 }

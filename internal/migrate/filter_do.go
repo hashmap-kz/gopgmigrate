@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"gopgmigrate/internal/resolve"
+	"gopgmigrate/internal/vers"
+
 	"gopgmigrate/internal/history"
 )
 
@@ -14,8 +17,8 @@ func getMigrationsForApply(
 	db *sql.DB,
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
-) ([]MigrationFile, error) {
-	allLocalFiles, err := getFiles(migrationDirectory, versionedMigrationRegexDo, repo.GetNoTxPatterns())
+) ([]vers.MigrationFile, error) {
+	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexDo, repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +36,7 @@ func getMigrationsForApply(
 	return getVersionedMigrationsToApply(hist, allLocalFiles)
 }
 
-func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) error {
+func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []vers.MigrationFile) error {
 	for _, k := range appliedMigrations {
 		if !appliedMigrationPresentLocally(k.MhName, localFiles) {
 			return fmt.Errorf("detected applied migration not resolved locally: %s", k.MhName)
@@ -42,7 +45,7 @@ func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistor
 	return nil
 }
 
-func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []MigrationFile) bool {
+func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []vers.MigrationFile) bool {
 	for _, f := range localFiles {
 		if appliedScriptBasename == f.Base {
 			return true
@@ -51,20 +54,20 @@ func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []M
 	return false
 }
 
-func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []MigrationFile) ([]MigrationFile, error) {
-	var toApply []MigrationFile
+func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []vers.MigrationFile) ([]vers.MigrationFile, error) {
+	var toApply []vers.MigrationFile
 	for _, file := range localFiles {
 		// twice check a file given
-		isVersioned := versionedMigrationRegexDo.MatchString(file.Base)
+		isVersioned := vers.VersionedMigrationRegexDo.MatchString(file.Base)
 		if !isVersioned {
 			continue
 		}
 
 		existing := findHist(file.Base, appliedMigrations)
 
-		if isRepeatable(file) {
+		if vers.IsRepeatable(file) {
 			// apply only if changed
-			if existing == nil || existing.MhHash != file.hash {
+			if existing == nil || existing.MhHash != file.Hash {
 				toApply = append(toApply, file)
 			}
 		} else {
@@ -72,7 +75,7 @@ func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, l
 			if existing == nil {
 				toApply = append(toApply, file)
 			} else {
-				if existing.MhHash != file.hash {
+				if existing.MhHash != file.Hash {
 					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.Path))
 				}
 			}

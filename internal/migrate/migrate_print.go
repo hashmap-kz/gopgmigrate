@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"text/tabwriter"
+
+	"gopgmigrate/internal/vers"
 )
 
-func printMigrationsInfo(migrateMode string, pendingMigrations []MigrationFile) {
+func printMigrationsInfo(migrateMode string, pendingMigrations []vers.MigrationFile) {
 	if migrateMode == ModeMixed {
 		printPendingMixedMode(pendingMigrations)
 	} else {
@@ -15,7 +17,7 @@ func printMigrationsInfo(migrateMode string, pendingMigrations []MigrationFile) 
 	}
 }
 
-func printPendingPlainMode(migrations []MigrationFile) {
+func printPendingPlainMode(migrations []vers.MigrationFile) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
 	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
 	for _, p := range migrations {
@@ -24,7 +26,7 @@ func printPendingPlainMode(migrations []MigrationFile) {
 	_ = w.Flush()
 }
 
-func printPendingMixedMode(migrations []MigrationFile) {
+func printPendingMixedMode(migrations []vers.MigrationFile) {
 	entries, err := ParseFilesMixedMode(migrations)
 	if err != nil {
 		return

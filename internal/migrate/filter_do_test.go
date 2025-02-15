@@ -3,6 +3,8 @@ package migrate
 import (
 	"testing"
 
+	"gopgmigrate/internal/vers"
+
 	"github.com/stretchr/testify/assert"
 	"gopgmigrate/internal/history"
 )
@@ -11,7 +13,7 @@ func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
 		applied     []history.MigrateHistory
-		files       []MigrationFile
+		files       []vers.MigrationFile
 		expectError bool
 		expectedErr string
 	}{
@@ -21,7 +23,7 @@ func TestCheckHistory(t *testing.T) {
 				{MhName: "001-init.do.sql"},
 				{MhName: "002-users.do.sql"},
 			},
-			files: []MigrationFile{
+			files: []vers.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -33,7 +35,7 @@ func TestCheckHistory(t *testing.T) {
 				{MhName: "001-init.do.sql"},
 				{MhName: "003-missing.sql"},
 			},
-			files: []MigrationFile{
+			files: []vers.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -59,13 +61,13 @@ func TestFound(t *testing.T) {
 	tests := []struct {
 		name      string
 		searchKey string
-		files     []MigrationFile
+		files     []vers.MigrationFile
 		wantFound bool
 	}{
 		{
 			name:      "Migration exists",
 			searchKey: "001-init.do.sql",
-			files: []MigrationFile{
+			files: []vers.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -74,7 +76,7 @@ func TestFound(t *testing.T) {
 		{
 			name:      "Migration does not exist",
 			searchKey: "003-missing.sql",
-			files: []MigrationFile{
+			files: []vers.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -91,9 +93,9 @@ func TestFound(t *testing.T) {
 }
 
 func TestGetVersionedMigrationsToApply(t *testing.T) {
-	mockFiles := []MigrationFile{
-		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", data: []byte("init"), hash: "1"},
-		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", data: []byte("users")},
+	mockFiles := []vers.MigrationFile{
+		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Data: []byte("init"), Hash: "1"},
+		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Data: []byte("users")},
 	}
 
 	mockHistory := []history.MigrateHistory{

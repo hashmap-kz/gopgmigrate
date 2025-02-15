@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"gopgmigrate/internal/vers"
+
 	"github.com/google/uuid"
 
 	"gopgmigrate/internal/dbms"
@@ -72,7 +74,7 @@ func RunMigrations(
 	}(ctx, conn)
 
 	// prepare migration scripts
-	var pendingMigrations []MigrationFile
+	var pendingMigrations []vers.MigrationFile
 	if migCtx.DirectionDo {
 		pendingMigrations, err = getMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
 		if err != nil {
@@ -108,7 +110,7 @@ func runMigrationsPlainMode(
 	ctx context.Context,
 	db *sql.DB,
 	repo history.MigrateHistoryRepository,
-	pendingMigrations []MigrationFile,
+	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()
@@ -126,7 +128,7 @@ func runMigrationsMixedMode(
 	ctx context.Context,
 	db *sql.DB,
 	repo history.MigrateHistoryRepository,
-	pendingMigrations []MigrationFile,
+	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
 	groupEntries, err := ParseFilesMixedMode(pendingMigrations)
@@ -148,7 +150,7 @@ func runMigrationsGroupMode(
 	ctx context.Context,
 	db *sql.DB,
 	repo history.MigrateHistoryRepository,
-	pendingMigrations []MigrationFile,
+	pendingMigrations []vers.MigrationFile,
 	directionDo bool,
 ) error {
 	groupEntry, err := ParseFilesGroupMode(pendingMigrations)

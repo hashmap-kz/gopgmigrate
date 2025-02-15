@@ -1,10 +1,12 @@
-package migrate
+package resolve
 
 import (
 	"os"
 	"path/filepath"
 	"regexp"
 	"testing"
+
+	"gopgmigrate/internal/vers"
 )
 
 // Test getFiles function
@@ -24,7 +26,7 @@ func TestGetFiles(t *testing.T) {
 	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
 
 	// Run getFiles
-	files, err := getFiles(tmpDir, versionedMigrationRegexDo, map[string]*regexp.Regexp{})
+	files, err := GetFiles(tmpDir, vers.VersionedMigrationRegexDo, map[string]*regexp.Regexp{})
 	if err != nil {
 		t.Fatalf("getFiles() failed: %v", err)
 	}
@@ -85,7 +87,7 @@ func TestGetAllStrayFiles(t *testing.T) {
 
 // Test checkFilesAreUniqueByVersion
 func TestCheckFilesAreUniqueByVersion(t *testing.T) {
-	files := []MigrationFile{
+	files := []vers.MigrationFile{
 		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Vers: 1},
 		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Vers: 2},
 	}
@@ -96,7 +98,7 @@ func TestCheckFilesAreUniqueByVersion(t *testing.T) {
 	}
 
 	// Introduce a duplicate version
-	files = append(files, MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
+	files = append(files, vers.MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
 	err = checkFilesAreUniqueByVersion(files)
 	if err == nil {
 		t.Errorf("Expected error due to duplicate version, but got nil")
