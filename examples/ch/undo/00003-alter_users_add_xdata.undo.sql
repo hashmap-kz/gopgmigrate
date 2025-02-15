@@ -1,0 +1,1 @@
+alter table default.users drop column xdata;

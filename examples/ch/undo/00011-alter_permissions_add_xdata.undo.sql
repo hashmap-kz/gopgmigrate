@@ -1,0 +1,1 @@
+alter table default.permissions drop column xdata;
