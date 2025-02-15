@@ -138,11 +138,31 @@ func TestReadNestedBlockComment(t *testing.T) {
 	}
 }
 
-func TestReadString(t *testing.T) {
+func TestReadString_1(t *testing.T) {
 	tokenizer := &Tokenizer{sql: "'Hello ''world''' next"}
 	tokenizer.nextRune() // Move to quote
-	str := tokenizer.readString('\'')
+	str := tokenizer.readString1()
 	expected := "'Hello ''world'''"
+	if str != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, str)
+	}
+}
+
+func TestReadString_2(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "\"public\".\"table\""}
+	tokenizer.nextRune() // Move to quote
+	str := tokenizer.readString2('"')
+	expected := "\"public\""
+	if str != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, str)
+	}
+}
+
+func TestReadString_3(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "`public`.\"table\""}
+	tokenizer.nextRune() // Move to quote
+	str := tokenizer.readString2('`')
+	expected := "`public`"
 	if str != expected {
 		t.Errorf("Expected '%s', got '%s'", expected, str)
 	}
