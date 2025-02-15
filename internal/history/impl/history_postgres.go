@@ -6,6 +6,11 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/google/uuid"
+
+	"gopgmigrate/internal/mode"
+	"gopgmigrate/internal/version"
+
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
 
@@ -41,7 +46,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 		  mh_applied_at timestamptz   not null default transaction_timestamp(),
 		  mh_txid     text            not null default pg_current_xact_id()::text,
 		  mh_iter_id  uuid            not null,
-		  constraint check_version_match_name check (left(mh_name, 5)::integer = mh_version),
+		  constraint check_version_match_name check (left(mh_name, 5)::bigint = mh_version),
 		  constraint check_version_unsigned   check (mh_version >= 0 ),
 		  constraint check_filename           check (mh_name ~ '^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$')
 		);
@@ -235,4 +240,47 @@ func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 		return nil, err
 	}
 	return &scannedEntity, nil
+}
+
+// migration
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
+	ctx context.Context,
+	db *sql.DB,
+	pendingMigrations []version.MigrationFile,
+	directionDo bool,
+) error {
+	iterId := uuid.New()
+	for _, elem := range pendingMigrations {
+		err := history.MigrateOneScriptDecideTxNoTx(ctx, db, elem, r, directionDo, iterId)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntries []mode.GroupEntry,
+	directionDo bool,
+) error {
+	iterId := uuid.New()
+	for _, elem := range groupEntries {
+		err := history.MigrateListOfFiles(ctx, db, elem.Files, elem.UseTX, r, directionDo, iterId)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntry mode.GroupEntry,
+	directionDo bool,
+) error {
+	return history.MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())
 }

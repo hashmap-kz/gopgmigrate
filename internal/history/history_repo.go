@@ -2,7 +2,11 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"regexp"
+
+	"gopgmigrate/internal/mode"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
 )
@@ -20,4 +24,27 @@ type MigrateHistoryRepository interface {
 	ReleaseMigrationLock(ctx context.Context, db dbms.Transaction) error
 
 	GetNoTxPatterns() map[string]*regexp.Regexp
+
+	// migration
+
+	RunMigrationsPlainMode(
+		ctx context.Context,
+		db *sql.DB,
+		pendingMigrations []version.MigrationFile,
+		directionDo bool,
+	) error
+
+	RunMigrationsMixedMode(
+		ctx context.Context,
+		db *sql.DB,
+		groupEntries []mode.GroupEntry,
+		directionDo bool,
+	) error
+
+	RunMigrationsGroupMode(
+		ctx context.Context,
+		db *sql.DB,
+		groupEntry mode.GroupEntry,
+		directionDo bool,
+	) error
 }
