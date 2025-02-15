@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"regexp"
 
+	"gopgmigrate/internal/modes"
+	"gopgmigrate/internal/vers"
+
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
 
@@ -211,4 +214,33 @@ func scanFullRowCh(row *sql.Rows) (*history.MigrateHistory, error) {
 		return nil, err
 	}
 	return &scannedEntity, nil
+}
+
+// migrate
+
+func (r *migrateHistoryClickhouseRepository) RunMigrationsPlainMode(
+	ctx context.Context,
+	db *sql.DB,
+	pendingMigrations []vers.MigrationFile,
+	directionDo bool,
+) error {
+	return nil
+}
+
+func (r *migrateHistoryClickhouseRepository) RunMigrationsMixedMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntries []modes.GroupEntry,
+	directionDo bool,
+) error {
+	return nil
+}
+
+func (r *migrateHistoryClickhouseRepository) RunMigrationsGroupMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntry modes.GroupEntry,
+	directionDo bool,
+) error {
+	return nil
 }

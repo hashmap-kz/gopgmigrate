@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"regexp"
 
+	"gopgmigrate/internal/modes"
+	"gopgmigrate/internal/vers"
+
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
 
@@ -235,4 +238,33 @@ func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 		return nil, err
 	}
 	return &scannedEntity, nil
+}
+
+// migrate
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
+	ctx context.Context,
+	db *sql.DB,
+	pendingMigrations []vers.MigrationFile,
+	directionDo bool,
+) error {
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntries []modes.GroupEntry,
+	directionDo bool,
+) error {
+	return nil
+}
+
+func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
+	ctx context.Context,
+	db *sql.DB,
+	groupEntry modes.GroupEntry,
+	directionDo bool,
+) error {
+	return nil
 }
