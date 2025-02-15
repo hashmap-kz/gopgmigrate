@@ -9,14 +9,14 @@ import (
 
 	"github.com/google/uuid"
 	"gopgmigrate/internal/dbms"
-	"gopgmigrate/internal/stmts"
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/stmt"
+	"gopgmigrate/internal/version"
 )
 
 func MigrateListOfFiles(
 	ctx context.Context,
 	db *sql.DB,
-	files []vers.MigrationFile,
+	files []version.MigrationFile,
 	useTx bool,
 	repo MigrateHistoryRepository,
 	directionDo bool,
@@ -40,13 +40,13 @@ func MigrateListOfFiles(
 func MigrateListOfFilesNoTx(
 	ctx context.Context,
 	db *sql.DB,
-	files []vers.MigrationFile,
+	files []version.MigrationFile,
 	repo MigrateHistoryRepository,
 	directionDo bool,
 	iterId uuid.UUID,
 ) (err error) {
 	for _, file := range files {
-		script, _ := stmts.SplitSQLStatements(string(file.Data))
+		script, _ := stmt.SplitSQLStatements(string(file.Data))
 		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N", iterId)
 		if err != nil {
 			return err
@@ -59,14 +59,14 @@ func MigrateListOfFilesNoTx(
 func MigrateOneScriptDecideTxNoTx(
 	ctx context.Context,
 	db *sql.DB,
-	file vers.MigrationFile,
+	file version.MigrationFile,
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
 	iterId uuid.UUID,
 ) (err error) {
 	// TRANSACTION
 
-	if vers.IsTx(file) {
+	if version.IsTx(file) {
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
@@ -88,7 +88,7 @@ func MigrateOneScriptDecideTxNoTx(
 
 	// NO TRANSACTION
 
-	script, _ := stmts.SplitSQLStatements(string(file.Data))
+	script, _ := stmt.SplitSQLStatements(string(file.Data))
 	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N", iterId)
 }
 
@@ -96,7 +96,7 @@ func migrateOneScriptFn(
 	ctx context.Context,
 	tx dbms.Transaction,
 	script []string,
-	file vers.MigrationFile,
+	file version.MigrationFile,
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
 	txLogNote string,
@@ -124,7 +124,7 @@ func migrateOneScriptFn(
 	// write history
 	if directionDo {
 		// DO
-		if vers.IsRepeatable(file) {
+		if version.IsRepeatable(file) {
 			err = mhRepo.SaveRepeatable(ctx, tx, &MigrateHistoryCreateInput{
 				MhVersion: file.Vers,
 				MhName:    file.Base,
@@ -159,7 +159,7 @@ func migrateOneScriptFn(
 func migrateListOfFilesInTxFn(
 	ctx context.Context,
 	db *sql.DB,
-	files []vers.MigrationFile,
+	files []version.MigrationFile,
 	repo MigrateHistoryRepository,
 	directionDo bool,
 	iterId uuid.UUID,
@@ -193,8 +193,8 @@ func getModeForLog(directionDo bool) string {
 	return "undo"
 }
 
-func getTypeForLog(file vers.MigrationFile) string {
-	if vers.IsRepeatable(file) {
+func getTypeForLog(file version.MigrationFile) string {
+	if version.IsRepeatable(file) {
 		return "rep"
 	}
 	return "ver"

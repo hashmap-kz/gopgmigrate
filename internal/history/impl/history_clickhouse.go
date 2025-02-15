@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"gopgmigrate/internal/modes"
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/mode"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
@@ -218,12 +218,12 @@ func scanFullRowCh(row *sql.Rows) (*history.MigrateHistory, error) {
 	return &scannedEntity, nil
 }
 
-// migrate
+// migration
 
 func (r *migrateHistoryClickhouseRepository) RunMigrationsPlainMode(
 	ctx context.Context,
 	db *sql.DB,
-	pendingMigrations []vers.MigrationFile,
+	pendingMigrations []version.MigrationFile,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()
@@ -237,11 +237,11 @@ func (r *migrateHistoryClickhouseRepository) RunMigrationsPlainMode(
 func (r *migrateHistoryClickhouseRepository) RunMigrationsMixedMode(
 	ctx context.Context,
 	db *sql.DB,
-	groupEntries []modes.GroupEntry,
+	groupEntries []mode.GroupEntry,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()
-	pendingMigrations := []vers.MigrationFile{}
+	pendingMigrations := []version.MigrationFile{}
 	for _, ge := range groupEntries {
 		pendingMigrations = append(pendingMigrations, ge.Files...)
 	}
@@ -255,7 +255,7 @@ func (r *migrateHistoryClickhouseRepository) RunMigrationsMixedMode(
 func (r *migrateHistoryClickhouseRepository) RunMigrationsGroupMode(
 	ctx context.Context,
 	db *sql.DB,
-	groupEntry modes.GroupEntry,
+	groupEntry mode.GroupEntry,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()

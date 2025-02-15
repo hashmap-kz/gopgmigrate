@@ -1,4 +1,4 @@
-package stmts
+package stmt
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package filters
+package filter
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"gopgmigrate/internal/resolve"
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/resolver"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/history"
 )
@@ -17,8 +17,8 @@ func GetMigrationsForApply(
 	db *sql.DB,
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
-) ([]vers.MigrationFile, error) {
-	allLocalFiles, err := resolve.GetFiles(migrationDirectory, vers.VersionedMigrationRegexDo(), repo.GetNoTxPatterns())
+) ([]version.MigrationFile, error) {
+	allLocalFiles, err := resolver.GetFiles(migrationDirectory, version.VersionedMigrationRegexDo(), repo.GetNoTxPatterns())
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func GetMigrationsForApply(
 	return getVersionedMigrationsToApply(hist, allLocalFiles)
 }
 
-func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []vers.MigrationFile) error {
+func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []version.MigrationFile) error {
 	for _, k := range appliedMigrations {
 		if !appliedMigrationPresentLocally(k.MhName, localFiles) {
 			return fmt.Errorf("detected applied migration not resolved locally: %s", k.MhName)
@@ -45,7 +45,7 @@ func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistor
 	return nil
 }
 
-func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []vers.MigrationFile) bool {
+func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []version.MigrationFile) bool {
 	for _, f := range localFiles {
 		if appliedScriptBasename == f.Base {
 			return true
@@ -54,18 +54,18 @@ func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []v
 	return false
 }
 
-func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []vers.MigrationFile) ([]vers.MigrationFile, error) {
-	var toApply []vers.MigrationFile
+func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []version.MigrationFile) ([]version.MigrationFile, error) {
+	var toApply []version.MigrationFile
 	for _, file := range localFiles {
 		// twice check a file given
-		isVersioned := vers.IsVersioned(file.Base)
+		isVersioned := version.IsVersioned(file.Base)
 		if !isVersioned {
 			continue
 		}
 
 		existing := findHist(file.Base, appliedMigrations)
 
-		if vers.IsRepeatable(file) {
+		if version.IsRepeatable(file) {
 			// apply only if changed
 			if existing == nil || existing.MhHash != file.Hash {
 				toApply = append(toApply, file)

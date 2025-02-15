@@ -1,4 +1,4 @@
-package migrate
+package migration
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"gopgmigrate/internal/filters"
+	"gopgmigrate/internal/filter"
 
-	"gopgmigrate/internal/modes"
+	"gopgmigrate/internal/mode"
 
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history/impl"
@@ -75,7 +75,7 @@ func RunMigrations(
 		}
 	}(ctx, conn)
 
-	// migrate
+	// migration
 
 	return runMigrations(ctx, migCtx, conn, repo)
 }
@@ -89,14 +89,14 @@ func runMigrations(ctx context.Context,
 
 	// prepare migration scripts
 
-	var pendingMigrations []vers.MigrationFile
+	var pendingMigrations []version.MigrationFile
 	if migCtx.DirectionDo {
-		pendingMigrations, err = filters.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
+		pendingMigrations, err = filter.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
 		if err != nil {
 			return err
 		}
 	} else {
-		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
+		pendingMigrations, err = filter.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
 		if err != nil {
 			return err
 		}
@@ -108,18 +108,18 @@ func runMigrations(ctx context.Context,
 		return nil
 	}
 
-	// migrate
+	// migration
 
-	if migCtx.MigrateMode == modes.ModeMixed {
-		groupEntries, err := modes.ParseFilesMixedMode(pendingMigrations)
+	if migCtx.MigrateMode == mode.ModeMixed {
+		groupEntries, err := mode.ParseFilesMixedMode(pendingMigrations)
 		if err != nil {
 			return err
 		}
 		return repo.RunMigrationsMixedMode(ctx, conn, groupEntries, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == modes.ModePlain {
+	} else if migCtx.MigrateMode == mode.ModePlain {
 		return repo.RunMigrationsPlainMode(ctx, conn, pendingMigrations, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == modes.ModeGroup {
-		groupEntry, err := modes.ParseFilesGroupMode(pendingMigrations)
+	} else if migCtx.MigrateMode == mode.ModeGroup {
+		groupEntry, err := mode.ParseFilesGroupMode(pendingMigrations)
 		if err != nil {
 			return err
 		}

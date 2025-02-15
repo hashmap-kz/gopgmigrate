@@ -1,16 +1,16 @@
-package filters
+package filter
 
 import (
 	"testing"
 
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/version"
 
 	"github.com/stretchr/testify/assert"
 	"gopgmigrate/internal/history"
 )
 
 func TestGetVersionedMigrationsToUndo(t *testing.T) {
-	files := []vers.MigrationFile{
+	files := []version.MigrationFile{
 		{Base: "00001-init.undo.sql"},
 		{Base: "00002-users.undo.sql"},
 	}
@@ -28,7 +28,7 @@ func TestGetVersionedMigrationsToUndo(t *testing.T) {
 }
 
 func TestGetVersionedMigrationsToUndo_ExceedingRollbackCount(t *testing.T) {
-	files := []vers.MigrationFile{
+	files := []version.MigrationFile{
 		{Base: "00001-init.undo.sql"},
 	}
 
@@ -43,7 +43,7 @@ func TestGetVersionedMigrationsToUndo_ExceedingRollbackCount(t *testing.T) {
 }
 
 func TestFindCorrespondingUndoScript(t *testing.T) {
-	undoFiles := []vers.MigrationFile{
+	undoFiles := []version.MigrationFile{
 		{Base: "00001-init.undo.sql"},
 		{Base: "00002-users.undo.sql"},
 	}
@@ -57,7 +57,7 @@ func TestFindCorrespondingUndoScript(t *testing.T) {
 }
 
 func TestFindCorrespondingUndoScript_NotFound(t *testing.T) {
-	undoFiles := []vers.MigrationFile{
+	undoFiles := []version.MigrationFile{
 		{Base: "00001-init.undo.sql"},
 	}
 
@@ -69,7 +69,7 @@ func TestFindCorrespondingUndoScript_NotFound(t *testing.T) {
 }
 
 func TestFindCorrespondingUndoScript_ParseError(t *testing.T) {
-	undoFiles := []vers.MigrationFile{
+	undoFiles := []version.MigrationFile{
 		{Base: "invalid-undo.sql"},
 	}
 

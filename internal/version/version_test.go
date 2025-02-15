@@ -1,4 +1,4 @@
-package vers
+package version
 
 import (
 	"testing"

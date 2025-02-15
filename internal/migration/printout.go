@@ -1,4 +1,4 @@
-package migrate
+package migration
 
 import (
 	"fmt"
@@ -6,20 +6,20 @@ import (
 	"path/filepath"
 	"text/tabwriter"
 
-	"gopgmigrate/internal/modes"
+	"gopgmigrate/internal/mode"
 
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/version"
 )
 
-func printMigrationsInfo(migrateMode string, pendingMigrations []vers.MigrationFile) {
-	if migrateMode == modes.ModeMixed {
+func printMigrationsInfo(migrateMode string, pendingMigrations []version.MigrationFile) {
+	if migrateMode == mode.ModeMixed {
 		printPendingMixedMode(pendingMigrations)
 	} else {
 		printPendingPlainMode(pendingMigrations)
 	}
 }
 
-func printPendingPlainMode(migrations []vers.MigrationFile) {
+func printPendingPlainMode(migrations []version.MigrationFile) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
 	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
 	for _, p := range migrations {
@@ -28,8 +28,8 @@ func printPendingPlainMode(migrations []vers.MigrationFile) {
 	_ = w.Flush()
 }
 
-func printPendingMixedMode(migrations []vers.MigrationFile) {
-	entries, err := modes.ParseFilesMixedMode(migrations)
+func printPendingMixedMode(migrations []version.MigrationFile) {
+	entries, err := mode.ParseFilesMixedMode(migrations)
 	if err != nil {
 		return
 	}

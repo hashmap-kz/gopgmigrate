@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"gopgmigrate/internal/modes"
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/mode"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/history"
@@ -242,12 +242,12 @@ func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
 	return &scannedEntity, nil
 }
 
-// migrate
+// migration
 
 func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
 	ctx context.Context,
 	db *sql.DB,
-	pendingMigrations []vers.MigrationFile,
+	pendingMigrations []version.MigrationFile,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()
@@ -263,7 +263,7 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
 func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
 	ctx context.Context,
 	db *sql.DB,
-	groupEntries []modes.GroupEntry,
+	groupEntries []mode.GroupEntry,
 	directionDo bool,
 ) error {
 	iterId := uuid.New()
@@ -279,7 +279,7 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
 func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
 	ctx context.Context,
 	db *sql.DB,
-	groupEntry modes.GroupEntry,
+	groupEntry mode.GroupEntry,
 	directionDo bool,
 ) error {
 	return history.MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())

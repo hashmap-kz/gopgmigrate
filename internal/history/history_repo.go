@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"regexp"
 
-	"gopgmigrate/internal/modes"
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/mode"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
 )
@@ -25,26 +25,26 @@ type MigrateHistoryRepository interface {
 
 	GetNoTxPatterns() map[string]*regexp.Regexp
 
-	// migrate
+	// migration
 
 	RunMigrationsPlainMode(
 		ctx context.Context,
 		db *sql.DB,
-		pendingMigrations []vers.MigrationFile,
+		pendingMigrations []version.MigrationFile,
 		directionDo bool,
 	) error
 
 	RunMigrationsMixedMode(
 		ctx context.Context,
 		db *sql.DB,
-		groupEntries []modes.GroupEntry,
+		groupEntries []mode.GroupEntry,
 		directionDo bool,
 	) error
 
 	RunMigrationsGroupMode(
 		ctx context.Context,
 		db *sql.DB,
-		groupEntry modes.GroupEntry,
+		groupEntry mode.GroupEntry,
 		directionDo bool,
 	) error
 }

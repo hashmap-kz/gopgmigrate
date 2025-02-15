@@ -1,9 +1,9 @@
-package modes
+package mode
 
 import (
 	"fmt"
 
-	"gopgmigrate/internal/vers"
+	"gopgmigrate/internal/version"
 
 	"gopgmigrate/pkg/ds"
 )
@@ -24,20 +24,20 @@ const (
 )
 
 type GroupEntry struct {
-	Files []vers.MigrationFile
+	Files []version.MigrationFile
 	UseTX bool
 }
 
-func ParseFilesGroupMode(input []vers.MigrationFile) (GroupEntry, error) {
+func ParseFilesGroupMode(input []version.MigrationFile) (GroupEntry, error) {
 	if len(input) == 0 {
 		return GroupEntry{}, nil
 	}
 
-	var result []vers.MigrationFile
-	useTx := vers.IsTx(input[0])
+	var result []version.MigrationFile
+	useTx := version.IsTx(input[0])
 
 	for _, elem := range input {
-		if vers.IsTx(elem) != useTx {
+		if version.IsTx(elem) != useTx {
 			return GroupEntry{}, fmt.Errorf("in group mode all files should be either all TX either all NO-TX")
 		}
 		result = append(result, elem)
@@ -49,7 +49,7 @@ func ParseFilesGroupMode(input []vers.MigrationFile) (GroupEntry, error) {
 	}, nil
 }
 
-func ParseFilesMixedMode(input []vers.MigrationFile) ([]GroupEntry, error) {
+func ParseFilesMixedMode(input []version.MigrationFile) ([]GroupEntry, error) {
 	stack := ds.NewStack(input)
 	result := []GroupEntry{}
 
@@ -72,18 +72,18 @@ func ParseFilesMixedMode(input []vers.MigrationFile) ([]GroupEntry, error) {
 	return result, nil
 }
 
-func cutChain(stack *ds.Stack[vers.MigrationFile]) (GroupEntry, bool) {
+func cutChain(stack *ds.Stack[version.MigrationFile]) (GroupEntry, bool) {
 	if stack.IsEmpty() {
 		return GroupEntry{}, false
 	}
 
-	var tmp []vers.MigrationFile
+	var tmp []version.MigrationFile
 	for !stack.IsEmpty() {
 		cur, _ := stack.Pop()
 		tmp = append(tmp, cur)
 
 		nex, _ := stack.Peek()
-		if vers.IsTx(cur) != vers.IsTx(nex) {
+		if version.IsTx(cur) != version.IsTx(nex) {
 			break
 		}
 	}
@@ -94,6 +94,6 @@ func cutChain(stack *ds.Stack[vers.MigrationFile]) (GroupEntry, bool) {
 
 	return GroupEntry{
 		Files: tmp,
-		UseTX: vers.IsTx(tmp[0]),
+		UseTX: version.IsTx(tmp[0]),
 	}, true
 }
