@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"gopgmigrate/internal/vers"
 
@@ -36,6 +37,10 @@ func migrateOneScriptFn(
 
 	// execute migration script
 	for _, stmt := range script {
+		// skip empty
+		if strings.TrimSpace(stmt) == "" {
+			continue
+		}
 		_, err = tx.ExecContext(ctx, stmt)
 		if err != nil {
 			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
