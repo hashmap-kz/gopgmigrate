@@ -1,4 +1,4 @@
-package impl
+package history
 
 import (
 	"context"
@@ -11,10 +11,8 @@ import (
 	"gopgmigrate/internal/mode"
 	"gopgmigrate/internal/version"
 
-	"gopgmigrate/internal/dbms"
-	"gopgmigrate/internal/history"
-
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"gopgmigrate/internal/dbms"
 )
 
 // Migration Lock Key (must be unique per application)
@@ -24,9 +22,9 @@ type migrateHistoryPostgresRepository struct {
 	tableName string
 }
 
-var _ history.MigrateHistoryRepository = &migrateHistoryPostgresRepository{}
+var _ MigrateHistoryRepository = &migrateHistoryPostgresRepository{}
 
-func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) history.MigrateHistoryRepository {
+func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) MigrateHistoryRepository {
 	return &migrateHistoryPostgresRepository{
 		tableName: tableName,
 	}
@@ -59,7 +57,7 @@ func (r *migrateHistoryPostgresRepository) CreateHistoryTable(ctx context.Contex
 	return err
 }
 
-func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx dbms.Transaction, inputEntity *MigrateHistoryCreateInput) error {
 	tag := "migrateHistoryPostgresRepository.SaveVersioned"
 	query := fmt.Sprintf(`		
 		insert into %s (
@@ -91,7 +89,11 @@ func (r *migrateHistoryPostgresRepository) SaveVersioned(ctx context.Context, tx
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, tx dbms.Transaction, inputEntity *history.MigrateHistoryCreateInput) error {
+func (r *migrateHistoryPostgresRepository) SaveRepeatable(
+	ctx context.Context,
+	tx dbms.Transaction,
+	inputEntity *MigrateHistoryCreateInput,
+) error {
 	tag := "migrateHistoryPostgresRepository.SaveRepeatable"
 	query := fmt.Sprintf(`    
 		with updated as (
@@ -122,7 +124,7 @@ func (r *migrateHistoryPostgresRepository) SaveRepeatable(ctx context.Context, t
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.Transaction) ([]history.MigrateHistory, error) {
+func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.Transaction) ([]MigrateHistory, error) {
 	tag := "migrateHistoryPostgresRepository.ListAll"
 
 	query := fmt.Sprintf(`		
@@ -145,7 +147,7 @@ func (r *migrateHistoryPostgresRepository) ListAll(ctx context.Context, tx dbms.
 	}
 	defer rows.Close()
 
-	var scannedEntities []history.MigrateHistory
+	var scannedEntities []MigrateHistory
 	for rows.Next() {
 		scannedEntity, err := scanFullRow(rows)
 		if err != nil {
@@ -180,7 +182,7 @@ func (r *migrateHistoryPostgresRepository) DeleteVersion(ctx context.Context, tx
 	return nil
 }
 
-func (r *migrateHistoryPostgresRepository) VersionExists(ctx context.Context, tx dbms.Transaction, v int64) (bool, error) {
+func (r *migrateHistoryPostgresRepository) VersionExists(_ context.Context, tx dbms.Transaction, v int64) (bool, error) {
 	var exists bool
 	query := fmt.Sprintf("select exists (select 1 from %s where mh_version = $1);", r.tableName)
 
@@ -224,8 +226,8 @@ func (r *migrateHistoryPostgresRepository) ReleaseMigrationLock(ctx context.Cont
 
 // scan utils
 
-func scanFullRow(row *sql.Rows) (*history.MigrateHistory, error) {
-	var scannedEntity history.MigrateHistory
+func scanFullRow(row *sql.Rows) (*MigrateHistory, error) {
+	var scannedEntity MigrateHistory
 	err := row.Scan(
 		&scannedEntity.ID,
 		&scannedEntity.MhVersion,
@@ -250,9 +252,9 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
 	pendingMigrations []version.MigrationFile,
 	directionDo bool,
 ) error {
-	iterId := uuid.New()
+	iterID := uuid.New()
 	for _, elem := range pendingMigrations {
-		err := history.MigrateOneScriptDecideTxNoTx(ctx, db, elem, r, directionDo, iterId)
+		err := MigrateOneScriptDecideTxNoTx(ctx, db, elem, r, directionDo, iterID)
 		if err != nil {
 			return err
 		}
@@ -266,9 +268,9 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
 	groupEntries []mode.GroupEntry,
 	directionDo bool,
 ) error {
-	iterId := uuid.New()
+	iterID := uuid.New()
 	for _, elem := range groupEntries {
-		err := history.MigrateListOfFiles(ctx, db, elem.Files, elem.UseTX, r, directionDo, iterId)
+		err := MigrateListOfFiles(ctx, db, elem.Files, elem.UseTX, r, directionDo, iterID)
 		if err != nil {
 			return err
 		}
@@ -282,5 +284,5 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
 	groupEntry mode.GroupEntry,
 	directionDo bool,
 ) error {
-	return history.MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())
+	return MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())
 }

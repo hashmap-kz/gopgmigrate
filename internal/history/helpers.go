@@ -20,16 +20,16 @@ func MigrateListOfFiles(
 	useTx bool,
 	repo MigrateHistoryRepository,
 	directionDo bool,
-	iterId uuid.UUID,
+	iterID uuid.UUID,
 ) (err error) {
 	if useTx {
-		err = migrateListOfFilesInTxFn(ctx, db, files, repo, directionDo, iterId)
+		err = migrateListOfFilesInTxFn(ctx, db, files, repo, directionDo, iterID)
 		if err != nil {
 			return err
 		}
 		return nil
 	}
-	err = MigrateListOfFilesNoTx(ctx, db, files, repo, directionDo, iterId)
+	err = MigrateListOfFilesNoTx(ctx, db, files, repo, directionDo, iterID)
 	if err != nil {
 		return err
 	}
@@ -43,11 +43,11 @@ func MigrateListOfFilesNoTx(
 	files []version.MigrationFile,
 	repo MigrateHistoryRepository,
 	directionDo bool,
-	iterId uuid.UUID,
+	iterID uuid.UUID,
 ) (err error) {
 	for _, file := range files {
 		script, _ := stmt.SplitSQLStatements(string(file.Data))
-		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N", iterId)
+		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N", iterID)
 		if err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func MigrateOneScriptDecideTxNoTx(
 	file version.MigrationFile,
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
-	iterId uuid.UUID,
+	iterID uuid.UUID,
 ) (err error) {
 	// TRANSACTION
 
@@ -74,7 +74,7 @@ func MigrateOneScriptDecideTxNoTx(
 		defer tx.Rollback()
 
 		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+", iterId)
+		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+", iterID)
 		if err != nil {
 			return err
 		}
@@ -89,7 +89,7 @@ func MigrateOneScriptDecideTxNoTx(
 	// NO TRANSACTION
 
 	script, _ := stmt.SplitSQLStatements(string(file.Data))
-	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N", iterId)
+	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N", iterID)
 }
 
 func migrateOneScriptFn(
@@ -100,7 +100,7 @@ func migrateOneScriptFn(
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
 	txLogNote string,
-	iterId uuid.UUID,
+	iterID uuid.UUID,
 ) (err error) {
 	slog.Info("migration",
 		slog.String("tx", txLogNote),
@@ -110,12 +110,12 @@ func migrateOneScriptFn(
 	)
 
 	// execute migration script
-	for _, stmt := range script {
+	for _, scriptStmt := range script {
 		// skip empty
-		if strings.TrimSpace(stmt) == "" {
+		if strings.TrimSpace(scriptStmt) == "" {
 			continue
 		}
-		_, err = tx.ExecContext(ctx, stmt)
+		_, err = tx.ExecContext(ctx, scriptStmt)
 		if err != nil {
 			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
 		}
@@ -129,7 +129,7 @@ func migrateOneScriptFn(
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.Hash,
-				MhIterID:  iterId.String(),
+				MhIterID:  iterID.String(),
 			})
 			if err != nil {
 				return err
@@ -139,7 +139,7 @@ func migrateOneScriptFn(
 				MhVersion: file.Vers,
 				MhName:    file.Base,
 				MhHash:    file.Hash,
-				MhIterID:  iterId.String(),
+				MhIterID:  iterID.String(),
 			})
 			if err != nil {
 				return err
@@ -162,7 +162,7 @@ func migrateListOfFilesInTxFn(
 	files []version.MigrationFile,
 	repo MigrateHistoryRepository,
 	directionDo bool,
-	iterId uuid.UUID,
+	iterID uuid.UUID,
 ) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -172,7 +172,7 @@ func migrateListOfFilesInTxFn(
 
 	for _, file := range files {
 		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo, "+", iterId)
+		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo, "+", iterID)
 		if err != nil {
 			return err
 		}

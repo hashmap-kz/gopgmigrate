@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"gopgmigrate/internal/filter"
 
@@ -14,8 +13,6 @@ import (
 	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
-	"gopgmigrate/internal/history/impl"
-
 	"gopgmigrate/pkg/logger"
 
 	"gopgmigrate/internal/history"
@@ -131,51 +128,22 @@ func runMigrations(ctx context.Context,
 
 // init repo, conn
 
-// TODO: this should be an interface
 // TODO: simplify, cleanup
 func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
 	var err error
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
-	if parseConnStr(migCtx.ConnStr) == dbms.VendorPostgresql {
-		repo = impl.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
-		conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
-		if err != nil {
-			return nil, nil, err
-		}
+	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
+	conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
+	if err != nil {
+		return nil, nil, err
+	}
 
-		err = repo.CreateHistoryTable(ctx, conn)
-		if err != nil {
-			return nil, nil, err
-		}
-
-	} else if parseConnStr(migCtx.ConnStr) == dbms.VendorClickhouse {
-		repo = impl.NewMigrateHistoryClickhouseRepository(ctx, migCtx.HistoryTableName)
-		conn, err = dbms.GetDatabaseConnectionClickhouse(migCtx.ConnStr)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		err = repo.CreateHistoryTable(ctx, conn)
-		if err != nil {
-			return nil, nil, err
-		}
-
-	} else {
-		slog.Error("unknown DBMS vendor", slog.String("connStr", migCtx.ConnStr))
-		return nil, nil, fmt.Errorf("unknown DBMS vendor for connStr: %s", migCtx.ConnStr)
+	err = repo.CreateHistoryTable(ctx, conn)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return repo, conn, nil
-}
-
-func parseConnStr(str string) string {
-	if strings.HasPrefix(str, "postgres://") {
-		return dbms.VendorPostgresql
-	}
-	if strings.HasPrefix(str, "clickhouse://") {
-		return dbms.VendorClickhouse
-	}
-	return ""
 }

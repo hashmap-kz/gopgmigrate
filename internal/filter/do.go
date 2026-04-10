@@ -54,7 +54,10 @@ func appliedMigrationPresentLocally(appliedScriptBasename string, localFiles []v
 	return false
 }
 
-func getVersionedMigrationsToApply(appliedMigrations []history.MigrateHistory, localFiles []version.MigrationFile) ([]version.MigrationFile, error) {
+func getVersionedMigrationsToApply(
+	appliedMigrations []history.MigrateHistory,
+	localFiles []version.MigrationFile,
+) ([]version.MigrationFile, error) {
 	var toApply []version.MigrationFile
 	for _, file := range localFiles {
 		// twice check a file given
