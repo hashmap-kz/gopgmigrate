@@ -1,1 +1,0 @@
-insert into default.roles (xname) values ('test-00006');

@@ -1,1 +1,0 @@
-insert into default.companies (xname) values ('test-00018');

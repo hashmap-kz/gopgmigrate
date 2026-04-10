@@ -1,1 +1,0 @@
-alter table default.companies drop column xdata;

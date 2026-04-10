@@ -1,1 +1,0 @@
-alter table default.roles drop column xdata;

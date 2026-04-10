@@ -1,1 +1,0 @@
-delete from default.permissions where xname = 'test-00010';

@@ -1,1 +1,0 @@
-delete from default.companies where xname = 'test-00018';
