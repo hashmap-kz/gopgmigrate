@@ -2,7 +2,6 @@ package filters
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 
@@ -13,16 +12,15 @@ import (
 )
 
 func GetMigrationsForUndo(
-	ctx context.Context,
-	db *sql.DB, // TODO: should not be here (hard to test)
+	_ context.Context,
+	hist []history.MigrateHistory,
 	migrationDirectory string,
-	repo history.MigrateHistoryRepository,
 	howMuch int,
 ) ([]naming.MigrationFile, error) {
 	allLocalFiles, err := resolver.GetFiles(
 		migrationDirectory,
 		naming.MigrationRegex(),
-		repo.GetNoTxPatterns(),
+		getNoTxPatterns(),
 	)
 	if err != nil {
 		return nil, err
@@ -31,11 +29,6 @@ func GetMigrationsForUndo(
 	undoFiles := filterMigrationFiles(allLocalFiles, func(f naming.MigrationFile) bool {
 		return naming.IsDown(f.Base)
 	})
-
-	hist, err := repo.ListAll(ctx, db)
-	if err != nil {
-		return nil, err
-	}
 
 	return getVersionedMigrationsToUndo(undoFiles, hist, howMuch)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"regexp"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -59,8 +58,6 @@ type MigrateHistoryRepository interface {
 
 	AcquireMigrationLock(ctx context.Context, db Transaction) (bool, error)
 	ReleaseMigrationLock(ctx context.Context, db Transaction) error
-
-	GetNoTxPatterns() map[string]*regexp.Regexp
 }
 
 type repo struct {
@@ -215,21 +212,6 @@ func (r *repo) DeleteVersion(ctx context.Context, tx Transaction, v int64) error
 		return fmt.Errorf("%s: no rows were deleted for version: %d", tag, v)
 	}
 	return nil
-}
-
-// utils
-
-func (r *repo) GetNoTxPatterns() map[string]*regexp.Regexp {
-	return map[string]*regexp.Regexp{
-		"CopyFromStdin":                        regexp.MustCompile(`(?i)COPY( .*)? FROM STDIN`),
-		"CreateDatabaseTablespaceSubscription": regexp.MustCompile(`(?i)(CREATE|DROP) (DATABASE|TABLESPACE|SUBSCRIPTION)`),
-		"AlterSystem":                          regexp.MustCompile(`(?i)ALTER SYSTEM`),
-		"CreateIndexConcurrently":              regexp.MustCompile(`(?i)(CREATE|DROP)( UNIQUE)? INDEX CONCURRENTLY`),
-		"Reindex":                              regexp.MustCompile(`(?i)REINDEX( VERBOSE)? (SCHEMA|DATABASE|SYSTEM)`),
-		"Vacuum":                               regexp.MustCompile(`(?i)VACUUM`),
-		"DiscardAll":                           regexp.MustCompile(`(?i)DISCARD ALL`),
-		"AlterTypeAddValue":                    regexp.MustCompile(`(?i)ALTER TYPE( .*)? ADD VALUE`),
-	}
 }
 
 // locks

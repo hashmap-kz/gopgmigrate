@@ -99,13 +99,18 @@ func preparePendingMigrations(
 	var err error
 	var pendingMigrations []naming.MigrationFile
 
+	hist, err := repo.ListAll(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
 	if migCtx.DirectionDo {
-		pendingMigrations, err = filters.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
+		pendingMigrations, err = filters.GetMigrationsForApply(ctx, hist, migCtx.MigrationDir)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
+		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, hist, migCtx.MigrationDir, migCtx.UndoCount)
 		if err != nil {
 			return nil, err
 		}

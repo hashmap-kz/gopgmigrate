@@ -2,7 +2,6 @@ package filters
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"path/filepath"
 
@@ -13,15 +12,14 @@ import (
 )
 
 func GetMigrationsForApply(
-	ctx context.Context,
-	db *sql.DB, // TODO: should not be here (hard to test)
+	_ context.Context,
+	hist []history.MigrateHistory,
 	migrationDirectory string,
-	repo history.MigrateHistoryRepository,
 ) ([]naming.MigrationFile, error) {
 	allLocalFiles, err := resolver.GetFiles(
 		migrationDirectory,
 		naming.MigrationRegex(),
-		repo.GetNoTxPatterns(),
+		getNoTxPatterns(),
 	)
 	if err != nil {
 		return nil, err
@@ -30,11 +28,6 @@ func GetMigrationsForApply(
 	upFiles := filterMigrationFiles(allLocalFiles, func(f naming.MigrationFile) bool {
 		return naming.IsVersioned(f.Base)
 	})
-
-	hist, err := repo.ListAll(ctx, db)
-	if err != nil {
-		return nil, err
-	}
 
 	if err := checkAppliedHistoryWithLocalFiles(hist, upFiles); err != nil {
 		return nil, err
