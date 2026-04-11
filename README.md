@@ -23,7 +23,7 @@ sorts only by the 7-digit revision prefix.
 
 Every migration file encodes its complete behaviour in its name.
 
-![Migration Naming Convention](assets/migration-names.svg)
+![Migration Naming Convention](docs/assets/migration-names.svg)
 
 ```
 {0000000}-{name}.{kind}.sql
