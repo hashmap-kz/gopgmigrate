@@ -5,6 +5,26 @@ SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory l
 Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection - no config
 files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
+<!-- TOC -->
+* [gopgmigrate](#gopgmigrate)
+  * [How it works](#how-it-works)
+  * [CLI](#cli)
+    * [Flags](#flags)
+    * [Examples](#examples)
+  * [File naming convention](#file-naming-convention)
+    * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
+    * [Design rationale](#design-rationale)
+  * [Directory layouts](#directory-layouts)
+    * [Flat](#flat)
+    * [By concern](#by-concern)
+    * [By release and concern](#by-release-and-concern)
+    * [By environment](#by-environment)
+  * [History table](#history-table)
+  * [Transaction behaviour](#transaction-behaviour)
+  * [Contributing](#contributing)
+  * [License](#license)
+<!-- TOC -->
+
 ---
 
 ## How it works
@@ -17,31 +37,59 @@ files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a c
 Version ordering is **global** across all subdirectories. Subdirectories are purely for your own organisation - the tool
 sorts only by the 7-digit revision prefix.
 
---- 
 
-## Design rationale
+---
 
-Other tools made choices that this tool deliberately avoids.
+## CLI
 
-**Flat-only layouts** are impractical for projects that grow across release cycles,
-separate schema and data concerns, or multiple environments. `gopgmigrate` imposes no
-structure - organise directories however your project demands.
+```sh
+gopgmigrate <command> [flags]
 
-**Pseudo-DSL and magic comments** inside SQL files - especially when up and down logic
-live in the same file - make it impossible to open a file in a database IDE and run it
-directly. Every file here is plain executable SQL, nothing else.
+Commands:
+  migrate          Apply all pending migrations
+  rollback-count   Roll back the last N applied migrations
+  last             Show the last applied migration
+```
 
-**Rollback scripts alongside forward migrations** break shell-based workflows. A plain
-`find *.sql` glob picks up both directions at once. `gopgmigrate` keeps them separate so
-`find` and `psql` always work safely without the tool.
+### Flags
 
-**Vendor lock-in** means your migration files become useless without the tool that owns
-them. Here, every file is a plain SQL file. The tool is optional. `find | sort | psql`
-reproduces your database from scratch with no binary required.
+All commands share the same flags. Each flag falls back to an environment variable when not set.
 
-**Repeatable migrations and non-transactional execution** are not edge cases - they are
-everyday requirements for managing views, functions, and maintenance operations. Both
-are first-class citizens, declared in the filename, requiring no special configuration.
+| Flag              | Env var                        | Default                  | Description                               |
+|-------------------|--------------------------------|--------------------------|-------------------------------------------|
+| `--dirname`       | `PGMIGRATE_DIRNAME`            | -                        | Migration directory (required)            |
+| `--connstr`       | `PGMIGRATE_CONNSTR`            | -                        | PostgreSQL connection string (required)   |
+| `--history-table` | `PGMIGRATE_HISTORY_TABLE_NAME` | `public.migrate_history` | History table in `schema.table` format    |
+| `--log-level`     | -                              | `info`                   | `debug` · `info` · `warn` · `error`       |
+| `--dry-run`       | -                              | `false`                  | Print pending migrations without applying |
+
+### Examples
+
+```sh
+# apply all pending migrations
+gopgmigrate migrate \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb \
+  --history-table public.migrate_history
+
+# preview what would be applied
+gopgmigrate migrate \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb \
+  --dry-run
+
+# roll back the last 2 applied migrations
+gopgmigrate rollback-count 2 \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb
+
+# using environment variables
+export PGMIGRATE_DIRNAME=./migrations
+export PGMIGRATE_CONNSTR=postgres://user:pass@localhost:5432/mydb
+
+gopgmigrate migrate
+gopgmigrate rollback-count 1 --dry-run
+```
 
 ---
 
@@ -97,6 +145,30 @@ find migrations/ -name "*.notx.up.sql" -o -name "*.rnotx.up.sql" | sort | xargs 
 
 The tool adds safety on top: advisory locking, history tracking, hash verification, stray file detection. The bash path
 is your emergency escape hatch - it always works.
+
+### Design rationale
+
+Other tools made choices that this tool deliberately avoids.
+
+**Flat-only layouts** are impractical for projects that grow across release cycles,
+separate schema and data concerns, or multiple environments. `gopgmigrate` imposes no
+structure - organise directories however your project demands.
+
+**Pseudo-DSL and magic comments** inside SQL files - especially when up and down logic
+live in the same file - make it impossible to open a file in a database IDE and run it
+directly. Every file here is plain executable SQL, nothing else.
+
+**Rollback scripts alongside forward migrations** break shell-based workflows. A plain
+`find *.sql` glob picks up both directions at once. `gopgmigrate` keeps them separate so
+`find` and `psql` always work safely without the tool.
+
+**Vendor lock-in** means your migration files become useless without the tool that owns
+them. Here, every file is a plain SQL file. The tool is optional. `find | sort | psql`
+reproduces your database from scratch with no binary required.
+
+**Repeatable migrations and non-transactional execution** are not edge cases - they are
+everyday requirements for managing views, functions, and maintenance operations. Both
+are first-class citizens, declared in the filename, requiring no special configuration.
 
 ---
 
@@ -186,59 +258,6 @@ tree is an error.
 
 ---
 
-## CLI
-
-```sh
-gopgmigrate <command> [flags]
-
-Commands:
-  migrate          Apply all pending migrations
-  rollback-count   Roll back the last N applied migrations
-  last             Show the last applied migration
-```
-
-### Flags
-
-All commands share the same flags. Each flag falls back to an environment variable when not set.
-
-| Flag              | Env var                        | Default                  | Description                               |
-|-------------------|--------------------------------|--------------------------|-------------------------------------------|
-| `--dirname`       | `PGMIGRATE_DIRNAME`            | -                        | Migration directory (required)            |
-| `--connstr`       | `PGMIGRATE_CONNSTR`            | -                        | PostgreSQL connection string (required)   |
-| `--history-table` | `PGMIGRATE_HISTORY_TABLE_NAME` | `public.migrate_history` | History table in `schema.table` format    |
-| `--log-level`     | -                              | `info`                   | `debug` · `info` · `warn` · `error`       |
-| `--dry-run`       | -                              | `false`                  | Print pending migrations without applying |
-
-### Examples
-
-```sh
-# apply all pending migrations
-gopgmigrate migrate \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb \
-  --history-table public.migrate_history
-
-# preview what would be applied
-gopgmigrate migrate \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb \
-  --dry-run
-
-# roll back the last 2 applied migrations
-gopgmigrate rollback-count 2 \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb
-
-# using environment variables
-export PGMIGRATE_DIRNAME=./migrations
-export PGMIGRATE_CONNSTR=postgres://user:pass@localhost:5432/mydb
-
-gopgmigrate migrate
-gopgmigrate rollback-count 1 --dry-run
-```
-
----
-
 ## History table
 
 Created automatically on first run. Stores a record for every applied migration.
@@ -279,23 +298,6 @@ Statements that **cannot** run inside a transaction and require `.notx.up.sql` o
 
 Non-transactional files are split into individual statements and executed one by one. If one fails, previously executed
 statements in that file cannot be rolled back - plan accordingly.
-
----
-
-## Safety
-
-**Advisory lock** - only one migration process can run at a time against a given database. A second process attempting
-to migrate the same database will exit immediately rather than running concurrently.
-
-**Hash verification** - the SHA-256 hash of every versioned migration is stored at apply time. If the file content
-changes after it has been applied, the tool refuses to run and reports the mismatch. Migration files are immutable after
-they land in production.
-
-**Stray file detection** - any `.sql` file in the migration directory that does not match the naming convention is an
-error. Typos in filenames are caught before any SQL executes.
-
-**No implicit ordering** - the revision number in the filename is the only ordering mechanism. There are no timestamps,
-no sequence tables, no auto-increment IDs to manage.
 
 ---
 
