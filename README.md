@@ -8,19 +8,20 @@ files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a c
 <!-- TOC -->
 * [gopgmigrate](#gopgmigrate)
   * [How it works](#how-it-works)
-  * [CLI](#cli)
-    * [Flags](#flags)
-    * [Examples](#examples)
-  * [File naming convention](#file-naming-convention)
+  * [Usage](#usage)
+    * [CLI](#cli)
+      * [Flags](#flags)
+      * [Examples](#examples)
+    * [Library](#library)
+  * [Naming conventions](#naming-conventions)
     * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
     * [Design rationale](#design-rationale)
+    * [Transaction behaviour](#transaction-behaviour)
   * [Directory layouts](#directory-layouts)
     * [Flat](#flat)
     * [By concern](#by-concern)
     * [By release and concern](#by-release-and-concern)
     * [By environment](#by-environment)
-  * [History table](#history-table)
-  * [Transaction behaviour](#transaction-behaviour)
   * [Contributing](#contributing)
   * [License](#license)
 <!-- TOC -->
@@ -37,10 +38,11 @@ files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a c
 Version ordering is **global** across all subdirectories. Subdirectories are purely for your own organisation - the tool
 sorts only by the 7-digit revision prefix.
 
-
 ---
 
-## CLI
+## Usage
+
+### CLI
 
 ```sh
 gopgmigrate <command> [flags]
@@ -51,7 +53,7 @@ Commands:
   last             Show the last applied migration
 ```
 
-### Flags
+#### Flags
 
 All commands share the same flags. Each flag falls back to an environment variable when not set.
 
@@ -63,7 +65,7 @@ All commands share the same flags. Each flag falls back to an environment variab
 | `--log-level`     | -                              | `info`                   | `debug` · `info` · `warn` · `error`       |
 | `--dry-run`       | -                              | `false`                  | Print pending migrations without applying |
 
-### Examples
+#### Examples
 
 ```sh
 # apply all pending migrations
@@ -91,9 +93,11 @@ gopgmigrate migrate
 gopgmigrate rollback-count 1 --dry-run
 ```
 
+### Library
+
 ---
 
-## File naming convention
+## Naming conventions
 
 Every migration file encodes its complete behaviour in its name.
 
@@ -169,6 +173,24 @@ reproduces your database from scratch with no binary required.
 **Repeatable migrations and non-transactional execution** are not edge cases - they are
 everyday requirements for managing views, functions, and maintenance operations. Both
 are first-class citizens, declared in the filename, requiring no special configuration.
+
+### Transaction behaviour
+
+PostgreSQL supports transactional DDL - most `CREATE`, `ALTER`, and `DROP` statements can be wrapped in `BEGIN/COMMIT`
+and rolled back on failure. This tool defaults to transactional execution and makes the non-transactional case explicit
+in the filename.
+
+Statements that **cannot** run inside a transaction and require `.notx.up.sql` or `.rnotx.up.sql`:
+
+- `VACUUM`
+- `ALTER SYSTEM`
+- `REINDEX SCHEMA / DATABASE / SYSTEM`
+- `CREATE INDEX CONCURRENTLY`
+- `DROP INDEX CONCURRENTLY`
+- `ALTER TYPE ... ADD VALUE` (before PostgreSQL 12)
+
+Non-transactional files are split into individual statements and executed one by one. If one fails, previously executed
+statements in that file cannot be rolled back - plan accordingly.
 
 ---
 
@@ -256,48 +278,6 @@ migrations/
 One rule applies in all layouts: **version numbers are global**. Two files with the same revision number anywhere in the
 tree is an error.
 
----
-
-## History table
-
-Created automatically on first run. Stores a record for every applied migration.
-
-```sql
-create table if not exists public.migrate_history
-(
-    id            int generated always as identity primary key,
-    mh_version    bigint unique not null,
-    mh_name       text unique   not null,
-    mh_hash       text          not null,
-    mh_applied_by name          not null default session_user,
-    mh_applied_at timestamptz   not null default transaction_timestamp(),
-    mh_txid       text          not null default pg_current_xact_id()::text,
-    mh_iter_id    uuid          not null
-);
-```
-
-Repeatable migrations (`*.r.up.sql`, `*.rnotx.up.sql`) update a row each time they are re-applied. The hash stored
-at apply time is compared against the current file hash on every run - if they differ the file is re-applied.
-
----
-
-## Transaction behaviour
-
-PostgreSQL supports transactional DDL - most `CREATE`, `ALTER`, and `DROP` statements can be wrapped in `BEGIN/COMMIT`
-and rolled back on failure. This tool defaults to transactional execution and makes the non-transactional case explicit
-in the filename.
-
-Statements that **cannot** run inside a transaction and require `.notx.up.sql` or `.rnotx.up.sql`:
-
-- `VACUUM`
-- `ALTER SYSTEM`
-- `REINDEX SCHEMA / DATABASE / SYSTEM`
-- `CREATE INDEX CONCURRENTLY`
-- `DROP INDEX CONCURRENTLY`
-- `ALTER TYPE ... ADD VALUE` (before PostgreSQL 12)
-
-Non-transactional files are split into individual statements and executed one by one. If one fails, previously executed
-statements in that file cannot be rolled back - plan accordingly.
 
 ---
 
