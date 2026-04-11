@@ -23,10 +23,10 @@ migrate:
 r1:
 	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
 	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback-count 1 --yes-i-really-mean-it
+	go run main.go rollback-count 1
 
 .ONESHELL:
 r5:
 	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
 	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback-count 5 --yes-i-really-mean-it
+	go run main.go rollback-count 5
