@@ -16,7 +16,6 @@ import (
 type cliOptions struct {
 	dirName          string
 	connStr          string
-	logEnc           string
 	logLevel         string
 	historyTableName string
 }
@@ -155,13 +154,12 @@ func rollbackCount(args []string) int {
 func registerCommonFlags(fs *flag.FlagSet, opts *cliOptions) {
 	fs.StringVar(&opts.dirName, "dirname", "", "Directory containing migration files (required)")
 	fs.StringVar(&opts.connStr, "connstr", "", "postgres://username:password@host:port/dbname?key=val")
-	fs.StringVar(&opts.logEnc, "log-enc", "text", "Log encoding format (json/text)")
-	fs.StringVar(&opts.logLevel, "log-level", "debug", "Log level (debug/info/warn/error)")
+	fs.StringVar(&opts.logLevel, "log-level", "info", "Log level (debug/info/warn/error)")
 	fs.StringVar(&opts.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
 }
 
 func prepareOptions(opts *cliOptions) error {
-	slog.SetDefault(logger.InitLogger(opts.logEnc, opts.logLevel))
+	slog.SetDefault(logger.InitLogger("text", opts.logLevel))
 
 	if opts.dirName == "" {
 		opts.dirName = os.Getenv("PGMIGRATE_DIRNAME")

@@ -5,7 +5,7 @@ A strict, no-surprises migration tool built exclusively for **PostgreSQL**.
 SQL-first PostgreSQL migrations — rollbacks, repeatable scripts, any directory layout
 
 Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection — no config
-files, no YAML, no magic. Just SQL files and a clear naming convention.
+files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
 ---
 
@@ -180,8 +180,7 @@ All commands share the same flags. Each flag falls back to an environment variab
 | `--dirname`       | `PGMIGRATE_DIRNAME`            | —                        | Migration directory (required)            |
 | `--connstr`       | `PGMIGRATE_CONNSTR`            | —                        | PostgreSQL connection string (required)   |
 | `--history-table` | `PGMIGRATE_HISTORY_TABLE_NAME` | `public.migrate_history` | History table in `schema.table` format    |
-| `--log-level`     | —                              | `debug`                  | `debug` · `info` · `warn` · `error`       |
-| `--log-enc`       | —                              | `text`                   | `text` · `json`                           |
+| `--log-level`     | —                              | `info`                   | `debug` · `info` · `warn` · `error`       |
 | `--dry-run`       | —                              | `false`                  | Print pending migrations without applying |
 
 ### Examples
@@ -232,7 +231,7 @@ create table if not exists public.migrate_history
 );
 ```
 
-Repeatable migrations (`*.r.up.sql`, `*.rnotx.up.sql`) produce a new row each time they are re-applied. The hash stored
+Repeatable migrations (`*.r.up.sql`, `*.rnotx.up.sql`) update a row each time they are re-applied. The hash stored
 at apply time is compared against the current file hash on every run — if they differ the file is re-applied.
 
 ---

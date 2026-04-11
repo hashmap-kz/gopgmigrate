@@ -1,338 +1,282 @@
-# PostgreSQL Migration Tool
+# gopgmigrate
 
-This tool automates the execution of PostgreSQL migrations, supporting **versioned**, and **repeatable** migrations.
-It ensures consistency and prevents duplicate executions using **advisory locks** and **transactional
-execution**. It scans all migration files **recursively**, ensuring that version numbers are consistent and
-strictly ordered.
+SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory layout
+
+Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection - no config
+files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
 ---
 
-## Features
+## How it works
 
-- **Strictness**: This tool is designed to be simple in use and strict by rules.
-- **Versioned Migrations**: Runs migrations sequentially, ensuring each version is applied once.
-- **Repeatable Migrations**: Re-applies if the SQL script changes (hash-based detection).
-- **Migration Modes**: `plain`, `group`, `mixed` modes, with robust transaction handling model.
+1. Scans the migration directory recursively for `.sql` files
+2. Compares them against the history table in your database
+3. Applies only what is pending, in version order
+4. Records every applied migration with its hash, timestamp, and transaction ID
 
---- 
+Version ordering is **global** across all subdirectories. Subdirectories are purely for your own organisation - the tool
+sorts only by the 7-digit revision prefix.
 
-## Naming conventions
+---
+
+## File naming convention
+
+Every migration file encodes its complete behaviour in its name.
 
 ![Migration Naming Convention](assets/migration-names.svg)
 
-### Reasons:
+```
+{0000000}-{name}.{kind}.sql
+```
 
-- It is much easier to sort and maintain files by using their extensions (than using prefixes/suffixes in their names).
-- Strict distinction between do/undo/repeatable scripts: files are not mixed, and may be safely executed using bash and
-  terminal
-  without any need of any migration tool.
-- You may place files in any directory/subdirectory you want, combine undo scripts in one place, combine repeatable in
-  the other one, create versioned directories (by release name, tag-name, etc...), create envs directories (dev, stage,
-  etc...), with only one condition: **`version numbering is global`**.
+| Extension       | Behaviour                                                  |
+|-----------------|------------------------------------------------------------|
+| `.up.sql`       | Versioned · runs once · transactional                      |
+| `.r.up.sql`     | Repeatable · re-runs on content change · transactional     |
+| `.notx.up.sql`  | Versioned · runs once · non-transactional                  |
+| `.rnotx.up.sql` | Repeatable · re-runs on content change · non-transactional |
+| `.down.sql`     | Rollback · always transactional                            |
 
----
+The revision is exactly **7 zero-padded digits**. The name is free-form (hyphens and underscores, no dots). The
+extension is the complete behaviour declaration - no other metadata needed.
 
-## Installation
+```
+0000001-create-users-table.up.sql
+0000002-add-roles-table.up.sql
+0000003-fn-get-users.r.up.sql        <- repeatable: re-applied when content changes
+0000004-vacuum-users.notx.up.sql     <- non-transactional: runs outside BEGIN/COMMIT
+0000005-refresh-stats.rnotx.up.sql   <- repeatable + non-transactional
 
-TODO
+0000001-create-users-table.down.sql  <- rollback for revision 1
+0000002-add-roles-table.down.sql
+```
 
----
+### Why extensions - not directories or prefixes
 
-## Configuration
-
-The database connection URL is retrieved from an environment variable:
+The extension is what shell tools understand natively. No parsing, no convention memorisation:
 
 ```sh
-### REQUIRED
+# apply everything - reproduce the full database from scratch
+find migrations/ -name "*.up.sql" | sort | xargs -I{} psql $DSN -f {}
 
-export PGMIGRATE_CONNSTR="postgres://user:password@localhost:5432/dbname"
-export PGMIGRATE_DIRNAME="examples/basic"
+# rollback in reverse
+find migrations/ -name "*.down.sql" | sort -r | xargs -I{} psql $DSN -f {}
 
-### OPTIONAL
+# repeatable files only - refresh all functions and views
+find migrations/ -name "*.r.up.sql" -o -name "*.rnotx.up.sql" | sort | xargs -I{} psql $DSN -f {}
 
-# default: public.history
-export PGMIGRATE_HISTORY_TABLE_NAME=migrate_history_dev
-
-# one of: (debug, info, warn, error)
-# default: info
-export PGMIGRATE_LOG_LEVEL=debug
-
-# one of: (console, json)
-# default: console
-export PGMIGRATE_LOG_MODE=console
+# non-transactional only
+find migrations/ -name "*.notx.up.sql" -o -name "*.rnotx.up.sql" | sort | xargs -I{} psql $DSN -f {}
 ```
+
+The tool adds safety on top: advisory locking, history tracking, hash verification, stray file detection. The bash path
+is your emergency escape hatch - it always works.
 
 ---
 
-## Quick start
+## Directory layouts
 
-TODO
-
-```
-go run .\main.go migrate --dirname=examples/basic --connstr postgres://postgres:postgres@localhost:5432/bookstore --dry-run --mode=mixed
-```
-
----
-
-# Migration Documentation
-
-## Migration Modes
-
-There are three migration modes:
-
-- **plain (default)** - Executes all pending files one by one.
-    - If a file is **transactional** (`*.do.sql`, `*.r.sql`, `*.undo.sql`), all statements within the file are executed
-      in a **single transaction**.
-    - If a file is **non-transactional** (`*.ntx.do.sql`, `*.ntx.r.sql`, `*.ntx.undo.sql`), the file's content is split
-      into individual SQL statements, which are executed **one by one**.
-    - Here is an example of the `plain` mode. All these scripts were executed within a single migration step,
-      with each file running in a separate transaction (for transactional files: *.do.sql).
-      Non-transactional files were executed statement by statement.
-    ```
-    +----------------------------------+-------+
-    |mh_name                           |mh_txid|
-    +----------------------------------+-------+
-    |00000-audit-table.do.sql          |19059  |
-    |00001-users-table.do.sql          |19060  |
-    |00002-roles-table.do.sql          |19061  |
-    |00003-privileges.do.sql           |19062  |
-    |00004-users.do.sql                |19063  |
-    |00005-roles.do.sql                |19064  |
-    |00006-non-transactional.ntx.do.sql|19066  |
-    |00007-non-transactional.ntx.do.sql|19068  |
-    |00008-fn_get_users.r.sql          |19069  |
-    |00009-fn_get_roles.r.sql          |19070  |
-    |00010-alter-system.ntx.do.sql     |19071  |
-    |00011-empty.do.sql                |19072  |
-    |00012-empty.do.sql                |19073  |
-    +----------------------------------+-------+
-    ```
-
-- **group** - Executes all pending files as a single **group**.
-    - All files must either be executed within **one transaction** (if transactional) or all
-      must be **non-transactional** (`*.ntx.*`).
-    - Here is an example of the group mode.
-      Files 0 to 10 were executed in plain mode, while files 11 to 14 were applied in group mode, all within a single
-      transaction.
-    ```
-    +----------------------------------+-------+
-    |mh_name                           |mh_txid|
-    +----------------------------------+-------+
-    |00000-audit-table.do.sql          |19082  |
-    |00001-users-table.do.sql          |19083  |
-    |00002-roles-table.do.sql          |19084  |
-    |00003-privileges.do.sql           |19085  |
-    |00004-users.do.sql                |19086  |
-    |00005-roles.do.sql                |19087  |
-    |00006-non-transactional.ntx.do.sql|19089  |
-    |00007-non-transactional.ntx.do.sql|19091  |
-    |00008-fn_get_users.r.sql          |19092  |
-    |00009-fn_get_roles.r.sql          |19093  |
-    |00010-alter-system.ntx.do.sql     |19094  |
-    |00011-empty.do.sql                |19095  |
-    |00012-empty.do.sql                |19095  |
-    |00013-empty.do.sql                |19095  |
-    |00014-empty.do.sql                |19095  |
-    +----------------------------------+-------+
-    ```
-
-- **mixed** - Splits pending migrations into **separate transactional and non-transactional groups**.
-    - If a group is **transactional**, all files within it are applied **within a single transaction**.
-    - If a group is **non-transactional**, each file is executed **individually**, following the behavior of **plain
-      mode**.
-    - Here is an example of the `mixed` mode. Pay attention to the mh_txid values.
-      While all these scripts were executed within a single migration step, they were grouped by type before being
-      applied.
-    ```
-    +----------------------------------+-------+
-    |mh_name                           |mh_txid|
-    +----------------------------------+-------+
-    |00000-audit-table.do.sql          |19043  |
-    |00001-users-table.do.sql          |19043  |
-    |00002-roles-table.do.sql          |19043  |
-    |00003-privileges.do.sql           |19043  |
-    |00004-users.do.sql                |19043  |
-    |00005-roles.do.sql                |19043  |
-    |00006-non-transactional.ntx.do.sql|19045  |
-    |00007-non-transactional.ntx.do.sql|19047  |
-    |00008-fn_get_users.r.sql          |19048  |
-    |00009-fn_get_roles.r.sql          |19048  |
-    |00010-alter-system.ntx.do.sql     |19049  |
-    |00011-empty.do.sql                |19050  |
-    |00012-empty.do.sql                |19050  |
-    +----------------------------------+-------+
-    ```
-
-## Migration Directory Structure
-
-Migration files can be placed in directories and subdirectories.  
-The discovery process is recursive.
-
-File names **always** start with a version number (`00001-`) and have the `.sql` extension.  
-Each file's version number should increase sequentially.
-
-**Stray files are not allowed, an error will occur if any file inside migration directory is not conforming the naming
-rules.**
-
-Since scanning is recursive, **version numbering is global** across all directories.  
-A subdirectory **cannot contain a file with a version number that is already used** in a higher-level directory.
-
-Example (**Invalid Case – Causes an Error**):
-
-  ```
-  migrations/
-    schema/00001-roles.sql
-    data/00001-users.sql  ❌ (Duplicate version 00001)
-  ```
-
-As a result, the following Bash command should return a **complete, version-ordered list** of all migrations, scanning
-all directories:
-
-```sh
-find migrations/ -type f \( -iname \*.r.sql -o -iname \*.do.sql \) -exec basename {} \; | sort
-```
-
----
-
-## Example layouts
+Migration files can live anywhere under the root directory. The tool walks recursively and sorts globally by revision.
+Organise however makes sense for your project.
 
 ### Flat
 
 ```
-migrations
-├── 00000-audit-table.do.sql
-├── 00001-users-table.do.sql
-├── 00002-roles-table.do.sql
-├── 00003-privileges.do.sql
-├── 00004-users.do.sql
-├── 00005-roles.do.sql
-├── 00008-fn_get_users.r.sql
-├── 00009-fn_get_roles.r.sql
-└── 00010-alter-system.ntx.do.sql
+migrations/
+  0000001-create-users-table.up.sql
+  0000001-create-users-table.down.sql
+  0000002-add-roles-table.up.sql
+  0000002-add-roles-table.down.sql
+  0000003-fn-get-users.r.up.sql
+  0000004-vacuum-users.notx.up.sql
 ```
 
-### Separate by logic modules
+### By concern
 
 ```
-migrations
-├── data
-│   ├── 00004-users.do.sql
-│   └── 00005-roles.do.sql
-├── repeatable
-│   ├── 00008-fn_get_users.r.sql
-│   └── 00009-fn_get_roles.r.sql
-├── schema
-│   ├── 00000-audit-table.do.sql
-│   ├── 00001-users-table.do.sql
-│   ├── 00002-roles-table.do.sql
-│   ├── 00003-privileges.do.sql
-│   └── 00010-alter-system.ntx.do.sql
-└── undo
-    ├── 00000-audit-table.undo.sql
-    ├── 00001-users-table.undo.sql
-    ├── 00002-roles-table.undo.sql
-    ├── 00003-privileges.undo.sql
-    ├── 00004-users.undo.sql
-    ├── 00005-roles.undo.sql
-    └── 00008-fn_get_users.undo.sql
+migrations/
+  schema/
+    0000001-create-users-table.up.sql
+    0000002-add-roles-table.up.sql
+  data/
+    0000003-seed-roles.up.sql
+    0000004-seed-users.up.sql
+  functions/
+    0000005-fn-get-users.r.up.sql
+    0000006-fn-get-roles.r.up.sql
+  no-transaction/
+    0000007-vacuum-users.notx.up.sql
+  down/
+    0000001-create-users-table.down.sql
+    0000002-add-roles-table.down.sql
+    0000003-seed-roles.down.sql
 ```
 
-### Separate by logic modules and release-cycles
+### By release and concern
 
 ```
-migrations
-├── data
-│   └── v1.0.1
-│       ├── 00004-users.do.sql
-│       └── 00005-roles.do.sql
-├── repeatable
-│   └── public
-│       ├── functions
-│       │   ├── 00008-fn_get_users.r.sql
-│       │   └── 00009-fn_get_roles.r.sql
-│       └── views
-│           └── 00011-vw_users.do.sql
-└── schema
-    ├── v1.0.1
-    │   ├── 00000-audit-table.do.sql
-    │   ├── 00001-users-table.do.sql
-    │   ├── 00002-roles-table.do.sql
-    │   └── 00003-privileges.do.sql
-    └── v1.0.2
-        └── 00010-alter-system.ntx.do.sql
+migrations/
+  v1.0.0/
+    schema/
+      0000001-create-users-table.up.sql
+      0000002-add-roles-table.up.sql
+    data/
+      0000003-seed-roles.up.sql
+    functions/
+      0000004-fn-get-users.r.up.sql
+  v1.1.0/
+    schema/
+      0000005-add-audit-columns.up.sql
+    no-transaction/
+      0000006-vacuum-users.notx.up.sql
+  down/
+    0000001-create-users-table.down.sql
+    0000002-add-roles-table.down.sql
+    0000003-seed-roles.down.sql
+    0000005-add-audit-columns.down.sql
+    0000006-vacuum-users.down.sql
+```
+
+### By environment
+
+```
+migrations/
+  dev/
+    schema/
+      0000001-create-users-table.up.sql
+    data/
+      0000002-seed-dev-users.up.sql
+    functions/
+      0000003-fn-get-users.r.up.sql
+  prod/
+    schema/
+      0000001-create-users-table.up.sql
+    functions/
+      0000003-fn-get-users.r.up.sql
+```
+
+One rule applies in all layouts: **version numbers are global**. Two files with the same revision number anywhere in the
+tree is an error.
+
+---
+
+## CLI
+
+```sh
+gopgmigrate <command> [flags]
+
+Commands:
+  migrate          Apply all pending migrations
+  rollback-count   Roll back the last N applied migrations
+  last             Show the last applied migration
+```
+
+### Flags
+
+All commands share the same flags. Each flag falls back to an environment variable when not set.
+
+| Flag              | Env var                        | Default                  | Description                               |
+|-------------------|--------------------------------|--------------------------|-------------------------------------------|
+| `--dirname`       | `PGMIGRATE_DIRNAME`            | -                        | Migration directory (required)            |
+| `--connstr`       | `PGMIGRATE_CONNSTR`            | -                        | PostgreSQL connection string (required)   |
+| `--history-table` | `PGMIGRATE_HISTORY_TABLE_NAME` | `public.migrate_history` | History table in `schema.table` format    |
+| `--log-level`     | -                              | `info`                   | `debug` · `info` · `warn` · `error`       |
+| `--dry-run`       | -                              | `false`                  | Print pending migrations without applying |
+
+### Examples
+
+```sh
+# apply all pending migrations
+gopgmigrate migrate \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb \
+  --history-table public.migrate_history
+
+# preview what would be applied
+gopgmigrate migrate \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb \
+  --dry-run
+
+# roll back the last 2 applied migrations
+gopgmigrate rollback-count 2 \
+  --dirname ./migrations \
+  --connstr postgres://user:pass@localhost:5432/mydb
+
+# using environment variables
+export PGMIGRATE_DIRNAME=./migrations
+export PGMIGRATE_CONNSTR=postgres://user:pass@localhost:5432/mydb
+
+gopgmigrate migrate
+gopgmigrate rollback-count 1 --dry-run
 ```
 
 ---
 
-## Planning Migration Steps
+## History table
 
-You are responsible for carefully planning each migration step.
+Created automatically on first run. Stores a record for every applied migration.
 
-### Example Considerations:
+```sql
+create table if not exists public.migrate_history
+(
+    id            int generated always as identity primary key,
+    mh_version    bigint unique not null,
+    mh_name       text unique   not null,
+    mh_hash       text          not null,
+    mh_applied_by name          not null default session_user,
+    mh_applied_at timestamptz   not null default transaction_timestamp(),
+    mh_txid       text          not null default pg_current_xact_id()::text,
+    mh_iter_id    uuid          not null
+);
+```
 
-- **PostgreSQL** allows most **DDL statements** to be executed within transactions, while some other database systems do
-  not.
-- In PostgreSQL, **only a few statements cannot be executed within a transaction**, some examples:
-    - `VACUUM`
-    - `ALTER SYSTEM`
-    - `REINDEX`
-- However, most of these statements are maintenance-related, making it **relatively easy to structure migration steps
-  accordingly**.
-
----
-
-## Handling Unexpected Database States
-
-This **iteration-based** approach (with group/mixed modes) is chosen because it is the most robust.
-For example, during the development process, you may need to apply multiple migrations each week.
-When applying migrations in a production environment, if a script fails, you must resolve the issue quickly, as some
-scripts may have already been applied while others have not.
-This situation can become a nightmare.
-A better approach is to apply all scripts within a transaction (if your DBMS supports it—see the notes above).
-This way, if something fails, you don’t have to worry because your database remains unchanged.
-You can then resolve the issue and retry the process without panic.
-
-There may be multiple reasons why this situation occurs.  
-However, the key issue is that **the database is not in the expected state**.
-
-For example, your backend services may fail to function correctly due to an **incomplete database state**.  
-Even though the database remains **ACID-compliant and technically consistent**, **missing migrations** can cause
-business rules to fail.
-
+Repeatable migrations (`*.r.up.sql`, `*.rnotx.up.sql`) update a row each time they are re-applied. The hash stored
+at apply time is compared against the current file hash on every run - if they differ the file is re-applied.
 
 ---
 
-## **Contributing**
+## Transaction behaviour
 
-We welcome contributions! To contribute: see the [Contribution](CONTRIBUTING.md) guidelines.
+PostgreSQL supports transactional DDL - most `CREATE`, `ALTER`, and `DROP` statements can be wrapped in `BEGIN/COMMIT`
+and rolled back on failure. This tool defaults to transactional execution and makes the non-transactional case explicit
+in the filename.
+
+Statements that **cannot** run inside a transaction and require `.notx.up.sql` or `.rnotx.up.sql`:
+
+- `VACUUM`
+- `ALTER SYSTEM`
+- `REINDEX SCHEMA / DATABASE / SYSTEM`
+- `CREATE INDEX CONCURRENTLY`
+- `DROP INDEX CONCURRENTLY`
+- `ALTER TYPE ... ADD VALUE` (before PostgreSQL 12)
+
+Non-transactional files are split into individual statements and executed one by one. If one fails, previously executed
+statements in that file cannot be rolled back - plan accordingly.
 
 ---
 
-## **License**
+## Safety
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+**Advisory lock** - only one migration process can run at a time against a given database. A second process attempting
+to migrate the same database will exit immediately rather than running concurrently.
 
+**Hash verification** - the SHA-256 hash of every versioned migration is stored at apply time. If the file content
+changes after it has been applied, the tool refuses to run and reports the mismatch. Migration files are immutable after
+they land in production.
 
+**Stray file detection** - any `.sql` file in the migration directory that does not match the naming convention is an
+error. Typos in filenames are caught before any SQL executes.
 
+**No implicit ordering** - the revision number in the filename is the only ordering mechanism. There are no timestamps,
+no sequence tables, no auto-increment IDs to manage.
 
+---
 
+## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## License
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Apache License 2.0 - see [LICENSE](LICENSE).
