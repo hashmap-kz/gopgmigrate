@@ -10,17 +10,17 @@ import (
 	"regexp"
 	"sort"
 
-	"gopgmigrate/internal/version"
+	"gopgmigrate/internal/naming"
 )
 
 func GetFiles(
 	migrationDirectory string,
 	reg *regexp.Regexp,
 	noTxPatterns map[string]*regexp.Regexp,
-) ([]version.MigrationFile, error) {
+) ([]naming.MigrationFile, error) {
 	var err error
 
-	isOk := version.IsOurRegex(reg)
+	isOk := naming.IsOurRegex(reg)
 	if !isOk {
 		return nil, fmt.Errorf("unknown regex for filtering: `%s`", reg.String())
 	}
@@ -44,8 +44,8 @@ func GetFiles(
 }
 
 // getFilesInAPath walks path, collects all *.sql files
-func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]version.MigrationFile, error) {
-	var files []version.MigrationFile
+func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]naming.MigrationFile, error) {
+	var files []naming.MigrationFile
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -57,11 +57,11 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]version.MigrationFi
 			if err != nil {
 				return err
 			}
-			v, err := version.ParseVersionByRegex(base, reg)
+			v, err := naming.ParseVersionByRegex(base, reg)
 			if err != nil {
 				return err
 			}
-			files = append(files, version.MigrationFile{
+			files = append(files, naming.MigrationFile{
 				Vers: v,
 				Path: path,
 				Base: base,
@@ -105,8 +105,8 @@ func getAllStrayFiles(directory string) ([]string, error) {
 		}
 		if !d.IsDir() {
 			base := filepath.Base(path)
-			isOk := version.IsVersioned(base) ||
-				version.IsUndo(base)
+			isOk := naming.IsVersioned(base) ||
+				naming.IsUndo(base)
 			if !isOk {
 				strayFiles = append(strayFiles, filepath.ToSlash(path))
 			}
@@ -118,7 +118,7 @@ func getAllStrayFiles(directory string) ([]string, error) {
 
 // routine around versioned migrations
 
-func checkVersionedMigrations(versioned []version.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
+func checkVersionedMigrations(versioned []naming.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
 	var err error
 
 	err = checkFilesAreUniqueByVersion(versioned)
@@ -134,13 +134,13 @@ func checkVersionedMigrations(versioned []version.MigrationFile, noTxPatterns ma
 	return nil
 }
 
-func checkPossibleNoTx(versioned []version.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
+func checkPossibleNoTx(versioned []naming.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
 	if len(noTxPatterns) == 0 {
 		return nil
 	}
 	for _, elem := range versioned {
 		// is already no-transactional file
-		if version.IsNonTransaction(elem.Base) {
+		if naming.IsNonTransaction(elem.Base) {
 			continue
 		}
 		warnings := checkThatFileIsPossibleShouldNotUseTx(string(elem.Data), noTxPatterns)
@@ -171,7 +171,7 @@ func checkThatFileIsPossibleShouldNotUseTx(sqlContent string, noTxPatterns map[s
 	return warnings
 }
 
-func checkFilesAreUniqueByVersion(versioned []version.MigrationFile) error {
+func checkFilesAreUniqueByVersion(versioned []naming.MigrationFile) error {
 	seenVersions := map[int64]bool{}
 	for _, f := range versioned {
 		if _, ok := seenVersions[f.Vers]; ok {

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"gopgmigrate/internal/version"
+	"gopgmigrate/internal/naming"
 
 	"gopgmigrate/pkg/logger"
 
@@ -53,7 +53,7 @@ var rootCmd = &cobra.Command{
 			if cliOptions.historyTableName == "" {
 				return fmt.Errorf("--history-table is required")
 			}
-			if !version.IsSchemaTablePath(cliOptions.historyTableName) {
+			if !naming.IsSchemaTablePath(cliOptions.historyTableName) {
 				return fmt.Errorf("--history-table expected required in format: `schema.table`")
 			}
 		}

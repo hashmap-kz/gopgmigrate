@@ -5,15 +5,16 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
-	"gopgmigrate/internal/filter"
-
-	"gopgmigrate/internal/version"
-
-	"gopgmigrate/internal/dbms"
-	"gopgmigrate/pkg/logger"
-
+	"gopgmigrate/internal/filters"
 	"gopgmigrate/internal/history"
+
+	"gopgmigrate/internal/stmt"
+
+	"gopgmigrate/internal/naming"
+
+	"gopgmigrate/pkg/logger"
 )
 
 type RunMigrationCtx struct {
@@ -71,29 +72,11 @@ func RunMigrations(
 
 	// migration
 
-	return runMigrations(ctx, migCtx, conn, repo)
-}
+	// 1) prepare
 
-func runMigrations(ctx context.Context,
-	migCtx RunMigrationCtx,
-	conn *sql.DB,
-	repo history.MigrateHistoryRepository,
-) error {
-	var err error
-
-	// prepare migration scripts
-
-	var pendingMigrations []version.MigrationFile
-	if migCtx.DirectionDo {
-		pendingMigrations, err = filter.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
-		if err != nil {
-			return err
-		}
-	} else {
-		pendingMigrations, err = filter.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
-		if err != nil {
-			return err
-		}
+	pendingMigrations, err := preparePendingMigrations(ctx, migCtx, conn, repo)
+	if err != nil {
+		return err
 	}
 
 	if migCtx.DryRun {
@@ -102,21 +85,43 @@ func runMigrations(ctx context.Context,
 		return nil
 	}
 
-	// migration
+	// 2) apply
 
-	return repo.RunMigrationsPlainMode(ctx, conn, pendingMigrations, migCtx.DirectionDo)
+	return applyPendingMigrations(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
+}
+
+func preparePendingMigrations(
+	ctx context.Context,
+	migCtx RunMigrationCtx,
+	conn *sql.DB,
+	repo history.MigrateHistoryRepository,
+) ([]naming.MigrationFile, error) {
+	var err error
+	var pendingMigrations []naming.MigrationFile
+
+	if migCtx.DirectionDo {
+		pendingMigrations, err = filters.GetMigrationsForApply(ctx, conn, migCtx.MigrationDir, repo)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, conn, migCtx.MigrationDir, repo, migCtx.UndoCount)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return pendingMigrations, nil
 }
 
 // init repo, conn
 
-// TODO: simplify, cleanup
 func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
 	var err error
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
 	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
-	conn, err = dbms.GetDatabaseConnectionPostgres(migCtx.ConnStr)
+	conn, err = GetDatabaseConnectionPostgres(migCtx.ConnStr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -127,4 +132,133 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 	}
 
 	return repo, conn, nil
+}
+
+// apply migrations runner
+
+func applyPendingMigrations(
+	ctx context.Context,
+	db *sql.DB,
+	mhRepo history.MigrateHistoryRepository,
+	pendingMigrations []naming.MigrationFile,
+	directionDo bool,
+) error {
+	for _, elem := range pendingMigrations {
+		err := migrateOneScriptDecideTxNoTx(ctx, db, elem, mhRepo, directionDo)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateOneScriptDecideTxNoTx applies a single script, TX/NO-TX (based on filename pattern)
+func migrateOneScriptDecideTxNoTx(
+	ctx context.Context,
+	db *sql.DB,
+	file naming.MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+) (err error) {
+	// TRANSACTION
+
+	if naming.IsTx(file) {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		script := []string{string(file.Data)}
+		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
+		if err != nil {
+			return err
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// NO TRANSACTION
+
+	script, _ := stmt.SplitSQLStatements(string(file.Data))
+	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
+}
+
+func migrateOneScriptFn(
+	ctx context.Context,
+	tx history.Transaction,
+	script []string,
+	file naming.MigrationFile,
+	mhRepo history.MigrateHistoryRepository,
+	directionDo bool,
+	txLogNote string,
+) (err error) {
+	slog.Info("migration",
+		slog.String("tx", txLogNote),
+		slog.String("direction", getModeForLog(directionDo)),
+		slog.String("type", getTypeForLog(file)),
+		slog.String("name", file.Base),
+	)
+
+	// execute migration script
+	for _, scriptStmt := range script {
+		// skip empty
+		if strings.TrimSpace(scriptStmt) == "" {
+			continue
+		}
+		_, err = tx.ExecContext(ctx, scriptStmt)
+		if err != nil {
+			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
+		}
+	}
+
+	// write history
+	if directionDo {
+		// DO
+		if naming.IsRepeatable(file) {
+			err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
+				Version: file.Vers,
+				Name:    file.Base,
+				Hash:    file.Hash,
+			})
+			if err != nil {
+				return err
+			}
+		} else {
+			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
+				Version: file.Vers,
+				Name:    file.Base,
+				Hash:    file.Hash,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		// UNDO
+		err := mhRepo.DeleteVersion(ctx, tx, file.Vers)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getModeForLog(directionDo bool) string {
+	if directionDo {
+		return "do"
+	}
+	return "undo"
+}
+
+func getTypeForLog(file naming.MigrationFile) string {
+	if naming.IsRepeatable(file) {
+		return "rep"
+	}
+	return "ver"
 }

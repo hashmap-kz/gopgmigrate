@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"text/tabwriter"
 
-	"gopgmigrate/internal/version"
+	"gopgmigrate/internal/naming"
 )
 
-func printMigrationsInfo(pendingMigrations []version.MigrationFile) {
+func printMigrationsInfo(pendingMigrations []naming.MigrationFile) {
 	printPendingPlainMode(pendingMigrations)
 }
 
-func printPendingPlainMode(migrations []version.MigrationFile) {
+func printPendingPlainMode(migrations []naming.MigrationFile) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.TabIndent)
 	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tPATH")
 	for _, p := range migrations {

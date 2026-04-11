@@ -1,19 +1,20 @@
-package filter
+package filters
 
 import (
 	"testing"
 
-	"gopgmigrate/internal/version"
+	"gopgmigrate/internal/history"
+
+	"gopgmigrate/internal/naming"
 
 	"github.com/stretchr/testify/assert"
-	"gopgmigrate/internal/history"
 )
 
 func TestCheckHistory(t *testing.T) {
 	tests := []struct {
 		name        string
 		applied     []history.MigrateHistory
-		files       []version.MigrationFile
+		files       []naming.MigrationFile
 		expectError bool
 		expectedErr string
 	}{
@@ -23,7 +24,7 @@ func TestCheckHistory(t *testing.T) {
 				{Name: "001-init.do.sql"},
 				{Name: "002-users.do.sql"},
 			},
-			files: []version.MigrationFile{
+			files: []naming.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -35,7 +36,7 @@ func TestCheckHistory(t *testing.T) {
 				{Name: "001-init.do.sql"},
 				{Name: "003-missing.sql"},
 			},
-			files: []version.MigrationFile{
+			files: []naming.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -61,13 +62,13 @@ func TestFound(t *testing.T) {
 	tests := []struct {
 		name      string
 		searchKey string
-		files     []version.MigrationFile
+		files     []naming.MigrationFile
 		wantFound bool
 	}{
 		{
 			name:      "Migration exists",
 			searchKey: "001-init.do.sql",
-			files: []version.MigrationFile{
+			files: []naming.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -76,7 +77,7 @@ func TestFound(t *testing.T) {
 		{
 			name:      "Migration does not exist",
 			searchKey: "003-missing.sql",
-			files: []version.MigrationFile{
+			files: []naming.MigrationFile{
 				{Base: "001-init.do.sql"},
 				{Base: "002-users.do.sql"},
 			},
@@ -93,7 +94,7 @@ func TestFound(t *testing.T) {
 }
 
 func TestGetVersionedMigrationsToApply(t *testing.T) {
-	mockFiles := []version.MigrationFile{
+	mockFiles := []naming.MigrationFile{
 		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Data: []byte("init"), Hash: "1"},
 		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Data: []byte("users")},
 	}
