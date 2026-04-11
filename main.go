@@ -205,6 +205,6 @@ Commands:
 Examples:
   gopgmigrate migrate --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
   gopgmigrate last --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
-  gopgmigrate rollback-count 2 --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history --yes-i-really-mean-it
+  gopgmigrate rollback-count 2 --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
 `)
 }
