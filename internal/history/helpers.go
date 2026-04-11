@@ -13,48 +13,6 @@ import (
 	"gopgmigrate/internal/version"
 )
 
-func MigrateListOfFiles(
-	ctx context.Context,
-	db *sql.DB,
-	files []version.MigrationFile,
-	useTx bool,
-	repo MigrateHistoryRepository,
-	directionDo bool,
-	iterID uuid.UUID,
-) (err error) {
-	if useTx {
-		err = migrateListOfFilesInTxFn(ctx, db, files, repo, directionDo, iterID)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	err = MigrateListOfFilesNoTx(ctx, db, files, repo, directionDo, iterID)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// MigrateListOfFilesNoTx non-transactional, scripts are executed statement-by-statement
-func MigrateListOfFilesNoTx(
-	ctx context.Context,
-	db *sql.DB,
-	files []version.MigrationFile,
-	repo MigrateHistoryRepository,
-	directionDo bool,
-	iterID uuid.UUID,
-) (err error) {
-	for _, file := range files {
-		script, _ := stmt.SplitSQLStatements(string(file.Data))
-		err = migrateOneScriptFn(ctx, db, script, file, repo, directionDo, "N", iterID)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // MigrateOneScriptDecideTxNoTx applies a single script, TX/NO-TX (based on filename pattern)
 func MigrateOneScriptDecideTxNoTx(
 	ctx context.Context,
@@ -151,36 +109,6 @@ func migrateOneScriptFn(
 		if err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-func migrateListOfFilesInTxFn(
-	ctx context.Context,
-	db *sql.DB,
-	files []version.MigrationFile,
-	repo MigrateHistoryRepository,
-	directionDo bool,
-	iterID uuid.UUID,
-) (err error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	for _, file := range files {
-		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo, "+", iterID)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return err
 	}
 
 	return nil
