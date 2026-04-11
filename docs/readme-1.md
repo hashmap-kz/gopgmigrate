@@ -2,6 +2,8 @@
 
 A small, strict migration tool for **PostgreSQL only**.
 
+gopgmigrate — PostgreSQL Migration Tool for SQL Files, Rollbacks, Repeatables, and Flexible Directory Layouts
+
 `gopgmigrate` is built for teams that want plain SQL files, predictable rules, and a migration directory that can be organized in a way that fits a real project. It scans migrations **recursively**, supports **repeatable** scripts, supports **non-transactional** PostgreSQL statements via explicit filename suffixes, and protects execution with a **PostgreSQL advisory lock**.
 
 It is intentionally focused: no multi-database abstraction, no ORM coupling, no hidden DSL. Just PostgreSQL and SQL files.
