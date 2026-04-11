@@ -34,7 +34,15 @@ func GetMigrationsForApply(
 	}
 
 	toApply, err := getVersionedMigrationsToApply(hist, upFiles)
-	return toApply, err
+	if err != nil {
+		return nil, err
+	}
+
+	if err = checkFilesAreUniqueByVersion(toApply); err != nil {
+		return nil, err
+	}
+
+	return toApply, nil
 }
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []naming.MigrationFile) error {

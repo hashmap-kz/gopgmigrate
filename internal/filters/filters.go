@@ -1,6 +1,8 @@
 package filters
 
 import (
+	"fmt"
+	"path/filepath"
 	"regexp"
 
 	"gopgmigrate/internal/naming"
@@ -30,4 +32,17 @@ func getNoTxPatterns() map[string]*regexp.Regexp {
 		"DiscardAll":                           regexp.MustCompile(`(?i)DISCARD ALL`),
 		"AlterTypeAddValue":                    regexp.MustCompile(`(?i)ALTER TYPE( .*)? ADD VALUE`),
 	}
+}
+
+func checkFilesAreUniqueByVersion(versioned []naming.MigrationFile) error {
+	seenVersions := map[int64]bool{}
+	for _, f := range versioned {
+		if _, ok := seenVersions[f.Vers]; ok {
+			return fmt.Errorf("%s is used a version that already in use",
+				filepath.ToSlash(f.Path),
+			)
+		}
+		seenVersions[f.Vers] = true
+	}
+	return nil
 }

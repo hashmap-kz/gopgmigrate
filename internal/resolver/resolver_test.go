@@ -254,35 +254,6 @@ CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
 	})
 }
 
-func TestCheckFilesAreUniqueByVersion(t *testing.T) {
-	t.Parallel()
-
-	t.Run("passes when versions are unique", func(t *testing.T) {
-		t.Parallel()
-
-		files := []naming.MigrationFile{
-			{Vers: 1, Path: "/m/0000001-init.up.sql", Base: "0000001-init.up.sql"},
-			{Vers: 2, Path: "/m/0000002-users.up.sql", Base: "0000002-users.up.sql"},
-		}
-
-		err := checkFilesAreUniqueByVersion(files)
-		assert.NoError(t, err)
-	})
-
-	t.Run("fails when versions are duplicated", func(t *testing.T) {
-		t.Parallel()
-
-		files := []naming.MigrationFile{
-			{Vers: 1, Path: "/m/0000001-init.up.sql", Base: "0000001-init.up.sql"},
-			{Vers: 1, Path: "/m/0000001-users.down.sql", Base: "0000001-users.down.sql"},
-		}
-
-		err := checkFilesAreUniqueByVersion(files)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "already in use")
-	})
-}
-
 func writeTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 

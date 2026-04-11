@@ -30,7 +30,7 @@ func GetFiles(
 		return nil, err
 	}
 
-	err = checkVersionedMigrations(versioned, noTxPatterns)
+	err = checkPossibleNoTx(versioned, noTxPatterns)
 	if err != nil {
 		return nil, err
 	}
@@ -112,23 +112,6 @@ func getAllStrayFiles(directory string) ([]string, error) {
 
 // routine around versioned migrations
 
-func checkVersionedMigrations(versioned []naming.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
-	var err error
-
-	// TODO: not here
-	//err = checkFilesAreUniqueByVersion(versioned)
-	//if err != nil {
-	//	return err
-	//}
-
-	err = checkPossibleNoTx(versioned, noTxPatterns)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func checkPossibleNoTx(versioned []naming.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
 	if len(noTxPatterns) == 0 {
 		return nil
@@ -143,10 +126,18 @@ func checkPossibleNoTx(versioned []naming.MigrationFile, noTxPatterns map[string
 			for _, w := range warnings {
 				slog.Error("notx-statement-detected", slog.String("cause", w))
 			}
-			slog.Error("notx-statement-detected", slog.String("cause", "This may not necessarily be an error; it could be commented-out code that was matched by a pattern."))
-			slog.Error("notx-statement-detected", slog.String("cause", "This is handled before any migration runs to prevent execution errors."))
-			slog.Error("notx-statement-detected", slog.String("cause", "Statements that cannot run inside a transaction should be moved to separate files."))
-			slog.Error("notx-statement-detected", slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."))
+			slog.Error("notx-statement-detected",
+				slog.String("cause", "This may not necessarily be an error; it could be commented-out code that was matched by a pattern."),
+			)
+			slog.Error("notx-statement-detected",
+				slog.String("cause", "This is handled before any migration runs to prevent execution errors."),
+			)
+			slog.Error("notx-statement-detected",
+				slog.String("cause", "Statements that cannot run inside a transaction should be moved to separate files."),
+			)
+			slog.Error("notx-statement-detected",
+				slog.String("cause", "Consider renaming this file with one of the 'ntx' suffix."),
+			)
 
 			return fmt.Errorf("check statements in the file: [%s]",
 				filepath.ToSlash(elem.Path),
@@ -164,19 +155,6 @@ func checkThatFileIsPossibleShouldNotUseTx(sqlContent string, noTxPatterns map[s
 		}
 	}
 	return warnings
-}
-
-func checkFilesAreUniqueByVersion(versioned []naming.MigrationFile) error {
-	seenVersions := map[int64]bool{}
-	for _, f := range versioned {
-		if _, ok := seenVersions[f.Vers]; ok {
-			return fmt.Errorf("%s is used a version that already in use",
-				filepath.ToSlash(f.Path),
-			)
-		}
-		seenVersions[f.Vers] = true
-	}
-	return nil
 }
 
 func computeHash(content []byte) string {

@@ -30,7 +30,16 @@ func GetMigrationsForUndo(
 		return naming.IsDown(f.Base)
 	})
 
-	return getVersionedMigrationsToUndo(undoFiles, hist, howMuch)
+	toUndo, err := getVersionedMigrationsToUndo(undoFiles, hist, howMuch)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = checkFilesAreUniqueByVersion(toUndo); err != nil {
+		return nil, err
+	}
+
+	return toUndo, err
 }
 
 // TODO: this is a prototype, working ONLY one-by-one (when the latest applied script HAS corresponding undo-script)
