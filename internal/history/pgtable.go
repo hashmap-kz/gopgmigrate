@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"gopgmigrate/internal/mode"
 	"gopgmigrate/internal/version"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -260,29 +259,4 @@ func (r *migrateHistoryPostgresRepository) RunMigrationsPlainMode(
 		}
 	}
 	return nil
-}
-
-func (r *migrateHistoryPostgresRepository) RunMigrationsMixedMode(
-	ctx context.Context,
-	db *sql.DB,
-	groupEntries []mode.GroupEntry,
-	directionDo bool,
-) error {
-	iterID := uuid.New()
-	for _, elem := range groupEntries {
-		err := MigrateListOfFiles(ctx, db, elem.Files, elem.UseTX, r, directionDo, iterID)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *migrateHistoryPostgresRepository) RunMigrationsGroupMode(
-	ctx context.Context,
-	db *sql.DB,
-	groupEntry mode.GroupEntry,
-	directionDo bool,
-) error {
-	return MigrateListOfFiles(ctx, db, groupEntry.Files, groupEntry.UseTX, r, directionDo, uuid.New())
 }

@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"os"
 
-	"gopgmigrate/internal/mode"
-
 	"gopgmigrate/internal/migration"
 
 	"github.com/spf13/cobra"
@@ -20,7 +18,6 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
-	migrateCmd.Flags().StringVar(&migrateMode, "mode", mode.ModePlain, "Migration mode: plain/group/mixed")
 	rootCmd.AddCommand(migrateCmd)
 }
 
@@ -30,7 +27,6 @@ func runMigrations(cmd *cobra.Command, args []string) {
 
 	// run all migrations
 	err = migration.RunMigrations(ctx, migration.RunMigrationCtx{
-		MigrateMode:      migrateMode,
 		DirectionDo:      true,
 		MigrationDir:     cliOptions.dirName,
 		DryRun:           dryRun,

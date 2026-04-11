@@ -7,8 +7,6 @@ import (
 	"os"
 	"strconv"
 
-	"gopgmigrate/internal/mode"
-
 	"gopgmigrate/internal/migration"
 
 	"github.com/spf13/cobra"
@@ -25,7 +23,6 @@ var rollbackCmd = &cobra.Command{
 
 func init() {
 	rollbackCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate rollback execution without applying changes")
-	rollbackCmd.Flags().StringVar(&migrateMode, "mode", mode.ModePlain, "Migration mode: plain/group/mixed")
 	rollbackCmd.Flags().BoolVar(&rollbackConfirmTwice, "yes-i-really-mean-it", false, "Confirm twice before doing the real rollback")
 	rootCmd.AddCommand(rollbackCmd)
 }
@@ -54,7 +51,6 @@ func runRollback(cmd *cobra.Command, args []string) {
 
 	// run all migrations
 	err = migration.RunMigrations(ctx, migration.RunMigrationCtx{
-		MigrateMode:      migrateMode,
 		MigrationDir:     cliOptions.dirName,
 		DryRun:           dryRun,
 		ConnStr:          cliOptions.connStr,

@@ -8,8 +8,6 @@ import (
 
 	"gopgmigrate/internal/filter"
 
-	"gopgmigrate/internal/mode"
-
 	"gopgmigrate/internal/version"
 
 	"gopgmigrate/internal/dbms"
@@ -19,7 +17,6 @@ import (
 )
 
 type RunMigrationCtx struct {
-	MigrateMode  string
 	DirectionDo  bool
 	MigrationDir string
 	DryRun       bool
@@ -101,29 +98,13 @@ func runMigrations(ctx context.Context,
 
 	if migCtx.DryRun {
 		_ = logger.DisableLogging()
-		printMigrationsInfo(migCtx.MigrateMode, pendingMigrations)
+		printMigrationsInfo(pendingMigrations)
 		return nil
 	}
 
 	// migration
 
-	if migCtx.MigrateMode == mode.ModeMixed {
-		groupEntries, err := mode.ParseFilesMixedMode(pendingMigrations)
-		if err != nil {
-			return err
-		}
-		return repo.RunMigrationsMixedMode(ctx, conn, groupEntries, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == mode.ModePlain {
-		return repo.RunMigrationsPlainMode(ctx, conn, pendingMigrations, migCtx.DirectionDo)
-	} else if migCtx.MigrateMode == mode.ModeGroup {
-		groupEntry, err := mode.ParseFilesGroupMode(pendingMigrations)
-		if err != nil {
-			return err
-		}
-		return repo.RunMigrationsGroupMode(ctx, conn, groupEntry, migCtx.DirectionDo)
-	}
-
-	return fmt.Errorf("unknown mode: %s", migCtx.MigrateMode)
+	return repo.RunMigrationsPlainMode(ctx, conn, pendingMigrations, migCtx.DirectionDo)
 }
 
 // init repo, conn
