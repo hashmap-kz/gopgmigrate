@@ -12,30 +12,30 @@ import (
 
 func TestGetVersionedMigrationsToUndo(t *testing.T) {
 	files := []naming.MigrationFile{
-		{Base: "00001-init.undo.sql"},
-		{Base: "00002-users.undo.sql"},
+		{Base: "0000001-init.down.sql"},
+		{Base: "0000002-users.down.sql"},
 	}
 
 	historyRecords := []history.MigrateHistory{
-		{Name: "00002-users.do.sql"},
-		{Name: "00001-init.do.sql"},
+		{Name: "0000002-users.up.sql"},
+		{Name: "0000001-init.up.sql"},
 	}
 
 	result, err := getVersionedMigrationsToUndo(files, historyRecords, 2)
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
-	assert.Equal(t, "00002-users.undo.sql", result[0].Base)
-	assert.Equal(t, "00001-init.undo.sql", result[1].Base)
+	assert.Equal(t, "0000002-users.down.sql", result[0].Base)
+	assert.Equal(t, "0000001-init.down.sql", result[1].Base)
 }
 
 func TestGetVersionedMigrationsToUndo_ExceedingRollbackCount(t *testing.T) {
 	files := []naming.MigrationFile{
-		{Base: "00001-init.undo.sql"},
+		{Base: "0000001-init.down.sql"},
 	}
 
 	historyRecords := []history.MigrateHistory{
-		{Name: "00002-users.do.sql"},
-		{Name: "00001-init.do.sql"},
+		{Name: "0000002-users.up.sql"},
+		{Name: "0000001-init.up.sql"},
 	}
 
 	_, err := getVersionedMigrationsToUndo(files, historyRecords, 3)
@@ -45,24 +45,24 @@ func TestGetVersionedMigrationsToUndo_ExceedingRollbackCount(t *testing.T) {
 
 func TestFindCorrespondingUndoScript(t *testing.T) {
 	undoFiles := []naming.MigrationFile{
-		{Base: "00001-init.undo.sql"},
-		{Base: "00002-users.undo.sql"},
+		{Base: "0000001-init.down.sql"},
+		{Base: "0000002-users.down.sql"},
 	}
 
-	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
 	result, found, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, "00002-users.undo.sql", result.Base)
+	assert.Equal(t, "0000002-users.down.sql", result.Base)
 }
 
 func TestFindCorrespondingUndoScript_NotFound(t *testing.T) {
 	undoFiles := []naming.MigrationFile{
-		{Base: "00001-init.undo.sql"},
+		{Base: "0000001-init.down.sql"},
 	}
 
-	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
 	_, found, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.NoError(t, err)
@@ -74,7 +74,7 @@ func TestFindCorrespondingUndoScript_ParseError(t *testing.T) {
 		{Base: "invalid-undo.sql"},
 	}
 
-	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
 	_, _, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.Error(t, err)

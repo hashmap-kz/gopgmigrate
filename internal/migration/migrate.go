@@ -17,6 +17,8 @@ import (
 	"gopgmigrate/pkg/logger"
 )
 
+// public API
+
 type ApplyOpts struct {
 	MigrationDir     string
 	DryRun           bool
@@ -32,24 +34,48 @@ type RollbackOpts struct {
 	UndoCount        int
 }
 
-type RunMigrationCtx struct {
-	DirectionDo  bool
-	MigrationDir string
-	DryRun       bool
-
-	ConnStr          string
-	HistoryTableName string
-
-	UndoCount int
+func RunMigrationsUp(ctx context.Context, o *ApplyOpts) error {
+	return runMigrationsEntryPoint(ctx, &runMigrationCtx{
+		directionDo:      true,
+		migrationDir:     o.MigrationDir,
+		dryRun:           o.DryRun,
+		connStr:          o.ConnStr,
+		historyTableName: o.HistoryTableName,
+	})
 }
 
-func RunMigrations(
+func RunMigrationsDown(ctx context.Context, o *RollbackOpts) error {
+	return runMigrationsEntryPoint(ctx, &runMigrationCtx{
+		directionDo:      false,
+		migrationDir:     o.MigrationDir,
+		dryRun:           o.DryRun,
+		connStr:          o.ConnStr,
+		historyTableName: o.HistoryTableName,
+		undoCount:        o.UndoCount,
+	})
+}
+
+// internal impl
+
+type runMigrationCtx struct {
+	directionDo bool
+	// common flags
+	migrationDir     string
+	dryRun           bool
+	connStr          string
+	historyTableName string
+	// undo related only
+	undoCount int
+}
+
+func runMigrationsEntryPoint(
 	ctx context.Context,
-	migCtx RunMigrationCtx,
+	migCtx *runMigrationCtx,
 ) error {
 	var err error
 
 	// init repository
+
 	repo, conn, err := initRepo(ctx, migCtx)
 	if err != nil {
 		return err
@@ -85,29 +111,27 @@ func RunMigrations(
 		}
 	}(ctx, conn)
 
-	// migration
-
-	// 1) prepare
+	// prepare
 
 	pendingMigrations, err := preparePendingMigrations(ctx, migCtx, conn, repo)
 	if err != nil {
 		return err
 	}
 
-	if migCtx.DryRun {
+	if migCtx.dryRun {
 		_ = logger.DisableLogging()
 		printMigrationsInfo(pendingMigrations)
 		return nil
 	}
 
-	// 2) apply
+	// apply
 
-	return applyPendingMigrations(ctx, conn, repo, pendingMigrations, migCtx.DirectionDo)
+	return applyPendingMigrations(ctx, conn, repo, pendingMigrations, migCtx.directionDo)
 }
 
 func preparePendingMigrations(
 	ctx context.Context,
-	migCtx RunMigrationCtx,
+	migCtx *runMigrationCtx,
 	conn *sql.DB,
 	repo history.MigrateHistoryRepository,
 ) ([]naming.MigrationFile, error) {
@@ -119,13 +143,13 @@ func preparePendingMigrations(
 		return nil, err
 	}
 
-	if migCtx.DirectionDo {
-		pendingMigrations, err = filters.GetMigrationsForApply(ctx, hist, migCtx.MigrationDir)
+	if migCtx.directionDo {
+		pendingMigrations, err = filters.GetMigrationsForApply(ctx, hist, migCtx.migrationDir)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, hist, migCtx.MigrationDir, migCtx.UndoCount)
+		pendingMigrations, err = filters.GetMigrationsForUndo(ctx, hist, migCtx.migrationDir, migCtx.undoCount)
 		if err != nil {
 			return nil, err
 		}
@@ -135,13 +159,13 @@ func preparePendingMigrations(
 
 // init repo, conn
 
-func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
+func initRepo(ctx context.Context, migCtx *runMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
 	var err error
 	var repo history.MigrateHistoryRepository
 	var conn *sql.DB
 
-	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
-	conn, err = newPgConnection(migCtx.ConnStr)
+	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.historyTableName)
+	conn, err = newPgConnection(migCtx.connStr)
 	if err != nil {
 		return nil, nil, err
 	}

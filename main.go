@@ -33,11 +33,11 @@ func run() int {
 
 	switch os.Args[1] {
 	case "migrate":
-		return runMigrate(os.Args[2:])
+		return up(os.Args[2:])
 	case "last":
-		return runLast(os.Args[2:])
+		return last(os.Args[2:])
 	case "rollback-count":
-		return runRollbackCount(os.Args[2:])
+		return rollbackCount(os.Args[2:])
 	case "-h", "--help", "help":
 		printUsage()
 		return 0
@@ -48,7 +48,7 @@ func run() int {
 	}
 }
 
-func runMigrate(args []string) int {
+func up(args []string) int {
 	var opts cliOptions
 	var dryRun bool
 
@@ -68,8 +68,7 @@ func runMigrate(args []string) int {
 	}
 
 	ctx := context.Background()
-	err := migration.RunMigrations(ctx, migration.RunMigrationCtx{
-		DirectionDo:      true,
+	err := migration.RunMigrationsUp(ctx, &migration.ApplyOpts{
 		MigrationDir:     opts.dirName,
 		DryRun:           dryRun,
 		ConnStr:          opts.connStr,
@@ -84,7 +83,7 @@ func runMigrate(args []string) int {
 	return 0
 }
 
-func runLast(args []string) int {
+func last(args []string) int {
 	var opts cliOptions
 
 	fs := flag.NewFlagSet("last", flag.ContinueOnError)
@@ -105,7 +104,7 @@ func runLast(args []string) int {
 	return 0
 }
 
-func runRollbackCount(args []string) int {
+func rollbackCount(args []string) int {
 	var opts cliOptions
 	var dryRun bool
 
@@ -137,12 +136,11 @@ func runRollbackCount(args []string) int {
 	}
 
 	ctx := context.Background()
-	err = migration.RunMigrations(ctx, migration.RunMigrationCtx{
+	err = migration.RunMigrationsDown(ctx, &migration.RollbackOpts{
 		MigrationDir:     opts.dirName,
 		DryRun:           dryRun,
 		ConnStr:          opts.connStr,
 		HistoryTableName: opts.historyTableName,
-		DirectionDo:      false,
 		UndoCount:        steps,
 	})
 	if err != nil {
