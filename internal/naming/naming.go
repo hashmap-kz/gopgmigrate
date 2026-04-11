@@ -4,7 +4,28 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
+
+// {rev}-{name}.up.sql        versioned, transactional
+// {rev}-{name}.r.up.sql      repeatable, transactional
+// {rev}-{name}.notx.up.sql   repeatable, transactional
+// {rev}-{name}.rnotx.up.sql  repeatable, non-transactional
+// {rev}-{name}.down.sql      rollback
+
+// # No ambiguity possible
+//
+// # all apply files
+// find migrations/up -name "*.up.sql"
+//
+// # repeatable only
+// find migrations/up -name "*.r.up.sql" -o -name "*.rnotx.up.sql"
+//
+// # non-transactional only
+// find migrations/up -name "*.notx.up.sql" -o -name "*.rnotx.up.sql"
+//
+// # repeatable non-transactional only
+// find migrations/up -name "*.rnotx.up.sql"
 
 type MigrationFile struct {
 	Vers int64
@@ -14,59 +35,122 @@ type MigrationFile struct {
 	Hash string
 }
 
+type MigrationKind string
+
+const (
+	MigrationKindUp      MigrationKind = "up"
+	MigrationKindRUp     MigrationKind = "r.up"
+	MigrationKindNotxUp  MigrationKind = "notx.up"
+	MigrationKindRNotxUp MigrationKind = "rnotx.up"
+	MigrationKindDown    MigrationKind = "down"
+)
+
+type ParsedMigrationName struct {
+	Revision int64
+	Name     string
+	Kind     MigrationKind
+}
+
 var (
-	// example: 00003-users.do.sql
-	// example: 00004-fn_list_users.r.sql
-	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
-
-	// example: 00003-users.undo.sql
-	// example: 00004-fn_list_users.undo.sql
-	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
-
-	// example: 00004-fn_list_users.r.sql
-	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(r)\.sql$`)
-
-	// example: 00003-vacuum-users.ntx.do.sql
-	// example: 00004-fn_alter_system_1.ntx.r.sql
-	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-(.*)\.ntx\.(do|r)\.sql$`)
+	// Examples:
+	// 0000001-create-users.up.sql
+	// 0000002-refresh-user-stats.r.up.sql
+	// 0000003-vacuum-big-table.notx.up.sql
+	// 0000004-refresh-heavy-view.rnotx.up.sql
+	// 0000005-create-users.down.sql
+	migrationRegex = regexp.MustCompile(
+		`^(\d{7})-([^/]+?)\.(up|r\.up|notx\.up|rnotx\.up|down)\.sql$`,
+	)
 
 	// create schema m$yschema1;
 	// create table m$yschema1.m$table (id int);
 	postgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
 )
 
-func ParseVersionDo(basename string) (int64, error) {
-	return ParseVersionByRegex(basename, versionedMigrationRegexDo)
+func MigrationRegex() *regexp.Regexp {
+	return migrationRegex
 }
 
-func ParseVersionUndo(basename string) (int64, error) {
-	return ParseVersionByRegex(basename, versionedMigrationRegexUndo)
-}
-
-func ParseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
-	if !re.MatchString(basename) {
-		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+func ParseMigrationName(base string) (ParsedMigrationName, error) {
+	matches := migrationRegex.FindStringSubmatch(base)
+	if matches == nil {
+		return ParsedMigrationName{}, fmt.Errorf("invalid migration filename: %s", base)
 	}
-
-	matches := re.FindStringSubmatch(basename)
 	if len(matches) != 4 {
-		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+		return ParsedMigrationName{}, fmt.Errorf("invalid migration filename: %s", base)
 	}
 
-	versionStr := matches[1]
-	if versionStr == "" {
-		return -1, fmt.Errorf("unexpected empty version for file: %s", basename)
+	rev, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		return ParsedMigrationName{}, fmt.Errorf("parse revision %q: %w", matches[1], err)
 	}
 
-	parsedResult, err := strconv.ParseInt(versionStr, 10, 64)
+	name := matches[2]
+	if err := ValidateMigrationName(name); err != nil {
+		return ParsedMigrationName{}, fmt.Errorf("invalid migration filename %q: %w", base, err)
+	}
+
+	kind := MigrationKind(matches[3])
+	switch kind {
+	case MigrationKindUp, MigrationKindRUp, MigrationKindNotxUp, MigrationKindRNotxUp, MigrationKindDown:
+	default:
+		return ParsedMigrationName{}, fmt.Errorf("invalid migration kind: %s", matches[3])
+	}
+
+	return ParsedMigrationName{
+		Revision: rev,
+		Name:     name,
+		Kind:     kind,
+	}, nil
+}
+
+func ValidateMigrationName(name string) error {
+	if name == "" {
+		return fmt.Errorf("migration name is empty")
+	}
+	if strings.ContainsRune(name, '/') {
+		return fmt.Errorf("migration name must not contain '/'")
+	}
+	if strings.HasPrefix(name, ".") {
+		return fmt.Errorf("migration name must not start with '.'")
+	}
+	if strings.HasSuffix(name, ".") {
+		return fmt.Errorf("migration name must not end with '.'")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("migration name must not contain '..'")
+	}
+	return nil
+}
+
+func ParseVersionUp(basename string) (int64, error) {
+	parsed, err := ParseMigrationName(basename)
 	if err != nil {
 		return -1, err
 	}
-	if parsedResult < 0 {
-		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+	if parsed.Kind == MigrationKindDown {
+		return -1, fmt.Errorf("not an up migration filename: %s", basename)
 	}
+	return parsed.Revision, nil
+}
 
-	return parsedResult, nil
+func ParseVersionDown(basename string) (int64, error) {
+	parsed, err := ParseMigrationName(basename)
+	if err != nil {
+		return -1, err
+	}
+	if parsed.Kind != MigrationKindDown {
+		return -1, fmt.Errorf("not a down migration filename: %s", basename)
+	}
+	return parsed.Revision, nil
+}
+
+func ParseVersion(basename string) (int64, error) {
+	parsed, err := ParseMigrationName(basename)
+	if err != nil {
+		return -1, err
+	}
+	return parsed.Revision, nil
 }
 
 func IsSchemaTablePath(what string) bool {
@@ -74,40 +158,66 @@ func IsSchemaTablePath(what string) bool {
 }
 
 func IsTx(file MigrationFile) bool {
-	res := !versionedMigrationRegexNtx.MatchString(file.Base)
-	return res
-}
+	parsed, err := ParseMigrationName(file.Base)
+	if err != nil {
+		return false
+	}
 
-func VersionedMigrationRegexDo() *regexp.Regexp {
-	return versionedMigrationRegexDo
-}
-
-func VersionedMigrationRegexUndo() *regexp.Regexp {
-	return versionedMigrationRegexUndo
+	switch parsed.Kind {
+	case MigrationKindUp, MigrationKindRUp, MigrationKindDown:
+		return true
+	case MigrationKindNotxUp, MigrationKindRNotxUp:
+		return false
+	default:
+		return false
+	}
 }
 
 func IsRepeatable(file MigrationFile) bool {
-	return repeatableMigrationRegexDo.MatchString(file.Base)
+	parsed, err := ParseMigrationName(file.Base)
+	if err != nil {
+		return false
+	}
+	return parsed.Kind == MigrationKindRUp || parsed.Kind == MigrationKindRNotxUp
 }
 
 func IsVersioned(base string) bool {
-	return versionedMigrationRegexDo.MatchString(base)
+	parsed, err := ParseMigrationName(base)
+	if err != nil {
+		return false
+	}
+	return parsed.Kind != MigrationKindDown
 }
 
-func IsUndo(base string) bool {
-	return versionedMigrationRegexUndo.MatchString(base)
+func IsUp(base string) bool {
+	parsed, err := ParseMigrationName(base)
+	return err == nil && parsed.Kind == MigrationKindUp
+}
+
+func IsRepeatableUp(base string) bool {
+	parsed, err := ParseMigrationName(base)
+	return err == nil && parsed.Kind == MigrationKindRUp
+}
+
+func IsNonTransactionalUp(base string) bool {
+	parsed, err := ParseMigrationName(base)
+	return err == nil && parsed.Kind == MigrationKindNotxUp
+}
+
+func IsRepeatableNonTransactionalUp(base string) bool {
+	parsed, err := ParseMigrationName(base)
+	return err == nil && parsed.Kind == MigrationKindRNotxUp
+}
+
+func IsDown(base string) bool {
+	parsed, err := ParseMigrationName(base)
+	return err == nil && parsed.Kind == MigrationKindDown
 }
 
 func IsNonTransaction(base string) bool {
-	return versionedMigrationRegexNtx.MatchString(base)
-}
-
-func IsOurRegex(r ...*regexp.Regexp) bool {
-	for _, elem := range r {
-		isOk := elem == versionedMigrationRegexDo || elem == versionedMigrationRegexUndo
-		if isOk {
-			return true
-		}
+	parsed, err := ParseMigrationName(base)
+	if err != nil {
+		return false
 	}
-	return false
+	return parsed.Kind == MigrationKindNotxUp || parsed.Kind == MigrationKindRNotxUp
 }

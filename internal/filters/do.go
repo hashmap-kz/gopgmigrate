@@ -14,26 +14,34 @@ import (
 
 func GetMigrationsForApply(
 	ctx context.Context,
-	db *sql.DB,
+	db *sql.DB, // TODO: should not be here (hard to test)
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
 ) ([]naming.MigrationFile, error) {
-	allLocalFiles, err := resolver.GetFiles(migrationDirectory, naming.VersionedMigrationRegexDo(), repo.GetNoTxPatterns())
+	allLocalFiles, err := resolver.GetFiles(
+		migrationDirectory,
+		naming.MigrationRegex(),
+		repo.GetNoTxPatterns(),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	upFiles := filterMigrationFiles(allLocalFiles, func(f naming.MigrationFile) bool {
+		return naming.IsVersioned(f.Base)
+	})
 
 	hist, err := repo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 
-	err = checkAppliedHistoryWithLocalFiles(hist, allLocalFiles)
-	if err != nil {
+	if err := checkAppliedHistoryWithLocalFiles(hist, upFiles); err != nil {
 		return nil, err
 	}
 
-	return getVersionedMigrationsToApply(hist, allLocalFiles)
+	toApply, err := getVersionedMigrationsToApply(hist, upFiles)
+	return toApply, err
 }
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []naming.MigrationFile) error {

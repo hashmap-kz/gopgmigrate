@@ -20,11 +20,6 @@ func GetFiles(
 ) ([]naming.MigrationFile, error) {
 	var err error
 
-	isOk := naming.IsOurRegex(reg)
-	if !isOk {
-		return nil, fmt.Errorf("unknown regex for filtering: `%s`", reg.String())
-	}
-
 	err = checkMigrationDirectoryDoesNotContainStrayFiles(migrationDirectory)
 	if err != nil {
 		return nil, err
@@ -57,12 +52,12 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]naming.MigrationFil
 			if err != nil {
 				return err
 			}
-			v, err := naming.ParseVersionByRegex(base, reg)
+			v, err := naming.ParseMigrationName(base)
 			if err != nil {
 				return err
 			}
 			files = append(files, naming.MigrationFile{
-				Vers: v,
+				Vers: v.Revision,
 				Path: path,
 				Base: base,
 				Data: sql,
@@ -104,10 +99,9 @@ func getAllStrayFiles(directory string) ([]string, error) {
 			return err
 		}
 		if !d.IsDir() {
-			base := filepath.Base(path)
-			isOk := naming.IsVersioned(base) ||
-				naming.IsUndo(base)
-			if !isOk {
+			m, err := naming.ParseMigrationName(filepath.Base(path))
+			if err != nil {
+				fmt.Println(m)
 				strayFiles = append(strayFiles, filepath.ToSlash(path))
 			}
 		}
@@ -121,10 +115,12 @@ func getAllStrayFiles(directory string) ([]string, error) {
 func checkVersionedMigrations(versioned []naming.MigrationFile, noTxPatterns map[string]*regexp.Regexp) error {
 	var err error
 
-	err = checkFilesAreUniqueByVersion(versioned)
-	if err != nil {
-		return err
-	}
+	// TODO: not here
+	//
+	//err = checkFilesAreUniqueByVersion(versioned)
+	//if err != nil {
+	//	return err
+	//}
 
 	err = checkPossibleNoTx(versioned, noTxPatterns)
 	if err != nil {

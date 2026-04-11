@@ -1,0 +1,1 @@
+insert into authn.roles (xname) values ('test-0000010');

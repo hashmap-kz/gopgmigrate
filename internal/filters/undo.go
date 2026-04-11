@@ -14,22 +14,30 @@ import (
 
 func GetMigrationsForUndo(
 	ctx context.Context,
-	db *sql.DB,
+	db *sql.DB, // TODO: should not be here (hard to test)
 	migrationDirectory string,
 	repo history.MigrateHistoryRepository,
 	howMuch int,
 ) ([]naming.MigrationFile, error) {
-	allLocalFiles, err := resolver.GetFiles(migrationDirectory, naming.VersionedMigrationRegexUndo(), repo.GetNoTxPatterns())
+	allLocalFiles, err := resolver.GetFiles(
+		migrationDirectory,
+		naming.MigrationRegex(),
+		repo.GetNoTxPatterns(),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	undoFiles := filterMigrationFiles(allLocalFiles, func(f naming.MigrationFile) bool {
+		return naming.IsDown(f.Base)
+	})
 
 	hist, err := repo.ListAll(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 
-	return getVersionedMigrationsToUndo(allLocalFiles, hist, howMuch)
+	return getVersionedMigrationsToUndo(undoFiles, hist, howMuch)
 }
 
 // TODO: this is a prototype, working ONLY one-by-one (when the latest applied script HAS corresponding undo-script)
@@ -72,21 +80,30 @@ func getVersionedMigrationsToUndo(files []naming.MigrationFile, hist []history.M
 	return resultFiles, nil
 }
 
-func findCorrespondingUndoScript(undoScripts []naming.MigrationFile, doScript history.MigrateHistory) (naming.MigrationFile, bool, error) {
-	versionDo, err := naming.ParseVersionDo(doScript.Name)
+func findCorrespondingUndoScript(
+	undoScripts []naming.MigrationFile,
+	doScript history.MigrateHistory,
+) (naming.MigrationFile, bool, error) {
+	versionDo, err := naming.ParseVersion(doScript.Name)
 	if err != nil {
 		return naming.MigrationFile{}, false, err
 	}
+
+	undoByVersion := make(map[int64]naming.MigrationFile, len(undoScripts))
 	for _, elem := range undoScripts {
-		versionUndo, err := naming.ParseVersionUndo(elem.Base)
+		versionUndo, err := naming.ParseVersion(elem.Base)
 		if err != nil {
 			return naming.MigrationFile{}, false, err
 		}
-		if versionUndo == versionDo {
-			return elem, true, nil
-		}
+		undoByVersion[versionUndo] = elem
 	}
-	return naming.MigrationFile{}, false, nil
+
+	found, ok := undoByVersion[versionDo]
+	if !ok {
+		return naming.MigrationFile{}, false, nil
+	}
+
+	return found, true, nil
 }
 
 func xMin(a, b int) int {

@@ -87,10 +87,7 @@ func (r *repo) CreateHistoryTable(ctx context.Context, tx Transaction) error {
 		  mh_hash       text          not null,
 		  mh_applied_by name          not null default session_user,
 		  mh_applied_at timestamptz   not null default transaction_timestamp(),
-		  mh_txid     text            not null default pg_current_xact_id()::text,
-		  constraint check_version_match_name check (left(mh_name, 5)::bigint = mh_version),
-		  constraint check_version_unsigned   check (mh_version >= 0 ),
-		  constraint check_filename           check (mh_name ~ '^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$')
+		  mh_txid     text            not null default pg_current_xact_id()::text
 		);
   `, r.tableName)
 
