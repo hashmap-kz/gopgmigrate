@@ -6,60 +6,39 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// --- ParseVersionDo ---
-
 func TestParseVersionDo(t *testing.T) {
 	tests := []struct {
 		filename string
 		expected int64
 		hasError bool
 	}{
-		// versioned transactional
-		{"0000001-users.do.sql", 1, false},
-		{"0012345-roles.do.sql", 12345, false},
-		{"0000000-init.do.sql", 0, false},
-		{"0000123-test.do.sql", 123, false},
+		{"00001-users.do.sql", 1, false},
+		{"12345-roles.do.sql", 12345, false},
+		{"00000-init.do.sql", 0, false},
+		{"00123-test.do.sql", 123, false},
 
-		// versioned non-transactional
-		{"0000001-vacuum-users.notx.do.sql", 1, false},
-		{"0000042-reindex.notx.do.sql", 42, false},
-
-		// repeatable transactional
-		{"0000003-fn-get-users.r.do.sql", 3, false},
-		{"0000099-vw-active-users.r.do.sql", 99, false},
-
-		// repeatable non-transactional
-		{"0000007-fn-refresh.rnotx.do.sql", 7, false},
-
-		// invalid — wrong digit count
-		{"1-users.do.sql", -1, true},        // too short, not 7 digits
-		{"000001-users.do.sql", -1, true},   // 6 digits
-		{"00000001-users.do.sql", -1, true}, // 8 digits
-
-		// invalid — other reasons
-		{"users.do.sql", -1, true},             // missing version
-		{"0000001_users.do.sql", -1, true},     // underscore separator
-		{"0000001-users.up.sql", -1, true},     // wrong suffix
-		{"0000001-users.sql", -1, true},        // missing type
-		{"0000001-users.do.sql.bak", -1, true}, // extra suffix
-		{"0000001-users.undo.sql", -1, true},   // undo is not do
-		{"0000001-users.notx.sql", -1, true},   // missing .do. segment
+		{"1234-users.do.sql", -1, true},      // Invalid: needs exactly 5 digits
+		{"0000-users.do.sql", -1, true},      // Invalid: only 4 digits
+		{"00001_users.do.sql", -1, true},     // Invalid: uses `_` instead of `-`
+		{"00001-users.up.sql", -1, true},     // Invalid: wrong suffix
+		{"users.do.sql", -1, true},           // Invalid: missing version number
+		{"00001-users.sql", -1, true},        // Invalid: missing `.do.sql`
+		{"00001-users.do.sql.bak", -1, true}, // Invalid: additional suffix
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.filename, func(t *testing.T) {
-			result, err := ParseVersionDo(tt.filename)
-			if tt.hasError {
-				assert.Error(t, err)
+	for _, test := range tests {
+		t.Run(test.filename, func(t *testing.T) {
+			result, err := ParseVersionDo(test.filename)
+
+			if test.hasError {
+				assert.Error(t, err, "Expected an error but got none")
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				assert.NoError(t, err, "Expected no error but got: %v", err)
+				assert.Equal(t, test.expected, result, "Expected version %d but got %d", test.expected, result)
 			}
 		})
 	}
 }
-
-// --- ParseVersionUndo ---
 
 func TestParseVersionUndo(t *testing.T) {
 	tests := []struct {
@@ -67,207 +46,173 @@ func TestParseVersionUndo(t *testing.T) {
 		expected int64
 		hasError bool
 	}{
-		{"0000001-users.undo.sql", 1, false},
-		{"0012345-roles.undo.sql", 12345, false},
-		{"0000000-init.undo.sql", 0, false},
-		{"0000123-test.undo.sql", 123, false},
+		{"00001-users.undo.sql", 1, false},
+		{"12345-roles.undo.sql", 12345, false},
+		{"00000-init.undo.sql", 0, false},
+		{"00123-test.undo.sql", 123, false},
 
-		// invalid — wrong digit count
-		{"1-users.undo.sql", -1, true},        // too short
-		{"000001-users.undo.sql", -1, true},   // 6 digits
-		{"00000001-users.undo.sql", -1, true}, // 8 digits
-
-		// invalid — other reasons
-		{"users.undo.sql", -1, true},             // missing version
-		{"0000001_users.undo.sql", -1, true},     // underscore separator
-		{"0000001-users.down.sql", -1, true},     // wrong suffix
-		{"0000001-users.sql", -1, true},          // missing type
-		{"0000001-users.undo.sql.bak", -1, true}, // extra suffix
-		{"0000001-users.do.sql", -1, true},       // do is not undo
+		{"1234-users.undo.sql", -1, true},      // Invalid: needs exactly 5 digits
+		{"0000-users.undo.sql", -1, true},      // Invalid: only 4 digits
+		{"00001_users.undo.sql", -1, true},     // Invalid: uses `_` instead of `-`
+		{"00001-users.down.sql", -1, true},     // Invalid: wrong suffix
+		{"users.undo.sql", -1, true},           // Invalid: missing version number
+		{"00001-users.sql", -1, true},          // Invalid: missing `.undo.sql`
+		{"00001-users.undo.sql.bak", -1, true}, // Invalid: additional suffix
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.filename, func(t *testing.T) {
-			result, err := ParseVersionUndo(tt.filename)
-			if tt.hasError {
-				assert.Error(t, err)
+	for _, test := range tests {
+		t.Run(test.filename, func(t *testing.T) {
+			result, err := ParseVersionUndo(test.filename)
+
+			if test.hasError {
+				assert.Error(t, err, "Expected an error but got none")
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				assert.NoError(t, err, "Expected no error but got: %v", err)
+				assert.Equal(t, test.expected, result, "Expected version %d but got %d", test.expected, result)
 			}
 		})
 	}
 }
 
-// --- doRegex ---
+func TestVersionedMigrationRegexDo(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00003-users.do.sql", true, "00003", "users", "do"},
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"123-invalid.sql", false, "", "", ""},
+		{"00006-wrong.do.txt", false, "", "", ""},
+	}
 
-func TestDoRegex(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexDo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestVersionedMigrationRegexUndo(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00003-users.undo.sql", true, "00003", "users", "undo"},
+		{"00004-fn_list_users.undo.sql", true, "00004", "fn_list_users", "undo"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-wrong.undo.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexUndo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestRepeatableMigrationRegexDo(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00004-fn_list_users.r.sql", true, "00004", "fn_list_users", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00007-invalid.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := repeatableMigrationRegexDo.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestVersionedMigrationRegexNtx(t *testing.T) {
+	tests := []struct {
+		input   string
+		matches bool
+		version string
+		name    string
+		migType string
+	}{
+		{"00003-vacuum-users.ntx.do.sql", true, "00003", "vacuum-users", "do"},
+		{"00004-fn_alter_system_1.ntx.r.sql", true, "00004", "fn_alter_system_1", "r"},
+		{"00005-users.do.sql", false, "", "", ""},
+		{"00006-invalid.ntx.txt", false, "", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := versionedMigrationRegexNtx.FindStringSubmatch(test.input)
+			assert.Equal(t, test.matches, matches != nil)
+
+			if test.matches {
+				assert.Equal(t, test.version, matches[1])
+				assert.Equal(t, test.name, matches[2])
+				assert.Equal(t, test.migType, matches[3])
+			}
+		})
+	}
+}
+
+func TestPostgresqlSchemaTablePathRegex(t *testing.T) {
 	tests := []struct {
 		input   string
 		matches bool
 	}{
-		// valid — all four do variants
-		{"0000001-create-users.do.sql", true},
-		{"0000001-vacuum-users.notx.do.sql", true},
-		{"0000001-fn-get-users.r.do.sql", true},
-		{"0000001-fn-refresh.rnotx.do.sql", true},
+		{"myschema.table", true},
+		{"m$yschema1.m$table", true},
+		{"public.users", true},
+		{"my_schema.table$", true},
+		{"sche$ma.table_123$456", true},
 
-		// invalid — wrong digit count
-		{"1-create-users.do.sql", false},        // too short
-		{"000001-create-users.do.sql", false},   // 6 digits
-		{"00000001-create-users.do.sql", false}, // 8 digits
-
-		// invalid — other reasons
-		{"0000001-users.undo.sql", false}, // undo direction
-		{"0000001-users.up.sql", false},   // wrong suffix
-		{"users.do.sql", false},           // missing version
-		{"0000001-users.do.txt", false},   // wrong extension
-		{"0000001-users.notx.sql", false}, // missing .do. segment
+		{"123schema.table", false}, // Invalid because schema name starts with a number
+		{"myschema..table", false}, // Invalid format
+		{"myschema-table", false},  // Invalid: should use dot separator
+		{"_schema.$table", false},  // Cannot start with $
+		{"schema.123table", false}, // Table name must start with letter or _
+		{"schema..table", false},   // Missing schema
+		{".table", false},          // Missing schema
+		{"schema.", false},         // Missing table
+		{"123schema.table", false}, // Schema must start with letter or _
+		{"schema.table$@", false},  // Invalid character
+		{"schema.reallylongtablename111111111111$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$", false}, // Too long
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.matches, doRegex.MatchString(tt.input))
-		})
-	}
-}
-
-// --- undoRegex ---
-
-func TestUndoRegex(t *testing.T) {
-	tests := []struct {
-		input   string
-		matches bool
-	}{
-		{"0000001-create-users.undo.sql", true},
-		{"0000042-add-roles.undo.sql", true},
-
-		// invalid — wrong digit count
-		{"1-create-users.undo.sql", false},        // too short
-		{"000001-create-users.undo.sql", false},   // 6 digits
-		{"00000001-create-users.undo.sql", false}, // 8 digits
-
-		// invalid — other reasons
-		{"0000001-users.do.sql", false},   // do direction
-		{"0000001-users.down.sql", false}, // wrong suffix
-		{"users.undo.sql", false},         // missing version
-		{"0000001-users.undo.txt", false}, // wrong extension
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.matches, undoRegex.MatchString(tt.input))
-		})
-	}
-}
-
-// --- IsRepeatable ---
-
-func TestIsRepeatable(t *testing.T) {
-	repeatable := []string{
-		"0000001-fn-get-users.r.do.sql",
-		"0000002-fn-refresh.rnotx.do.sql",
-	}
-	notRepeatable := []string{
-		"0000001-create-users.do.sql",
-		"0000001-vacuum.notx.do.sql",
-		"0000001-create-users.undo.sql",
-	}
-
-	for _, base := range repeatable {
-		t.Run("repeatable/"+base, func(t *testing.T) {
-			assert.True(t, IsRepeatable(MigrationFile{Base: base}))
-		})
-	}
-	for _, base := range notRepeatable {
-		t.Run("not-repeatable/"+base, func(t *testing.T) {
-			assert.False(t, IsRepeatable(MigrationFile{Base: base}))
-		})
-	}
-}
-
-// --- IsNonTransactional ---
-
-func TestIsNonTransactional(t *testing.T) {
-	notx := []string{
-		"0000001-vacuum-users.notx.do.sql",
-		"0000002-fn-refresh.rnotx.do.sql",
-	}
-	tx := []string{
-		"0000001-create-users.do.sql",
-		"0000001-fn-get-users.r.do.sql",
-		"0000001-create-users.undo.sql",
-	}
-
-	for _, base := range notx {
-		t.Run("notx/"+base, func(t *testing.T) {
-			assert.True(t, IsNonTransactional(MigrationFile{Base: base}))
-		})
-	}
-	for _, base := range tx {
-		t.Run("tx/"+base, func(t *testing.T) {
-			assert.False(t, IsNonTransactional(MigrationFile{Base: base}))
-		})
-	}
-}
-
-// --- IsTransactional ---
-
-func TestIsTransactional(t *testing.T) {
-	assert.True(t, IsTransactional(MigrationFile{Base: "0000001-create-users.do.sql"}))
-	assert.True(t, IsTransactional(MigrationFile{Base: "0000001-fn-get-users.r.do.sql"}))
-	assert.False(t, IsTransactional(MigrationFile{Base: "0000001-vacuum.notx.do.sql"}))
-	assert.False(t, IsTransactional(MigrationFile{Base: "0000001-fn-refresh.rnotx.do.sql"}))
-}
-
-// --- IsDoFile / IsUndoFile ---
-
-func TestIsDoFile(t *testing.T) {
-	assert.True(t, IsDoFile("0000001-create-users.do.sql"))
-	assert.True(t, IsDoFile("0000001-vacuum.notx.do.sql"))
-	assert.True(t, IsDoFile("0000001-fn-get-users.r.do.sql"))
-	assert.True(t, IsDoFile("0000001-fn-refresh.rnotx.do.sql"))
-	assert.False(t, IsDoFile("0000001-create-users.undo.sql"))
-	assert.False(t, IsDoFile("not-a-migration.sql"))
-	assert.False(t, IsDoFile("1-create-users.do.sql")) // wrong digit count
-}
-
-func TestIsUndoFile(t *testing.T) {
-	assert.True(t, IsUndoFile("0000001-create-users.undo.sql"))
-	assert.False(t, IsUndoFile("0000001-create-users.do.sql"))
-	assert.False(t, IsUndoFile("not-a-migration.sql"))
-	assert.False(t, IsUndoFile("1-create-users.undo.sql")) // wrong digit count
-}
-
-// --- IsSchemaTablePath ---
-
-func TestIsSchemaTablePath(t *testing.T) {
-	valid := []string{
-		"public.users",
-		"myschema.table",
-		"my_schema.table_123",
-		"m$yschema1.m$table",
-	}
-	invalid := []string{
-		"users",           // missing schema
-		"",                // empty
-		"a.b.c",           // three parts
-		"123schema.table", // schema starts with digit
-		"schema.123table", // table starts with digit
-		"schema.",         // missing table
-		".table",          // missing schema
-		"schema.table$@",  // invalid character
-		"schema.reallylongtablename111111111111$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$", // too long
-	}
-
-	for _, s := range valid {
-		t.Run("valid/"+s, func(t *testing.T) {
-			assert.True(t, IsSchemaTablePath(s))
-		})
-	}
-	for _, s := range invalid {
-		t.Run("invalid/"+s, func(t *testing.T) {
-			assert.False(t, IsSchemaTablePath(s))
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			matches := postgresqlSchemaTablePathRegex.MatchString(test.input)
+			assert.Equal(t, test.matches, matches)
 		})
 	}
 }

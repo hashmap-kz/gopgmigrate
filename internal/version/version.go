@@ -6,7 +6,6 @@ import (
 	"strconv"
 )
 
-// MigrationFile is the in-memory representation of a single SQL file on disk.
 type MigrationFile struct {
 	Vers int64
 	Path string
@@ -15,90 +14,100 @@ type MigrationFile struct {
 	Hash string
 }
 
-// File naming convention:
-//
-//	{rev}-{name}.do.sql        versioned, transactional
-//	{rev}-{name}.notx.do.sql   versioned, non-transactional
-//	{rev}-{name}.r.do.sql      repeatable, transactional
-//	{rev}-{name}.rnotx.do.sql  repeatable, non-transactional
-//	{rev}-{name}.undo.sql      rollback (always transactional)
-//
-// rev  = exactly 7 zero-padded digits (e.g. 0000001, 0000042, 1234567)
-// name  = one or more characters (any filename-safe chars)
 var (
-	// matches: 0000001-create-users.do.sql  0000042-vacuum.notx.do.sql
-	//          0000003-fn-users.r.do.sql    0000007-fn-users.rnotx.do.sql
-	doRegex = regexp.MustCompile(`^(\d{7})-(.+)\.(r|rnotx|notx)?\.?do\.sql$`)
+	// example: 00003-users.do.sql
+	// example: 00004-fn_list_users.r.sql
+	versionedMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(do|r)\.sql$`)
 
-	// matches: 0000001-create-users.undo.sql
-	undoRegex = regexp.MustCompile(`^(\d{7})-(.+)\.undo\.sql$`)
+	// example: 00003-users.undo.sql
+	// example: 00004-fn_list_users.undo.sql
+	versionedMigrationRegexUndo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(undo)\.sql$`)
 
-	// repeatable: .r.do.sql or .rnotx.do.sql
-	repeatableRegex = regexp.MustCompile(`^(\d{7})-(.+)\.(r|rnotx)\.do\.sql$`)
+	// example: 00004-fn_list_users.r.sql
+	repeatableMigrationRegexDo = regexp.MustCompile(`^(\d{5})-(.*)(?:\.ntx)?\.(r)\.sql$`)
 
-	// non-transactional: .notx.do.sql or .rnotx.do.sql
-	notxRegex = regexp.MustCompile(`^(\d{7})-(.+)\.(notx|rnotx)\.do\.sql$`)
+	// example: 00003-vacuum-users.ntx.do.sql
+	// example: 00004-fn_alter_system_1.ntx.r.sql
+	versionedMigrationRegexNtx = regexp.MustCompile(`^(\d{5})-(.*)\.ntx\.(do|r)\.sql$`)
 
-	// schema.table path validator
+	// create schema m$yschema1;
+	// create table m$yschema1.m$table (id int);
 	postgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
 )
 
-// --- version parsing ---
-
 func ParseVersionDo(basename string) (int64, error) {
-	return parseVersion(basename, doRegex)
+	return ParseVersionByRegex(basename, versionedMigrationRegexDo)
 }
 
 func ParseVersionUndo(basename string) (int64, error) {
-	return parseVersion(basename, undoRegex)
+	return ParseVersionByRegex(basename, versionedMigrationRegexUndo)
 }
 
-func parseVersion(basename string, re *regexp.Regexp) (int64, error) {
-	m := re.FindStringSubmatch(basename)
-	if len(m) < 2 {
-		return -1, fmt.Errorf("not a recognised migration filename: %q", basename)
+func ParseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
+	if !re.MatchString(basename) {
+		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
 	}
-	v, err := strconv.ParseInt(m[1], 10, 64)
-	if err != nil || v < 0 {
-		return -1, fmt.Errorf("invalid version in filename %q", basename)
+
+	matches := re.FindStringSubmatch(basename)
+	if len(matches) != 4 {
+		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
 	}
-	return v, nil
+
+	versionStr := matches[1]
+	if versionStr == "" {
+		return -1, fmt.Errorf("unexpected empty version for file: %s", basename)
+	}
+
+	parsedResult, err := strconv.ParseInt(versionStr, 10, 64)
+	if err != nil {
+		return -1, err
+	}
+	if parsedResult < 0 {
+		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+	}
+
+	return parsedResult, nil
 }
 
-// --- file classification ---
-
-// IsDoFile reports whether base is a valid apply-direction filename.
-func IsDoFile(base string) bool {
-	return doRegex.MatchString(base)
+func IsSchemaTablePath(what string) bool {
+	return postgresqlSchemaTablePathRegex.MatchString(what)
 }
 
-// IsUndoFile reports whether base is a valid rollback filename.
-func IsUndoFile(base string) bool {
-	return undoRegex.MatchString(base)
+func IsTx(file MigrationFile) bool {
+	res := !versionedMigrationRegexNtx.MatchString(file.Base)
+	return res
 }
 
-// IsRepeatable reports whether f is a repeatable migration (.r.do.sql or .rnotx.do.sql).
-func IsRepeatable(f MigrationFile) bool {
-	return repeatableRegex.MatchString(f.Base)
+func VersionedMigrationRegexDo() *regexp.Regexp {
+	return versionedMigrationRegexDo
 }
 
-// IsNonTransactional reports whether f runs outside a transaction (.notx.do.sql or .rnotx.do.sql).
-func IsNonTransactional(f MigrationFile) bool {
-	return notxRegex.MatchString(f.Base)
+func VersionedMigrationRegexUndo() *regexp.Regexp {
+	return versionedMigrationRegexUndo
 }
 
-// IsTransactional reports whether f runs inside a transaction.
-func IsTransactional(f MigrationFile) bool {
-	return !IsNonTransactional(f)
+func IsRepeatable(file MigrationFile) bool {
+	return repeatableMigrationRegexDo.MatchString(file.Base)
 }
 
-// --- regex accessors (for resolver layer) ---
+func IsVersioned(base string) bool {
+	return versionedMigrationRegexDo.MatchString(base)
+}
 
-func DoRegex() *regexp.Regexp   { return doRegex }
-func UndoRegex() *regexp.Regexp { return undoRegex }
+func IsUndo(base string) bool {
+	return versionedMigrationRegexUndo.MatchString(base)
+}
 
-// --- misc ---
+func IsNonTransaction(base string) bool {
+	return versionedMigrationRegexNtx.MatchString(base)
+}
 
-func IsSchemaTablePath(s string) bool {
-	return postgresqlSchemaTablePathRegex.MatchString(s)
+func IsOurRegex(r ...*regexp.Regexp) bool {
+	for _, elem := range r {
+		isOk := elem == versionedMigrationRegexDo || elem == versionedMigrationRegexUndo
+		if isOk {
+			return true
+		}
+	}
+	return false
 }
