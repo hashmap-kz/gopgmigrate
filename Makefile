@@ -20,6 +20,12 @@ migrate:
 	go run main.go migrate
 
 .ONESHELL:
+last:
+	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
+	export PGMIGRATE_DIRNAME=examples/tree
+	go run main.go last
+
+.ONESHELL:
 r1:
 	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
 	export PGMIGRATE_DIRNAME=examples/tree
