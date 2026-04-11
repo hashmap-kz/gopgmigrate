@@ -17,6 +17,27 @@ files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a c
 Version ordering is **global** across all subdirectories. Subdirectories are purely for your own organisation - the tool
 sorts only by the 7-digit revision prefix.
 
+--- 
+
+## Postulates
+
+1. Flat-only directory structure - impractical for real projects that grow across
+   release cycles, separate schema and data concerns, or multiple environments.
+
+2. Pseudo-DSL and magic comments inside SQL files - especially harmful when up and
+   down logic live in the same file, making it impossible to open the file in a
+   database IDE and execute it directly.
+
+3. Rollback scripts placed alongside forward migrations - breaks the ability to use
+   `find` and `psql` safely, since a plain glob picks up both directions at once.
+
+4. Vendor lock-in - if your migration files cannot be understood or executed without
+   the tool, you do not need that tool. SQL files should work standalone.
+
+5. Repeatable migrations and explicit non-transactional execution are not optional
+   extras - they are required for managing views, functions, and maintenance
+   operations in any production database.
+
 ---
 
 ## File naming convention
