@@ -1,8 +1,9 @@
 package filters
 
 import (
-	"gopgmigrate/internal/naming"
 	"regexp"
+
+	"gopgmigrate/internal/naming"
 )
 
 func filterMigrationFiles(

@@ -6,111 +6,292 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"gopgmigrate/internal/naming"
 )
 
-// Test getFiles function
 func TestGetFiles(t *testing.T) {
-	tmpDir := t.TempDir()
+	t.Parallel()
 
-	// Create valid versioned migration files
-	validFiles := []string{
-		"00001-init.do.sql",
-		"00002-users.do.sql",
-	}
-	for _, f := range validFiles {
-		createTestFile(t, tmpDir, f, "-- SQL content")
-	}
+	t.Run("loads valid migration files and sorts by base name", func(t *testing.T) {
+		t.Parallel()
 
-	// Create a valid repeatable migration file
-	createTestFile(t, tmpDir, "00003-refresh.r.sql", "-- SQL content")
+		dir := t.TempDir()
 
-	// Run getFiles
-	files, err := GetFiles(tmpDir, naming.VersionedMigrationRegexDo(), map[string]*regexp.Regexp{})
-	if err != nil {
-		t.Fatalf("getFiles() failed: %v", err)
-	}
+		writeTestFile(t, dir, "0000002-users.r.up.sql", "select 2;")
+		writeTestFile(t, dir, "0000001-init.up.sql", "select 1;")
+		writeTestFile(t, dir, "0000003-vacuum.notx.up.sql", "vacuum;")
+		writeTestFile(t, dir, "0000004-users.down.sql", "drop table users;")
 
-	// Check that migrations were correctly detected
-	if len(files) != 3 {
-		t.Errorf("Expected 3 versioned migrations, got %d", len(files))
-	}
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.NoError(t, err)
+
+		require.Len(t, files, 4)
+		assert.Equal(t, "0000001-init.up.sql", files[0].Base)
+		assert.Equal(t, "0000002-users.r.up.sql", files[1].Base)
+		assert.Equal(t, "0000003-vacuum.notx.up.sql", files[2].Base)
+		assert.Equal(t, "0000004-users.down.sql", files[3].Base)
+
+		assert.EqualValues(t, 1, files[0].Vers)
+		assert.EqualValues(t, 2, files[1].Vers)
+		assert.EqualValues(t, 3, files[2].Vers)
+		assert.EqualValues(t, 4, files[3].Vers)
+
+		assert.NotEmpty(t, files[0].Hash)
+		assert.Equal(t, []byte("select 1;"), files[0].Data)
+	})
+
+	t.Run("filters only files matching provided regex", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-init.up.sql", "select 1;")
+		writeTestFile(t, dir, "0000002-users.r.up.sql", "select 2;")
+		writeTestFile(t, dir, "0000003-vacuum.notx.up.sql", "vacuum;")
+		writeTestFile(t, dir, "0000004-users.down.sql", "drop table users;")
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.NoError(t, err)
+		require.Len(t, files, 4)
+
+		downOnly := regexp.MustCompile(`^(\d{7})-([^/]+?)\.(down)\.sql$`)
+		files, err = GetFiles(dir, downOnly, nil)
+		require.NoError(t, err)
+
+		require.Len(t, files, 1)
+		assert.Equal(t, "0000004-users.down.sql", files[0].Base)
+		assert.EqualValues(t, 4, files[0].Vers)
+	})
+
+	t.Run("returns error when directory contains stray file", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-init.up.sql", "select 1;")
+		writeTestFile(t, dir, "notes.txt", "hello")
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.Error(t, err)
+		assert.Nil(t, files)
+		assert.Contains(t, err.Error(), "stray files are not allowed")
+	})
+
+	t.Run("returns error when invalid sql filename exists", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-init.up.sql", "select 1;")
+		writeTestFile(t, dir, "00001-bad.do.sql", "old naming")
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.Error(t, err)
+		assert.Nil(t, files)
+		assert.Contains(t, err.Error(), "stray files are not allowed")
+	})
+
+	t.Run("walks nested directories", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "nested", "deeper")
+		require.NoError(t, os.MkdirAll(sub, 0o755))
+
+		writeTestFile(t, dir, "0000002-users.r.up.sql", "select 2;")
+		writeTestFile(t, sub, "0000001-init.up.sql", "select 1;")
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.NoError(t, err)
+
+		require.Len(t, files, 2)
+		assert.Equal(t, "0000001-init.up.sql", files[0].Base)
+		assert.Equal(t, "0000002-users.r.up.sql", files[1].Base)
+	})
+
+	t.Run("fails when tx file contains no-tx pattern", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-vacuum.up.sql", "VACUUM FULL users;")
+
+		noTxPatterns := map[string]*regexp.Regexp{
+			"vacuum": regexp.MustCompile(`(?i)\bVACUUM\b`),
+		}
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), noTxPatterns)
+		require.Error(t, err)
+		assert.Nil(t, files)
+		assert.Contains(t, err.Error(), "check statements in the file")
+	})
+
+	t.Run("allows notx file to contain no-tx pattern", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-vacuum.notx.up.sql", "VACUUM FULL users;")
+
+		noTxPatterns := map[string]*regexp.Regexp{
+			"vacuum": regexp.MustCompile(`(?i)\bVACUUM\b`),
+		}
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), noTxPatterns)
+		require.NoError(t, err)
+
+		require.Len(t, files, 1)
+		assert.Equal(t, "0000001-vacuum.notx.up.sql", files[0].Base)
+		assert.EqualValues(t, 1, files[0].Vers)
+	})
+
+	t.Run("allows rnotx file to contain no-tx pattern", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-refresh.rnotx.up.sql", "VACUUM FULL users;")
+
+		noTxPatterns := map[string]*regexp.Regexp{
+			"vacuum": regexp.MustCompile(`(?i)\bVACUUM\b`),
+		}
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), noTxPatterns)
+		require.NoError(t, err)
+
+		require.Len(t, files, 1)
+		assert.Equal(t, "0000001-refresh.rnotx.up.sql", files[0].Base)
+	})
+
+	t.Run("allows tx file when no no-tx pattern matches", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		writeTestFile(t, dir, "0000001-init.up.sql", "create table users(id int);")
+
+		noTxPatterns := map[string]*regexp.Regexp{
+			"vacuum": regexp.MustCompile(`(?i)\bVACUUM\b`),
+		}
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), noTxPatterns)
+		require.NoError(t, err)
+
+		require.Len(t, files, 1)
+		assert.Equal(t, "0000001-init.up.sql", files[0].Base)
+	})
+
+	t.Run("supports empty directory", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		files, err := GetFiles(dir, naming.MigrationRegex(), nil)
+		require.NoError(t, err)
+		assert.Empty(t, files)
+	})
 }
 
-// Test checkMigrationDirectoryDoesNotContainStrayFiles
-func TestCheckMigrationDirectoryDoesNotContainStrayFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a valid migration file
-	createTestFile(t, tmpDir, "00001-init.do.sql", "-- SQL content")
-
-	// Create a stray file
-	createTestFile(t, tmpDir, "random.txt", "stray content")
-
-	err := checkMigrationDirectoryDoesNotContainStrayFiles(tmpDir)
-	if err == nil {
-		t.Errorf("Expected an error due to stray files, but got nil")
-	}
-}
-
-// Test getAllStrayFiles
 func TestGetAllStrayFiles(t *testing.T) {
-	tmpDir := t.TempDir()
+	t.Parallel()
 
-	// Create valid migration files
-	validFiles := []string{
-		"00001-init.do.sql",
-		"00002-refresh.r.sql",
-	}
-	for _, f := range validFiles {
-		createTestFile(t, tmpDir, f, "-- SQL content")
-	}
+	t.Run("returns only stray files", func(t *testing.T) {
+		t.Parallel()
 
-	// Create stray files
-	strayFiles := []string{
-		"random.txt",
-		"config.yaml",
-	}
-	for _, f := range strayFiles {
-		createTestFile(t, tmpDir, f, "stray content")
-	}
+		dir := t.TempDir()
 
-	foundStrays, err := getAllStrayFiles(tmpDir)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+		writeTestFile(t, dir, "0000001-init.up.sql", "select 1;")
+		writeTestFile(t, dir, "README.md", "docs")
+		writeTestFile(t, dir, "broken.sql", "select 2;")
+		writeTestFile(t, dir, "00001-old.do.sql", "select 3;")
 
-	if len(foundStrays) != len(strayFiles) {
-		t.Errorf("Expected %d stray files, got %d", len(strayFiles), len(foundStrays))
-	}
+		got, err := getAllStrayFiles(dir)
+		require.NoError(t, err)
+
+		assert.Len(t, got, 3)
+		assert.Contains(t, got, filepath.ToSlash(filepath.Join(dir, "README.md")))
+		assert.Contains(t, got, filepath.ToSlash(filepath.Join(dir, "broken.sql")))
+		assert.Contains(t, got, filepath.ToSlash(filepath.Join(dir, "00001-old.do.sql")))
+	})
 }
 
-// Test checkFilesAreUniqueByVersion
+func TestCheckThatFileIsPossibleShouldNotUseTx(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns warnings for matching patterns", func(t *testing.T) {
+		t.Parallel()
+
+		sql := `
+VACUUM FULL users;
+CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
+`
+		patterns := map[string]*regexp.Regexp{
+			"vacuum":            regexp.MustCompile(`(?i)\bVACUUM\b`),
+			"create_concurrent": regexp.MustCompile(`(?i)\bCREATE\s+INDEX\s+CONCURRENTLY\b`),
+			"non_match_example": regexp.MustCompile(`(?i)\bALTER\s+SYSTEM\b`),
+		}
+
+		got := checkThatFileIsPossibleShouldNotUseTx(sql, patterns)
+
+		assert.Len(t, got, 2)
+		assert.Contains(t, got, "Warning: Detected vacuum pattern")
+		assert.Contains(t, got, "Warning: Detected create_concurrent pattern")
+	})
+
+	t.Run("returns nil when nothing matches", func(t *testing.T) {
+		t.Parallel()
+
+		sql := `create table users(id int);`
+		patterns := map[string]*regexp.Regexp{
+			"vacuum": regexp.MustCompile(`(?i)\bVACUUM\b`),
+		}
+
+		got := checkThatFileIsPossibleShouldNotUseTx(sql, patterns)
+		assert.Empty(t, got)
+	})
+}
+
 func TestCheckFilesAreUniqueByVersion(t *testing.T) {
-	files := []naming.MigrationFile{
-		{Base: "00001-init.do.sql", Path: "/migrations/00001-init.do.sql", Vers: 1},
-		{Base: "00002-users.do.sql", Path: "/migrations/00002-users.do.sql", Vers: 2},
-	}
+	t.Parallel()
 
-	err := checkFilesAreUniqueByVersion(files)
-	if err != nil {
-		t.Errorf("Expected no error, but got: %v", err)
-	}
+	t.Run("passes when versions are unique", func(t *testing.T) {
+		t.Parallel()
 
-	// Introduce a duplicate version
-	files = append(files, naming.MigrationFile{Base: "00001-duplicate.do.sql", Path: "/migrations/00001-duplicate.do.sql", Vers: 1})
-	err = checkFilesAreUniqueByVersion(files)
-	if err == nil {
-		t.Errorf("Expected error due to duplicate version, but got nil")
-	}
+		files := []naming.MigrationFile{
+			{Vers: 1, Path: "/m/0000001-init.up.sql", Base: "0000001-init.up.sql"},
+			{Vers: 2, Path: "/m/0000002-users.up.sql", Base: "0000002-users.up.sql"},
+		}
+
+		err := checkFilesAreUniqueByVersion(files)
+		assert.NoError(t, err)
+	})
+
+	t.Run("fails when versions are duplicated", func(t *testing.T) {
+		t.Parallel()
+
+		files := []naming.MigrationFile{
+			{Vers: 1, Path: "/m/0000001-init.up.sql", Base: "0000001-init.up.sql"},
+			{Vers: 1, Path: "/m/0000001-users.down.sql", Base: "0000001-users.down.sql"},
+		}
+
+		err := checkFilesAreUniqueByVersion(files)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already in use")
+	})
 }
 
-// Helper function to create test files
-func createTestFile(t *testing.T, dir, filename, content string) {
+func writeTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
-	path := filepath.Join(dir, filename)
-	err := os.WriteFile(path, []byte(content), 0o644)
-	if err != nil {
-		t.Fatalf("Failed to create test file %s: %v", filename, err)
-	}
+
+	path := filepath.Join(dir, name)
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(path, []byte(content), 0o644)
+	require.NoError(t, err)
+
+	return path
 }

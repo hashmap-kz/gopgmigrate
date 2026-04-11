@@ -116,7 +116,6 @@ func checkVersionedMigrations(versioned []naming.MigrationFile, noTxPatterns map
 	var err error
 
 	// TODO: not here
-	//
 	//err = checkFilesAreUniqueByVersion(versioned)
 	//if err != nil {
 	//	return err
