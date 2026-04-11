@@ -16,8 +16,8 @@ func TestGetVersionedMigrationsToUndo(t *testing.T) {
 	}
 
 	historyRecords := []history.MigrateHistory{
-		{MhName: "00002-users.do.sql"},
-		{MhName: "00001-init.do.sql"},
+		{Name: "00002-users.do.sql"},
+		{Name: "00001-init.do.sql"},
 	}
 
 	result, err := getVersionedMigrationsToUndo(files, historyRecords, 2)
@@ -33,8 +33,8 @@ func TestGetVersionedMigrationsToUndo_ExceedingRollbackCount(t *testing.T) {
 	}
 
 	historyRecords := []history.MigrateHistory{
-		{MhName: "00002-users.do.sql"},
-		{MhName: "00001-init.do.sql"},
+		{Name: "00002-users.do.sql"},
+		{Name: "00001-init.do.sql"},
 	}
 
 	_, err := getVersionedMigrationsToUndo(files, historyRecords, 3)
@@ -48,7 +48,7 @@ func TestFindCorrespondingUndoScript(t *testing.T) {
 		{Base: "00002-users.undo.sql"},
 	}
 
-	doScript := history.MigrateHistory{MhName: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
 
 	result, found, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.NoError(t, err)
@@ -61,7 +61,7 @@ func TestFindCorrespondingUndoScript_NotFound(t *testing.T) {
 		{Base: "00001-init.undo.sql"},
 	}
 
-	doScript := history.MigrateHistory{MhName: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
 
 	_, found, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.NoError(t, err)
@@ -73,7 +73,7 @@ func TestFindCorrespondingUndoScript_ParseError(t *testing.T) {
 		{Base: "invalid-undo.sql"},
 	}
 
-	doScript := history.MigrateHistory{MhName: "00002-users.do.sql"}
+	doScript := history.MigrateHistory{Name: "00002-users.do.sql"}
 
 	_, _, err := findCorrespondingUndoScript(undoFiles, doScript)
 	assert.Error(t, err)

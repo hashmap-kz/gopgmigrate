@@ -40,7 +40,7 @@ func getVersionedMigrationsToUndo(files []version.MigrationFile, hist []history.
 
 	// Sort history by base (DESC)
 	sort.Slice(hist, func(i, j int) bool {
-		return hist[i].MhName > hist[j].MhName
+		return hist[i].Name > hist[j].Name
 	})
 
 	// create a slice of CNT after sort is applied
@@ -55,7 +55,7 @@ func getVersionedMigrationsToUndo(files []version.MigrationFile, hist []history.
 			return nil, err
 		}
 		if !found {
-			return nil, fmt.Errorf("cannot find undo script for %s", elem.MhName)
+			return nil, fmt.Errorf("cannot find undo script for %s", elem.Name)
 		}
 		resultFiles = append(resultFiles, script)
 	}
@@ -73,7 +73,7 @@ func getVersionedMigrationsToUndo(files []version.MigrationFile, hist []history.
 }
 
 func findCorrespondingUndoScript(undoScripts []version.MigrationFile, doScript history.MigrateHistory) (version.MigrationFile, bool, error) {
-	versionDo, err := version.ParseVersionDo(doScript.MhName)
+	versionDo, err := version.ParseVersionDo(doScript.Name)
 	if err != nil {
 		return version.MigrationFile{}, false, err
 	}

@@ -20,8 +20,8 @@ func TestCheckHistory(t *testing.T) {
 		{
 			name: "All applied migrations exist locally",
 			applied: []history.MigrateHistory{
-				{MhName: "001-init.do.sql"},
-				{MhName: "002-users.do.sql"},
+				{Name: "001-init.do.sql"},
+				{Name: "002-users.do.sql"},
 			},
 			files: []version.MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -32,8 +32,8 @@ func TestCheckHistory(t *testing.T) {
 		{
 			name: "Applied migration missing in local files",
 			applied: []history.MigrateHistory{
-				{MhName: "001-init.do.sql"},
-				{MhName: "003-missing.sql"},
+				{Name: "001-init.do.sql"},
+				{Name: "003-missing.sql"},
 			},
 			files: []version.MigrationFile{
 				{Base: "001-init.do.sql"},
@@ -99,7 +99,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 	}
 
 	mockHistory := []history.MigrateHistory{
-		{MhName: "00001-init.do.sql", MhHash: "1"},
+		{Name: "00001-init.do.sql", Hash: "1"},
 	}
 
 	toApply, err := getVersionedMigrationsToApply(mockHistory, mockFiles)
@@ -108,19 +108,19 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 	assert.Equal(t, "00002-users.do.sql", toApply[0].Base)
 
 	// Test hash mismatch scenario
-	mockHistory = append(mockHistory, history.MigrateHistory{MhName: "00002-users.do.sql", MhHash: "wrong-hash"})
+	mockHistory = append(mockHistory, history.MigrateHistory{Name: "00002-users.do.sql", Hash: "wrong-hash"})
 	_, err = getVersionedMigrationsToApply(mockHistory, mockFiles)
 	assert.Error(t, err)
 }
 
 func TestFindHist(t *testing.T) {
 	mockHistory := []history.MigrateHistory{
-		{MhName: "00001-init.do.sql", MhHash: "hash1"},
+		{Name: "00001-init.do.sql", Hash: "hash1"},
 	}
 
 	found := findHist("00001-init.do.sql", mockHistory)
 	assert.NotNil(t, found)
-	assert.Equal(t, "hash1", found.MhHash)
+	assert.Equal(t, "hash1", found.Hash)
 
 	notFound := findHist("00002-users.do.sql", mockHistory)
 	assert.Nil(t, notFound)

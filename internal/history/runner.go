@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/google/uuid"
 	"gopgmigrate/internal/dbms"
 	"gopgmigrate/internal/stmt"
 	"gopgmigrate/internal/version"
@@ -20,7 +19,6 @@ func MigrateOneScriptDecideTxNoTx(
 	file version.MigrationFile,
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
-	iterID uuid.UUID,
 ) (err error) {
 	// TRANSACTION
 
@@ -32,7 +30,7 @@ func MigrateOneScriptDecideTxNoTx(
 		defer tx.Rollback()
 
 		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+", iterID)
+		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
 		if err != nil {
 			return err
 		}
@@ -47,7 +45,7 @@ func MigrateOneScriptDecideTxNoTx(
 	// NO TRANSACTION
 
 	script, _ := stmt.SplitSQLStatements(string(file.Data))
-	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N", iterID)
+	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
 }
 
 func migrateOneScriptFn(
@@ -58,7 +56,6 @@ func migrateOneScriptFn(
 	mhRepo MigrateHistoryRepository,
 	directionDo bool,
 	txLogNote string,
-	iterID uuid.UUID,
 ) (err error) {
 	slog.Info("migration",
 		slog.String("tx", txLogNote),
@@ -84,20 +81,18 @@ func migrateOneScriptFn(
 		// DO
 		if version.IsRepeatable(file) {
 			err = mhRepo.SaveRepeatable(ctx, tx, &MigrateHistoryCreateInput{
-				MhVersion: file.Vers,
-				MhName:    file.Base,
-				MhHash:    file.Hash,
-				MhIterID:  iterID.String(),
+				Version: file.Vers,
+				Name:    file.Base,
+				Hash:    file.Hash,
 			})
 			if err != nil {
 				return err
 			}
 		} else {
 			err = mhRepo.SaveVersioned(ctx, tx, &MigrateHistoryCreateInput{
-				MhVersion: file.Vers,
-				MhName:    file.Base,
-				MhHash:    file.Hash,
-				MhIterID:  iterID.String(),
+				Version: file.Vers,
+				Name:    file.Base,
+				Hash:    file.Hash,
 			})
 			if err != nil {
 				return err

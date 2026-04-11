@@ -38,8 +38,8 @@ func GetMigrationsForApply(
 
 func checkAppliedHistoryWithLocalFiles(appliedMigrations []history.MigrateHistory, localFiles []version.MigrationFile) error {
 	for _, k := range appliedMigrations {
-		if !appliedMigrationPresentLocally(k.MhName, localFiles) {
-			return fmt.Errorf("detected applied migration not resolved locally: %s", k.MhName)
+		if !appliedMigrationPresentLocally(k.Name, localFiles) {
+			return fmt.Errorf("detected applied migration not resolved locally: %s", k.Name)
 		}
 	}
 	return nil
@@ -70,7 +70,7 @@ func getVersionedMigrationsToApply(
 
 		if version.IsRepeatable(file) {
 			// apply only if changed
-			if existing == nil || existing.MhHash != file.Hash {
+			if existing == nil || existing.Hash != file.Hash {
 				toApply = append(toApply, file)
 			}
 		} else {
@@ -78,7 +78,7 @@ func getVersionedMigrationsToApply(
 			if existing == nil {
 				toApply = append(toApply, file)
 			} else {
-				if existing.MhHash != file.Hash {
+				if existing.Hash != file.Hash {
 					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.Path))
 				}
 			}
@@ -91,7 +91,7 @@ func getVersionedMigrationsToApply(
 
 func findHist(base string, appliedMigrations []history.MigrateHistory) *history.MigrateHistory {
 	for _, elem := range appliedMigrations {
-		if elem.MhName == base {
+		if elem.Name == base {
 			return &elem
 		}
 	}
