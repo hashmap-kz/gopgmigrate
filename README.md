@@ -19,24 +19,29 @@ sorts only by the 7-digit revision prefix.
 
 --- 
 
-## Postulates
+## Design rationale
 
-1. Flat-only directory structure - impractical for real projects that grow across
-   release cycles, separate schema and data concerns, or multiple environments.
+Other tools made choices that this tool deliberately avoids.
 
-2. Pseudo-DSL and magic comments inside SQL files - especially harmful when up and
-   down logic live in the same file, making it impossible to open the file in a
-   database IDE and execute it directly.
+**Flat-only layouts** are impractical for projects that grow across release cycles,
+separate schema and data concerns, or multiple environments. `gopgmigrate` imposes no
+structure - organise directories however your project demands.
 
-3. Rollback scripts placed alongside forward migrations - breaks the ability to use
-   `find` and `psql` safely, since a plain glob picks up both directions at once.
+**Pseudo-DSL and magic comments** inside SQL files - especially when up and down logic
+live in the same file - make it impossible to open a file in a database IDE and run it
+directly. Every file here is plain executable SQL, nothing else.
 
-4. Vendor lock-in - if your migration files cannot be understood or executed without
-   the tool, you do not need that tool. SQL files should work standalone.
+**Rollback scripts alongside forward migrations** break shell-based workflows. A plain
+`find *.sql` glob picks up both directions at once. `gopgmigrate` keeps them separate so
+`find` and `psql` always work safely without the tool.
 
-5. Repeatable migrations and explicit non-transactional execution are not optional
-   extras - they are required for managing views, functions, and maintenance
-   operations in any production database.
+**Vendor lock-in** means your migration files become useless without the tool that owns
+them. Here, every file is a plain SQL file. The tool is optional. `find | sort | psql`
+reproduces your database from scratch with no binary required.
+
+**Repeatable migrations and non-transactional execution** are not edge cases - they are
+everyday requirements for managing views, functions, and maintenance operations. Both
+are first-class citizens, declared in the filename, requiring no special configuration.
 
 ---
 
