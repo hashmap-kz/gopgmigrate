@@ -18,7 +18,7 @@ strictly ordered.
 
 ## Naming conventions
 
-![Migration Naming Convention](assets/migration-names.png)
+![Migration Naming Convention](assets/migration-names.svg)
 
 ### Reasons:
 
