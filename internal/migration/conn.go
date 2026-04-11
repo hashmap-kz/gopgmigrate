@@ -7,8 +7,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// GetDatabaseConnectionPostgres initializes a PostgreSQL connection
-func GetDatabaseConnectionPostgres(dbURL string) (*sql.DB, error) {
+// newPgConnection initializes a PostgreSQL connection
+func newPgConnection(dbURL string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)

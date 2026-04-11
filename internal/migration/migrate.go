@@ -17,6 +17,21 @@ import (
 	"gopgmigrate/pkg/logger"
 )
 
+type ApplyOpts struct {
+	MigrationDir     string
+	DryRun           bool
+	ConnStr          string
+	HistoryTableName string
+}
+
+type RollbackOpts struct {
+	MigrationDir     string
+	DryRun           bool
+	ConnStr          string
+	HistoryTableName string
+	UndoCount        int
+}
+
 type RunMigrationCtx struct {
 	DirectionDo  bool
 	MigrationDir string
@@ -126,7 +141,7 @@ func initRepo(ctx context.Context, migCtx RunMigrationCtx) (history.MigrateHisto
 	var conn *sql.DB
 
 	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.HistoryTableName)
-	conn, err = GetDatabaseConnectionPostgres(migCtx.ConnStr)
+	conn, err = newPgConnection(migCtx.ConnStr)
 	if err != nil {
 		return nil, nil, err
 	}

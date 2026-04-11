@@ -13,11 +13,17 @@ test: fmt
 	go test -cover ./...
 
 # go run main.go migrate --dirname=examples/tree --connstr postgres://postgres:postgres@localhost:5432/bookstore --mode=mixed
-.ONESHELL:
+.PHONY: migrate
 migrate:
-	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
-	export PGMIGRATE_DIRNAME=examples/tree
+	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore && \
+	export PGMIGRATE_DIRNAME=examples/tree && \
 	go run main.go migrate
+
+.PHONY: dry-run
+dry-run:
+	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore && \
+	export PGMIGRATE_DIRNAME=examples/tree && \
+	go run main.go migrate --dry-run
 
 .ONESHELL:
 last:
