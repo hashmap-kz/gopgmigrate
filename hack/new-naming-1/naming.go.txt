@@ -1,0 +1,197 @@
+package new_naming_1
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+)
+
+const revisionWidth = 7
+
+type MigrationFile struct {
+	Vers int64
+	Path string
+	Base string
+	Data []byte
+	Hash string
+}
+
+type MigrationKind string
+
+const (
+	MigrationKindDo     MigrationKind = "do"
+	MigrationKindNotxDo MigrationKind = "notx.do"
+	MigrationKindRDo    MigrationKind = "r.do"
+	MigrationKindRNotx  MigrationKind = "rnotx.do"
+	MigrationKindUndo   MigrationKind = "undo"
+)
+
+// Canonical migration filename format:
+//
+//	{rev}-{name}.do.sql
+//	{rev}-{name}.notx.do.sql
+//	{rev}-{name}.r.do.sql
+//	{rev}-{name}.rnotx.do.sql
+//	{rev}-{name}.undo.sql
+//
+// Where:
+//   - rev is exactly 7 digits
+//   - name is any non-empty basename fragment not containing '/'
+//   - suffix is parsed from the end, so names may contain dots and suffix-like text
+var (
+	migrationRegex = regexp.MustCompile(`^(\d{7})-([^/]+)\.(do|notx\.do|r\.do|rnotx\.do|undo)\.sql$`)
+
+	versionedMigrationRegexDo      = regexp.MustCompile(`^(\d{7})-([^/]+)\.(do)\.sql$`)
+	versionedMigrationRegexUndo    = regexp.MustCompile(`^(\d{7})-([^/]+)\.(undo)\.sql$`)
+	repeatableMigrationRegexDo     = regexp.MustCompile(`^(\d{7})-([^/]+)\.(r\.do|rnotx\.do)\.sql$`)
+	versionedMigrationRegexNotx    = regexp.MustCompile(`^(\d{7})-([^/]+)\.(notx\.do|rnotx\.do)\.sql$`)
+	postgresqlSchemaTablePathRegex = regexp.MustCompile(`(?i)^[a-z_][a-z0-9_$]{0,62}\.[a-z_][a-z0-9_$]{0,62}$`)
+)
+
+type ParsedMigration struct {
+	Version int64
+	Name    string
+	Kind    MigrationKind
+}
+
+func ParseMigrationFilename(basename string) (ParsedMigration, error) {
+	matches := migrationRegex.FindStringSubmatch(basename)
+	if len(matches) != 4 {
+		return ParsedMigration{}, fmt.Errorf("not a migration filename: %s", basename)
+	}
+
+	version, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		return ParsedMigration{}, fmt.Errorf("parse migration version %q: %w", matches[1], err)
+	}
+	if version < 0 {
+		return ParsedMigration{}, fmt.Errorf("invalid negative migration version in %s", basename)
+	}
+
+	return ParsedMigration{
+		Version: version,
+		Name:    matches[2],
+		Kind:    MigrationKind(matches[3]),
+	}, nil
+}
+
+func ParseVersionDo(basename string) (int64, error) {
+	parsed, err := ParseMigrationFilename(basename)
+	if err != nil {
+		return -1, err
+	}
+	if parsed.Kind != MigrationKindDo && parsed.Kind != MigrationKindNotxDo && parsed.Kind != MigrationKindRDo && parsed.Kind != MigrationKindRNotx {
+		return -1, fmt.Errorf("not a do migration filename: %s", basename)
+	}
+	return parsed.Version, nil
+}
+
+func ParseVersionUndo(basename string) (int64, error) {
+	parsed, err := ParseMigrationFilename(basename)
+	if err != nil {
+		return -1, err
+	}
+	if parsed.Kind != MigrationKindUndo {
+		return -1, fmt.Errorf("not an undo migration filename: %s", basename)
+	}
+	return parsed.Version, nil
+}
+
+func ParseVersionByRegex(basename string, re *regexp.Regexp) (int64, error) {
+	if !IsOurRegex(re) {
+		return -1, fmt.Errorf("unsupported migration regex")
+	}
+
+	matches := re.FindStringSubmatch(basename)
+	if len(matches) != 4 {
+		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+	}
+
+	parsedResult, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		return -1, err
+	}
+	if parsedResult < 0 {
+		return -1, fmt.Errorf("not a versioned migration filename: %s", basename)
+	}
+
+	return parsedResult, nil
+}
+
+func IsSchemaTablePath(what string) bool {
+	return postgresqlSchemaTablePathRegex.MatchString(what)
+}
+
+func IsTx(file MigrationFile) bool {
+	parsed, err := ParseMigrationFilename(file.Base)
+	if err != nil {
+		return false
+	}
+
+	switch parsed.Kind {
+	case MigrationKindDo, MigrationKindRDo, MigrationKindUndo:
+		return true
+	case MigrationKindNotxDo, MigrationKindRNotx:
+		return false
+	default:
+		return false
+	}
+}
+
+func VersionedMigrationRegexDo() *regexp.Regexp {
+	return versionedMigrationRegexDo
+}
+
+func VersionedMigrationRegexUndo() *regexp.Regexp {
+	return versionedMigrationRegexUndo
+}
+
+func MigrationRegex() *regexp.Regexp {
+	return migrationRegex
+}
+
+func IsRepeatable(file MigrationFile) bool {
+	parsed, err := ParseMigrationFilename(file.Base)
+	if err != nil {
+		return false
+	}
+
+	return parsed.Kind == MigrationKindRDo || parsed.Kind == MigrationKindRNotx
+}
+
+func IsVersioned(base string) bool {
+	parsed, err := ParseMigrationFilename(base)
+	if err != nil {
+		return false
+	}
+
+	return parsed.Kind != MigrationKindUndo
+}
+
+func IsUndo(base string) bool {
+	parsed, err := ParseMigrationFilename(base)
+	if err != nil {
+		return false
+	}
+
+	return parsed.Kind == MigrationKindUndo
+}
+
+func IsNonTransaction(base string) bool {
+	parsed, err := ParseMigrationFilename(base)
+	if err != nil {
+		return false
+	}
+
+	return parsed.Kind == MigrationKindNotxDo || parsed.Kind == MigrationKindRNotx
+}
+
+func IsOurRegex(r ...*regexp.Regexp) bool {
+	for _, elem := range r {
+		switch elem {
+		case versionedMigrationRegexDo, versionedMigrationRegexUndo, repeatableMigrationRegexDo, versionedMigrationRegexNotx, migrationRegex:
+			return true
+		}
+	}
+	return false
+}
