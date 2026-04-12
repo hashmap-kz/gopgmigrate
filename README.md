@@ -2,30 +2,37 @@
 
 SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory layout
 
+[![License](https://img.shields.io/github/license/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/blob/master/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/gopgmigrate)](https://goreportcard.com/report/github.com/hashmap-kz/gopgmigrate)
+[![Go Reference](https://pkg.go.dev/badge/github.com/hashmap-kz/gopgmigrate.svg)](https://pkg.go.dev/github.com/hashmap-kz/gopgmigrate)
+[![Workflow Status](https://img.shields.io/github/actions/workflow/status/hashmap-kz/gopgmigrate/ci.yml?branch=master)](https://github.com/hashmap-kz/gopgmigrate/actions/workflows/ci.yml?query=branch:master)
+[![GitHub Issues](https://img.shields.io/github/issues/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/issues)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/blob/master/go.mod#L3)
+[![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/releases/latest)
+[![Start contributing](https://img.shields.io/github/issues/hashmap-kz/gopgmigrate/good%20first%20issue?color=7057ff&label=Contribute)](https://github.com/hashmap-kz/gopgmigrate/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22)
+
 Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection - no config
 files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
 <!-- TOC -->
-
 * [gopgmigrate](#gopgmigrate)
-    * [How it works](#how-it-works)
-    * [Usage](#usage)
-        * [CLI](#cli)
-            * [Flags](#flags)
-            * [Examples](#examples)
-        * [Library](#library)
-    * [Naming conventions](#naming-conventions)
-        * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
-        * [Design rationale](#design-rationale)
-        * [Transaction behaviour](#transaction-behaviour)
-    * [Directory layouts](#directory-layouts)
-        * [Flat](#flat)
-        * [By concern](#by-concern)
-        * [By release and concern](#by-release-and-concern)
-        * [By environment](#by-environment)
-    * [Contributing](#contributing)
-    * [License](#license)
-
+  * [How it works](#how-it-works)
+  * [Usage](#usage)
+    * [CLI](#cli)
+      * [Flags](#flags)
+      * [Examples](#examples)
+    * [Library](#library)
+  * [Naming conventions](#naming-conventions)
+    * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
+    * [Design rationale](#design-rationale)
+    * [Transaction behaviour](#transaction-behaviour)
+  * [Directory layouts](#directory-layouts)
+    * [Flat](#flat)
+    * [By concern](#by-concern)
+    * [By release and concern](#by-release-and-concern)
+    * [By environment](#by-environment)
+  * [Contributing](#contributing)
+  * [License](#license)
 <!-- TOC -->
 
 ---
