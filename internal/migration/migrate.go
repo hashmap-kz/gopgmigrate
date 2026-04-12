@@ -13,8 +13,6 @@ import (
 	"gopgmigrate/internal/stmt"
 
 	"gopgmigrate/internal/naming"
-
-	"gopgmigrate/pkg/logger"
 )
 
 // public API
@@ -119,7 +117,6 @@ func runMigrationsEntryPoint(
 	}
 
 	if migCtx.dryRun {
-		_ = logger.DisableLogging()
 		printMigrationsInfo(pendingMigrations)
 		return nil
 	}
@@ -183,12 +180,12 @@ func initRepo(ctx context.Context, migCtx *runMigrationCtx) (history.MigrateHist
 func applyPendingMigrations(
 	ctx context.Context,
 	db *sql.DB,
-	mhRepo history.MigrateHistoryRepository,
+	repo history.MigrateHistoryRepository,
 	pendingMigrations []naming.MigrationFile,
 	directionDo bool,
 ) error {
 	for _, elem := range pendingMigrations {
-		err := migrateOneScriptDecideTxNoTx(ctx, db, elem, mhRepo, directionDo)
+		err := migrateOneScriptDecideTxNoTx(ctx, db, elem, repo, directionDo)
 		if err != nil {
 			return err
 		}
@@ -201,7 +198,7 @@ func migrateOneScriptDecideTxNoTx(
 	ctx context.Context,
 	db *sql.DB,
 	file naming.MigrationFile,
-	mhRepo history.MigrateHistoryRepository,
+	repo history.MigrateHistoryRepository,
 	directionDo bool,
 ) (err error) {
 	// TRANSACTION
@@ -214,7 +211,7 @@ func migrateOneScriptDecideTxNoTx(
 		defer tx.Rollback()
 
 		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, mhRepo, directionDo, "+")
+		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo)
 		if err != nil {
 			return err
 		}
@@ -229,7 +226,7 @@ func migrateOneScriptDecideTxNoTx(
 	// NO TRANSACTION
 
 	script, _ := stmt.SplitSQLStatements(string(file.Data))
-	return migrateOneScriptFn(ctx, db, script, file, mhRepo, directionDo, "N")
+	return migrateOneScriptFn(ctx, db, script, file, repo, directionDo)
 }
 
 func migrateOneScriptFn(
@@ -237,12 +234,10 @@ func migrateOneScriptFn(
 	tx history.Transaction,
 	script []string,
 	file naming.MigrationFile,
-	mhRepo history.MigrateHistoryRepository,
+	repo history.MigrateHistoryRepository,
 	directionDo bool,
-	txLogNote string,
 ) (err error) {
 	slog.Info("migration",
-		slog.String("tx", txLogNote),
 		slog.String("direction", getModeForLog(directionDo)),
 		slog.String("type", getTypeForLog(file)),
 		slog.String("name", file.Base),
@@ -260,31 +255,30 @@ func migrateOneScriptFn(
 		}
 	}
 
+	// prepare history entry
+	historyCreateInput := &history.MigrateHistoryCreateInput{
+		Version: file.Vers,
+		Name:    file.Base,
+		Hash:    file.Hash,
+	}
+
 	// write history
 	if directionDo {
 		// DO
 		if naming.IsRepeatable(file) {
-			err = mhRepo.SaveRepeatable(ctx, tx, &history.MigrateHistoryCreateInput{
-				Version: file.Vers,
-				Name:    file.Base,
-				Hash:    file.Hash,
-			})
+			err = repo.SaveRepeatable(ctx, tx, historyCreateInput)
 			if err != nil {
 				return err
 			}
 		} else {
-			err = mhRepo.SaveVersioned(ctx, tx, &history.MigrateHistoryCreateInput{
-				Version: file.Vers,
-				Name:    file.Base,
-				Hash:    file.Hash,
-			})
+			err = repo.SaveVersioned(ctx, tx, historyCreateInput)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
 		// UNDO
-		err := mhRepo.DeleteVersion(ctx, tx, file.Vers)
+		err := repo.DeleteVersion(ctx, tx, file.Vers)
 		if err != nil {
 			return err
 		}

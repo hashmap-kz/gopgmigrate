@@ -8,9 +8,10 @@ import (
 	"os"
 	"strconv"
 
+	"gopgmigrate/internal/logger"
+
 	"gopgmigrate/internal/migration"
 	"gopgmigrate/internal/naming"
-	"gopgmigrate/pkg/logger"
 )
 
 type cliOptions struct {
@@ -159,7 +160,11 @@ func registerCommonFlags(fs *flag.FlagSet, opts *cliOptions) {
 }
 
 func prepareOptions(opts *cliOptions) error {
-	slog.SetDefault(logger.InitLogger("text", opts.logLevel))
+	logger.Init(&logger.Opts{
+		Level:     opts.logLevel,
+		Format:    "text",
+		AddSource: false,
+	})
 
 	if opts.dirName == "" {
 		opts.dirName = os.Getenv("PGMIGRATE_DIRNAME")
