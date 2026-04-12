@@ -5,6 +5,7 @@ services:
       POSTGRES_USER:     test
       POSTGRES_PASSWORD: test
       POSTGRES_DB:       test
+    command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
     ports:
       - "15432:5432"
     healthcheck:
@@ -12,3 +13,14 @@ services:
       interval: 2s
       timeout:  5s
       retries:  10
+    volumes:
+      - pg_volume:/var/lib/postgresql/data:rw
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+
+volumes:
+  pg_volume:
+
+# access for debug:
+#
+# psql "postgres://test:test@localhost:15432/postgres?sslmode=disable"
