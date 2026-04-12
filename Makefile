@@ -45,8 +45,8 @@ test-cov: ## Run tests with coverage report
 
 .PHONY: test-integ
 test-integ:
-	@cd test/integration/storage/environ && make restart
-	go test -tags=integration -v ./test/integration/... | tee test-integ.log
+	@(cd test/integration/environ && bash run.sh)
+	go test -count=1 -tags=integration -v ./test/integration/... | tee test-integ.log
 
 .PHONY: clean
 clean: ## Remove build artifacts and logs

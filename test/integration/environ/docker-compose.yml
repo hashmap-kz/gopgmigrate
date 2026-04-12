@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17.9-alpine3.23
+    container_name: pg-primary
     environment:
       POSTGRES_USER:     test
       POSTGRES_PASSWORD: test
