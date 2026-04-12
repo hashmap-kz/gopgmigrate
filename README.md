@@ -6,24 +6,26 @@ Runs migrations sequentially with advisory locking, transactional safety, and ha
 files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
 <!-- TOC -->
+
 * [gopgmigrate](#gopgmigrate)
-  * [How it works](#how-it-works)
-  * [Usage](#usage)
-    * [CLI](#cli)
-      * [Flags](#flags)
-      * [Examples](#examples)
-    * [Library](#library)
-  * [Naming conventions](#naming-conventions)
-    * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
-    * [Design rationale](#design-rationale)
-    * [Transaction behaviour](#transaction-behaviour)
-  * [Directory layouts](#directory-layouts)
-    * [Flat](#flat)
-    * [By concern](#by-concern)
-    * [By release and concern](#by-release-and-concern)
-    * [By environment](#by-environment)
-  * [Contributing](#contributing)
-  * [License](#license)
+    * [How it works](#how-it-works)
+    * [Usage](#usage)
+        * [CLI](#cli)
+            * [Flags](#flags)
+            * [Examples](#examples)
+        * [Library](#library)
+    * [Naming conventions](#naming-conventions)
+        * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
+        * [Design rationale](#design-rationale)
+        * [Transaction behaviour](#transaction-behaviour)
+    * [Directory layouts](#directory-layouts)
+        * [Flat](#flat)
+        * [By concern](#by-concern)
+        * [By release and concern](#by-release-and-concern)
+        * [By environment](#by-environment)
+    * [Contributing](#contributing)
+    * [License](#license)
+
 <!-- TOC -->
 
 ---
@@ -152,27 +154,30 @@ is your emergency escape hatch - it always works.
 
 ### Design rationale
 
-Other tools made choices that this tool deliberately avoids.
+This tool is built around one simple idea: your migration files should stay plain, usable SQL.
 
-**Flat-only layouts** are impractical for projects that grow across release cycles,
-separate schema and data concerns, or multiple environments. `gopgmigrate` imposes no
-structure - organise directories however your project demands.
+**Flexible directory layouts**  
+Real projects rarely fit into one flat folder. You may want to split schema and data changes, group migrations by
+release, or organise them by module or environment. This tool does not force a directory structure, so you can arrange
+files in the way that makes sense for your project.
 
-**Pseudo-DSL and magic comments** inside SQL files - especially when up and down logic
-live in the same file - make it impossible to open a file in a database IDE and run it
-directly. Every file here is plain executable SQL, nothing else.
+**Plain SQL, nothing hidden**  
+Migration files should be easy to read, review, copy, and run directly in your database IDE or with `psql`. That is why
+every migration here is just normal executable SQL, with no embedded DSL, no magic comments, and no mixed control syntax
+inside the file.
 
-**Rollback scripts alongside forward migrations** break shell-based workflows. A plain
-`find *.sql` glob picks up both directions at once. `gopgmigrate` keeps them separate so
-`find` and `psql` always work safely without the tool.
+**Safe separation of forward and rollback scripts**  
+Keeping rollback files mixed together with forward migrations makes simple shell workflows harder and riskier. This tool
+keeps them separate, so basic commands and file globs stay predictable and safe.
 
-**Vendor lock-in** means your migration files become useless without the tool that owns
-them. Here, every file is a plain SQL file. The tool is optional. `find | sort | psql`
-reproduces your database from scratch with no binary required.
+**No lock-in**  
+Your SQL files should still be useful even without this tool. They remain normal SQL files that can be sorted, reviewed,
+and executed independently. The tool helps manage migrations, but it does not own your migration format.
 
-**Repeatable migrations and non-transactional execution** are not edge cases - they are
-everyday requirements for managing views, functions, and maintenance operations. Both
-are first-class citizens, declared in the filename, requiring no special configuration.
+**Repeatables and non-transactional migrations are built in**  
+Updating views, functions, triggers, extensions, or maintenance logic is a normal part of working with PostgreSQL. Some
+operations also need to run outside a transaction. These cases are supported naturally and are expressed in the
+filename, without extra configuration or custom syntax.
 
 ### Transaction behaviour
 
