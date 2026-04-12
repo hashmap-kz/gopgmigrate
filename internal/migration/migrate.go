@@ -130,7 +130,7 @@ func preparePendingMigrations(
 	ctx context.Context,
 	migCtx *runMigrationCtx,
 	conn *sql.DB,
-	repo history.MigrateHistoryRepository,
+	repo history.Repo,
 ) ([]naming.MigrationFile, error) {
 	var err error
 	var pendingMigrations []naming.MigrationFile
@@ -156,12 +156,12 @@ func preparePendingMigrations(
 
 // init repo, conn
 
-func initRepo(ctx context.Context, migCtx *runMigrationCtx) (history.MigrateHistoryRepository, *sql.DB, error) {
+func initRepo(ctx context.Context, migCtx *runMigrationCtx) (history.Repo, *sql.DB, error) {
 	var err error
-	var repo history.MigrateHistoryRepository
+	var repo history.Repo
 	var conn *sql.DB
 
-	repo = history.NewMigrateHistoryPostgresRepository(ctx, migCtx.historyTableName)
+	repo = history.NewRepo(ctx, migCtx.historyTableName)
 	conn, err = newPgConnection(migCtx.connStr)
 	if err != nil {
 		return nil, nil, err
@@ -180,7 +180,7 @@ func initRepo(ctx context.Context, migCtx *runMigrationCtx) (history.MigrateHist
 func applyPendingMigrations(
 	ctx context.Context,
 	db *sql.DB,
-	repo history.MigrateHistoryRepository,
+	repo history.Repo,
 	pendingMigrations []naming.MigrationFile,
 	directionDo bool,
 ) error {
@@ -198,9 +198,9 @@ func migrateOneScriptDecideTxNoTx(
 	ctx context.Context,
 	db *sql.DB,
 	file naming.MigrationFile,
-	repo history.MigrateHistoryRepository,
+	repo history.Repo,
 	directionDo bool,
-) (err error) {
+) error {
 	// TRANSACTION
 
 	if naming.IsTx(file) {
@@ -211,13 +211,11 @@ func migrateOneScriptDecideTxNoTx(
 		defer tx.Rollback()
 
 		script := []string{string(file.Data)}
-		err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo)
-		if err != nil {
+		if err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo); err != nil {
 			return err
 		}
 
-		err = tx.Commit()
-		if err != nil {
+		if err = tx.Commit(); err != nil {
 			return err
 		}
 		return nil
@@ -225,7 +223,10 @@ func migrateOneScriptDecideTxNoTx(
 
 	// NO TRANSACTION
 
-	script, _ := stmt.SplitSQLStatements(string(file.Data))
+	script, err := stmt.SplitSQLStatements(string(file.Data))
+	if err != nil {
+		return err
+	}
 	return migrateOneScriptFn(ctx, db, script, file, repo, directionDo)
 }
 
@@ -234,9 +235,9 @@ func migrateOneScriptFn(
 	tx history.Transaction,
 	script []string,
 	file naming.MigrationFile,
-	repo history.MigrateHistoryRepository,
+	repo history.Repo,
 	directionDo bool,
-) (err error) {
+) error {
 	slog.Info("migration",
 		slog.String("direction", getModeForLog(directionDo)),
 		slog.String("type", getTypeForLog(file)),
@@ -249,7 +250,7 @@ func migrateOneScriptFn(
 		if strings.TrimSpace(scriptStmt) == "" {
 			continue
 		}
-		_, err = tx.ExecContext(ctx, scriptStmt)
+		_, err := tx.ExecContext(ctx, scriptStmt)
 		if err != nil {
 			return fmt.Errorf("error applying migration %s: %v", file.Base, err)
 		}
@@ -266,20 +267,17 @@ func migrateOneScriptFn(
 	if directionDo {
 		// DO
 		if naming.IsRepeatable(file) {
-			err = repo.SaveRepeatable(ctx, tx, historyCreateInput)
-			if err != nil {
+			if err := repo.SaveRepeatable(ctx, tx, historyCreateInput); err != nil {
 				return err
 			}
 		} else {
-			err = repo.SaveVersioned(ctx, tx, historyCreateInput)
-			if err != nil {
+			if err := repo.SaveVersioned(ctx, tx, historyCreateInput); err != nil {
 				return err
 			}
 		}
 	} else {
 		// UNDO
-		err := repo.DeleteVersion(ctx, tx, file.Vers)
-		if err != nil {
+		if err := repo.DeleteVersion(ctx, tx, file.Vers); err != nil {
 			return err
 		}
 	}

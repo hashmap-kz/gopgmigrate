@@ -48,7 +48,7 @@ type MigrateHistory struct {
 	TxID string `json:"mh_txid" db:"mh_txid"`
 }
 
-type MigrateHistoryRepository interface {
+type Repo interface {
 	CreateHistoryTable(ctx context.Context, tx Transaction) error
 
 	SaveVersioned(ctx context.Context, tx Transaction, inputEntity *MigrateHistoryCreateInput) error
@@ -64,9 +64,9 @@ type repo struct {
 	tableName string
 }
 
-var _ MigrateHistoryRepository = &repo{}
+var _ Repo = &repo{}
 
-func NewMigrateHistoryPostgresRepository(_ context.Context, tableName string) MigrateHistoryRepository {
+func NewRepo(_ context.Context, tableName string) Repo {
 	return &repo{
 		tableName: tableName,
 	}
