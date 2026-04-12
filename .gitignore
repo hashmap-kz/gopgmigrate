@@ -16,3 +16,12 @@ main
 vendor
 tars/
 tmpgen/
+
+backups/
+dist/
+bin/
+*.log
+coverage.txt
+__debug_bin*
+pprof/
+nohup.out

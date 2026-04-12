@@ -1,4 +1,4 @@
-// internal/testutil/diff.go
+//go:build integration
 
 package integration
 
