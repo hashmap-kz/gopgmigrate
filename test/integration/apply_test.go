@@ -2,8 +2,10 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -94,7 +96,7 @@ func TestApply_DDLChangesReflectedInSchema(t *testing.T) {
 	assert.Contains(t, diff.FunctionsAdded, "public.get_users()",
 		"get_users function should have been created\n%s", diff)
 
-	// data changes
+	//// data changes
 	//td := diff.TableChanges["public.users"]
 	//assert.Equal(t, 2, td.RowsAdded(),
 	//	"two users should have been seeded\n%s", diff)
@@ -201,7 +203,7 @@ func TestRollback_FullRollbackRestoresEmptySchema(t *testing.T) {
 	restored := TakeSnapshot(t, pg.DB)
 	diff := Diff(baseline, restored)
 
-	// history table exists (it is not rolled back — it is infrastructure)
+	// history table exists (it is not rolled back - it is infrastructure)
 	// but no user tables should remain
 	userTables := userTablesOnly(restored.Tables)
 	assert.Empty(t, userTables,
@@ -209,6 +211,115 @@ func TestRollback_FullRollbackRestoresEmptySchema(t *testing.T) {
 
 	assert.Empty(t, QueryHistory(t, pg.DB, "public.migrate_history"),
 		"history should be empty after full rollback")
+}
+
+// perf
+
+// TestApply_Performance_ManyFiles generates a large number of migration files
+// and measures how long the full apply cycle takes. It is not a benchmark
+// (no b.N loop) because real performance here is dominated by Postgres
+// round-trips, not CPU - a benchmark would just repeat the same DB work N
+// times without adding signal.
+//
+// What it measures:
+//   - file discovery and sorting across many files
+//   - history table reads and writes at scale
+//   - overall apply latency for a realistic large project
+//
+// Run it explicitly when you want a perf signal:
+//
+//	go test -tags integration -run TestApply_Performance_ManyFiles -v ./integration/...
+func TestApply_Performance_ManyFiles(t *testing.T) {
+	t.Parallel()
+
+	const (
+		nVersioned  = 200 // plain DDL migrations
+		nRepeatable = 50  // functions / views re-applied on change
+		nNotx       = 10  // non-transactional (VACUUM-style)
+	)
+	total := nVersioned + nRepeatable + nNotx
+
+	pg := NewPgDatabase(t)
+	dir := NewMigrationDir(t)
+
+	// --- generate versioned migrations ---
+	// Each creates a small table so the SQL is not trivially empty.
+	// Tables are named tN to avoid identifier length limits.
+	for i := 1; i <= nVersioned; i++ {
+		dir.Add(t,
+			fmt.Sprintf("%07d-create-table-%04d.up.sql", i, i),
+			fmt.Sprintf(
+				"create table t%04d (id bigint generated always as identity primary key, v text);",
+				i,
+			),
+		)
+	}
+
+	// --- generate repeatable migrations ---
+	// Functions that reference the tables created above.
+	base := nVersioned
+	for i := 1; i <= nRepeatable; i++ {
+		rev := base + i
+		dir.Add(t,
+			fmt.Sprintf("%07d-fn-get-%04d.r.up.sql", rev, i),
+			fmt.Sprintf(
+				"create or replace function fn_get_%04d() returns bigint language sql as $$ select count(*) from t%04d; $$;",
+				i, i,
+			),
+		)
+	}
+
+	// --- generate non-transactional migrations ---
+	// ANALYZE statements on the tables - safe no-ops in a test, but exercises
+	// the notx execution path (statement-by-statement, outside BEGIN/COMMIT).
+	base = nVersioned + nRepeatable
+	for i := 1; i <= nNotx; i++ {
+		rev := base + i
+		dir.Add(t,
+			fmt.Sprintf("%07d-analyze-%04d.notx.up.sql", rev, i),
+			fmt.Sprintf("analyze t%04d;", i),
+		)
+	}
+
+	opts := &migration.ApplyOpts{
+		MigrationDir:     dir.Root,
+		ConnStr:          pg.ConnStr,
+		HistoryTableName: "public.migrate_history",
+	}
+
+	// --- first apply: everything is pending ---
+	start := time.Now()
+	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
+	firstApply := time.Since(start)
+
+	hist := QueryHistory(t, pg.DB, "public.migrate_history")
+	require.Len(t, hist, total,
+		"expected %d history rows after first apply", total)
+
+	// --- second apply: nothing is pending ---
+	// This measures the cost of scanning a large history table and
+	// resolving that all files are already applied. Should be fast.
+	start = time.Now()
+	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
+	secondApply := time.Since(start)
+
+	hist = QueryHistory(t, pg.DB, "public.migrate_history")
+	require.Len(t, hist, total,
+		"history must not grow on a no-op second apply")
+
+	t.Logf("files:        %d (%d versioned, %d repeatable, %d notx)",
+		total, nVersioned, nRepeatable, nNotx)
+	t.Logf("first apply:  %v  (%.1f ms/migration)",
+		firstApply, float64(firstApply.Milliseconds())/float64(total))
+	t.Logf("second apply: %v  (no-op, overhead only)",
+		secondApply)
+
+	// Soft thresholds - not hard limits, just a signal that something
+	// regressed badly. Adjust to match your hardware and Postgres config.
+	assert.Less(t, firstApply, 60*time.Second,
+		"first apply of %d migrations took too long", total)
+	assert.Less(t, secondApply, 5*time.Second,
+		"no-op second apply of %d migrations took too long", total)
 }
 
 // helpers

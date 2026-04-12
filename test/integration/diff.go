@@ -204,6 +204,7 @@ func indexByName(cols []ColumnSnapshot) map[string]ColumnSnapshot {
 	}
 	return m
 }
+
 func indexConstraintsByName(cs []ConstraintSnapshot) map[string]ConstraintSnapshot {
 	m := make(map[string]ConstraintSnapshot, len(cs))
 	for _, c := range cs {
@@ -211,6 +212,7 @@ func indexConstraintsByName(cs []ConstraintSnapshot) map[string]ConstraintSnapsh
 	}
 	return m
 }
+
 func indexIndexesByName(idxs []IndexSnapshot) map[string]IndexSnapshot {
 	m := make(map[string]IndexSnapshot, len(idxs))
 	for _, i := range idxs {

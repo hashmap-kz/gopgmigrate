@@ -2,12 +2,13 @@ package integration
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gopgmigrate/internal/migration"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopgmigrate/internal/migration"
 )
 
 // integration/safety_test.go

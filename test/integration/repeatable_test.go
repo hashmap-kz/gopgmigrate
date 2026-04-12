@@ -2,10 +2,11 @@ package integration
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopgmigrate/internal/migration"
-	"testing"
 )
 
 // integration/repeatable_test.go
