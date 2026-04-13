@@ -53,11 +53,12 @@ func newMigrateCmd() *cobra.Command {
 	var opts cliOptions
 	var dryRun bool
 
+	//nolint:gosec
 	cmd := &cobra.Command{
 		Use:     "migrate",
 		Short:   "Run database migrations",
 		Example: "  gopgmigrate migrate --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := prepareOptions(&opts); err != nil {
 				return err
 			}
@@ -70,7 +71,7 @@ func newMigrateCmd() *cobra.Command {
 				HistoryTableName: opts.historyTableName,
 			})
 		},
-		PostRunE: func(cmd *cobra.Command, args []string) error {
+		PostRunE: func(_ *cobra.Command, _ []string) error {
 			slog.Info("migration", slog.String("status", "applied:ok"))
 			return nil
 		},
@@ -85,11 +86,12 @@ func newMigrateCmd() *cobra.Command {
 func newLastCmd() *cobra.Command {
 	var opts cliOptions
 
+	//nolint:gosec
 	cmd := &cobra.Command{
 		Use:     "last",
 		Short:   "Show the last applied migration",
 		Example: "  gopgmigrate last --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := prepareOptions(&opts); err != nil {
 				return err
 			}
@@ -108,11 +110,12 @@ func newRollbackCountCmd() *cobra.Command {
 	var opts cliOptions
 	var dryRun bool
 
+	//nolint:gosec
 	cmd := &cobra.Command{
 		Use:     "rollback-count [steps]",
 		Short:   "Rollback database migrations by a given number of steps",
 		Example: "  gopgmigrate rollback-count 2 --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
-		Args: func(cmd *cobra.Command, args []string) error {
+		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return fmt.Errorf("requires exactly 1 argument: [steps]")
 			}
@@ -122,11 +125,12 @@ func newRollbackCountCmd() *cobra.Command {
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if err := prepareOptions(&opts); err != nil {
 				return err
 			}
 
+			//nolint:errcheck
 			steps, _ := strconv.Atoi(args[0])
 
 			ctx := context.Background()
@@ -138,7 +142,7 @@ func newRollbackCountCmd() *cobra.Command {
 				UndoCount:        steps,
 			})
 		},
-		PostRunE: func(cmd *cobra.Command, args []string) error {
+		PostRunE: func(_ *cobra.Command, _ []string) error {
 			slog.Info("migration", slog.String("status", "applied:ok"))
 			return nil
 		},
