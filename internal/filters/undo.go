@@ -35,7 +35,7 @@ func GetMigrationsForUndo(
 		return nil, err
 	}
 
-	if err = checkFilesAreUniqueByVersion(toUndo); err != nil {
+	if err := checkFilesAreUniqueByVersion(toUndo); err != nil {
 		return nil, err
 	}
 
@@ -60,7 +60,7 @@ func getVersionedMigrationsToUndo(files []naming.MigrationFile, hist []history.M
 	// collect UNDO scripts
 	resultFiles := []naming.MigrationFile{}
 	for _, elem := range hist {
-		script, found, err := findCorrespondingUndoScript(files, elem)
+		script, found, err := findCorrespondingUndoScript(files, &elem)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func getVersionedMigrationsToUndo(files []naming.MigrationFile, hist []history.M
 
 func findCorrespondingUndoScript(
 	undoScripts []naming.MigrationFile,
-	doScript history.MigrateHistory,
+	doScript *history.MigrateHistory,
 ) (naming.MigrationFile, bool, error) {
 	versionDo, err := naming.ParseVersion(doScript.Name)
 	if err != nil {

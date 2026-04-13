@@ -51,7 +51,7 @@ func TestFindCorrespondingUndoScript(t *testing.T) {
 
 	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
-	result, found, err := findCorrespondingUndoScript(undoFiles, doScript)
+	result, found, err := findCorrespondingUndoScript(undoFiles, &doScript)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "0000002-users.down.sql", result.Base)
@@ -64,7 +64,7 @@ func TestFindCorrespondingUndoScript_NotFound(t *testing.T) {
 
 	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
-	_, found, err := findCorrespondingUndoScript(undoFiles, doScript)
+	_, found, err := findCorrespondingUndoScript(undoFiles, &doScript)
 	assert.NoError(t, err)
 	assert.False(t, found)
 }
@@ -76,6 +76,6 @@ func TestFindCorrespondingUndoScript_ParseError(t *testing.T) {
 
 	doScript := history.MigrateHistory{Name: "0000002-users.up.sql"}
 
-	_, _, err := findCorrespondingUndoScript(undoFiles, doScript)
+	_, _, err := findCorrespondingUndoScript(undoFiles, &doScript)
 	assert.Error(t, err)
 }

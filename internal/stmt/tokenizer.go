@@ -58,7 +58,7 @@ func (t *Tokenizer) peekTwoRunes() (rune, rune, bool) {
 	savedPos := t.position
 
 	var has bool
-	r1, _, has := t.nextRune()
+	r1, _, _ := t.nextRune()
 	r2, _, has := t.nextRune()
 
 	t.position = savedPos
@@ -256,7 +256,6 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: TokenEOF}
 	}
 
-	// r, _, _ := t.peekRune()
 	r1, r2, _ := t.peekTwoRunes()
 
 	// Handle single-line comments

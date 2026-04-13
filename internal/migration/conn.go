@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	// required driver
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
