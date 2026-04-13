@@ -2,16 +2,16 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 
 	"gopgmigrate/internal/logger"
-
 	"gopgmigrate/internal/migration"
 	"gopgmigrate/internal/naming"
+
+	"github.com/spf13/cobra"
 )
 
 type cliOptions struct {
@@ -26,137 +26,135 @@ func main() {
 }
 
 func run() int {
-	if len(os.Args) < 2 {
-		printUsage()
+	if err := newRootCmd().Execute(); err != nil {
 		return 1
 	}
-
-	switch os.Args[1] {
-	case "migrate":
-		return up(os.Args[2:])
-	case "last":
-		return last(os.Args[2:])
-	case "rollback-count":
-		return rollbackCount(os.Args[2:])
-	case "-h", "--help", "help":
-		printUsage()
-		return 0
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
-		printUsage()
-		return 1
-	}
+	return 0
 }
 
-func up(args []string) int {
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:           "gopgmigrate",
+		Short:         "PostgreSQL migration tool",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	root.AddCommand(
+		newMigrateCmd(),
+		newLastCmd(),
+		newRollbackCountCmd(),
+	)
+
+	return root
+}
+
+func newMigrateCmd() *cobra.Command {
 	var opts cliOptions
 	var dryRun bool
 
-	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	cmd := &cobra.Command{
+		Use:     "migrate",
+		Short:   "Run database migrations",
+		Example: "  gopgmigrate migrate --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := prepareOptions(&opts); err != nil {
+				return err
+			}
 
-	registerCommonFlags(fs, &opts)
-	fs.BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
-
-	if err := fs.Parse(args); err != nil {
-		return 1
+			ctx := context.Background()
+			return migration.RunMigrationsUp(ctx, &migration.ApplyOpts{
+				MigrationDir:     opts.dirName,
+				DryRun:           dryRun,
+				ConnStr:          opts.connStr,
+				HistoryTableName: opts.historyTableName,
+			})
+		},
+		PostRunE: func(cmd *cobra.Command, args []string) error {
+			slog.Info("migration", slog.String("status", "applied:ok"))
+			return nil
+		},
 	}
 
-	if err := prepareOptions(&opts); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
+	registerCommonFlags(cmd, &opts)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate migration execution without applying changes")
 
-	ctx := context.Background()
-	err := migration.RunMigrationsUp(ctx, &migration.ApplyOpts{
-		MigrationDir:     opts.dirName,
-		DryRun:           dryRun,
-		ConnStr:          opts.connStr,
-		HistoryTableName: opts.historyTableName,
-	})
-	if err != nil {
-		slog.Error("migration", slog.String("err", err.Error()))
-		return 1
-	}
-
-	slog.Info("migration", slog.String("status", "applied:ok"))
-	return 0
+	return cmd
 }
 
-func last(args []string) int {
+func newLastCmd() *cobra.Command {
 	var opts cliOptions
 
-	fs := flag.NewFlagSet("last", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	cmd := &cobra.Command{
+		Use:     "last",
+		Short:   "Show the last applied migration",
+		Example: "  gopgmigrate last --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := prepareOptions(&opts); err != nil {
+				return err
+			}
 
-	registerCommonFlags(fs, &opts)
-
-	if err := fs.Parse(args); err != nil {
-		return 1
+			fmt.Printf("Last migration applied in '%s' using connection: %s\n", opts.dirName, opts.connStr)
+			return nil
+		},
 	}
 
-	if err := prepareOptions(&opts); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
+	registerCommonFlags(cmd, &opts)
 
-	fmt.Printf("Last migration applied in '%s' using connection: %s\n", opts.dirName, opts.connStr)
-	return 0
+	return cmd
 }
 
-func rollbackCount(args []string) int {
+func newRollbackCountCmd() *cobra.Command {
 	var opts cliOptions
 	var dryRun bool
 
-	fs := flag.NewFlagSet("rollback-count", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	cmd := &cobra.Command{
+		Use:     "rollback-count [steps]",
+		Short:   "Rollback database migrations by a given number of steps",
+		Example: "  gopgmigrate rollback-count 2 --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("requires exactly 1 argument: [steps]")
+			}
+			steps, err := strconv.Atoi(args[0])
+			if err != nil || steps <= 0 {
+				return fmt.Errorf("invalid rollback step: must be a positive number")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := prepareOptions(&opts); err != nil {
+				return err
+			}
 
-	registerCommonFlags(fs, &opts)
-	fs.BoolVar(&dryRun, "dry-run", false, "Simulate rollback execution without applying changes")
+			steps, _ := strconv.Atoi(args[0])
 
-	if err := fs.Parse(args); err != nil {
-		return 1
+			ctx := context.Background()
+			return migration.RunMigrationsDown(ctx, &migration.RollbackOpts{
+				MigrationDir:     opts.dirName,
+				DryRun:           dryRun,
+				ConnStr:          opts.connStr,
+				HistoryTableName: opts.historyTableName,
+				UndoCount:        steps,
+			})
+		},
+		PostRunE: func(cmd *cobra.Command, args []string) error {
+			slog.Info("migration", slog.String("status", "applied:ok"))
+			return nil
+		},
 	}
 
-	if err := prepareOptions(&opts); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
+	registerCommonFlags(cmd, &opts)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate rollback execution without applying changes")
 
-	if fs.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "rollback-count requires exactly 1 argument: [steps]")
-		fs.Usage()
-		return 1
-	}
-
-	steps, err := strconv.Atoi(fs.Arg(0))
-	if err != nil || steps <= 0 {
-		fmt.Fprintln(os.Stderr, "invalid rollback step. Please provide a positive number.")
-		return 1
-	}
-
-	ctx := context.Background()
-	err = migration.RunMigrationsDown(ctx, &migration.RollbackOpts{
-		MigrationDir:     opts.dirName,
-		DryRun:           dryRun,
-		ConnStr:          opts.connStr,
-		HistoryTableName: opts.historyTableName,
-		UndoCount:        steps,
-	})
-	if err != nil {
-		slog.Error("migration", slog.String("err", err.Error()))
-		return 1
-	}
-
-	slog.Info("migration", slog.String("status", "applied:ok"))
-	return 0
+	return cmd
 }
 
-func registerCommonFlags(fs *flag.FlagSet, opts *cliOptions) {
-	fs.StringVar(&opts.dirName, "dirname", "", "Directory containing migration files (required)")
-	fs.StringVar(&opts.connStr, "connstr", "", "postgres://username:password@host:port/dbname?key=val")
-	fs.StringVar(&opts.logLevel, "log-level", "info", "Log level (debug/info/warn/error)")
-	fs.StringVar(&opts.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
+func registerCommonFlags(cmd *cobra.Command, opts *cliOptions) {
+	cmd.Flags().StringVar(&opts.dirName, "dirname", "", "Directory containing migration files (required)")
+	cmd.Flags().StringVar(&opts.connStr, "connstr", "", "postgres://username:password@host:port/dbname?key=val")
+	cmd.Flags().StringVar(&opts.logLevel, "log-level", "info", "Log level (debug/info/warn/error)")
+	cmd.Flags().StringVar(&opts.historyTableName, "history-table", "public.migrate_history", "Migration history table name")
 }
 
 func prepareOptions(opts *cliOptions) error {
@@ -188,24 +186,8 @@ func prepareOptions(opts *cliOptions) error {
 	}
 
 	if !naming.IsSchemaTablePath(opts.historyTableName) {
-		return fmt.Errorf("--history-table expected required in format: `schema.table`")
+		return fmt.Errorf("--history-table must be in format: `schema.table`")
 	}
 
 	return nil
-}
-
-func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage:
-  gopgmigrate <command> [flags]
-
-Commands:
-  migrate         Run database migrations
-  last            Show the last applied migration
-  rollback-count  Rollback database migrations
-
-Examples:
-  gopgmigrate migrate --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
-  gopgmigrate last --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
-  gopgmigrate rollback-count 2 --dirname ./migrations --connstr postgres://user:pass@localhost:5432/db --history-table public.migrate_history
-`)
 }
