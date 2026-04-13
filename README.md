@@ -1,3 +1,4 @@
+<!-- omit in toc -->
 # gopgmigrate
 
 SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory layout
@@ -14,26 +15,33 @@ SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory l
 Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection - no config
 files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
 
-<!-- TOC -->
-* [gopgmigrate](#gopgmigrate)
-  * [How it works](#how-it-works)
-  * [Usage](#usage)
-    * [CLI](#cli)
-      * [Flags](#flags)
-      * [Examples](#examples)
-    * [Library](#library)
-  * [Naming conventions](#naming-conventions)
-    * [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
-    * [Design rationale](#design-rationale)
-    * [Transaction behaviour](#transaction-behaviour)
-  * [Directory layouts](#directory-layouts)
-    * [Flat](#flat)
-    * [By concern](#by-concern)
-    * [By release and concern](#by-release-and-concern)
-    * [By environment](#by-environment)
-  * [Contributing](#contributing)
-  * [License](#license)
-<!-- TOC -->
+<!-- Plugin used: Markdown TOC & Chapter Number -->
+
+<!-- omit in toc -->
+## Table of Contents
+
+<!-- TOC tocDepth:2..3 chapterDepth:2..6 -->
+
+- [How it works](#how-it-works)
+- [Usage](#usage)
+  - [CLI](#cli)
+    - [Flags](#flags)
+    - [Examples](#examples)
+  - [Library](#library)
+    - [Examples](#examples-1)
+- [Naming conventions](#naming-conventions)
+  - [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
+  - [Design rationale](#design-rationale)
+  - [Transaction behaviour](#transaction-behaviour)
+- [Directory layouts](#directory-layouts)
+  - [Flat](#flat)
+  - [By concern](#by-concern)
+  - [By release and concern](#by-release-and-concern)
+  - [By environment](#by-environment)
+- [Contributing](#contributing)
+- [License](#license)
+
+<!-- /TOC -->
 
 ---
 
@@ -50,6 +58,8 @@ sorts only by the 7-digit revision prefix.
 ---
 
 ## Usage
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 ### CLI
 
@@ -104,9 +114,21 @@ gopgmigrate rollback-count 1 --dry-run
 
 ### Library
 
+#### Examples
+
+```go
+err := migration.RunMigrationsUp(context.Background(), &migration.ApplyOpts{
+	MigrationDir:     "./migrations",
+	ConnStr:          "postgres://user:pass@localhost:5432/mydb",
+	HistoryTableName: "public.migrate_history",
+})
+```
+
 ---
 
 ## Naming conventions
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 Every migration file encodes its complete behaviour in its name.
 
@@ -207,6 +229,8 @@ statements in that file cannot be rolled back - plan accordingly.
 ---
 
 ## Directory layouts
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 Migration files can live anywhere under the root directory. The tool walks recursively and sorts globally by revision.
 Organise however makes sense for your project.
