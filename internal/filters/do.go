@@ -38,7 +38,7 @@ func GetMigrationsForApply(
 		return nil, err
 	}
 
-	if err = checkFilesAreUniqueByVersion(toApply); err != nil {
+	if err := checkFilesAreUniqueByVersion(toApply); err != nil {
 		return nil, err
 	}
 
@@ -77,7 +77,7 @@ func getVersionedMigrationsToApply(
 
 		existing := findHist(file.Base, appliedMigrations)
 
-		if naming.IsRepeatable(file) {
+		if naming.IsRepeatable(&file) {
 			// apply only if changed
 			if existing == nil || existing.Hash != file.Hash {
 				toApply = append(toApply, file)
@@ -86,10 +86,8 @@ func getVersionedMigrationsToApply(
 			// check hash, skip applied
 			if existing == nil {
 				toApply = append(toApply, file)
-			} else {
-				if existing.Hash != file.Hash {
-					return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.Path))
-				}
+			} else if existing.Hash != file.Hash {
+				return nil, fmt.Errorf("hash mismatch, check migration script: %s", filepath.ToSlash(file.Path))
 			}
 		}
 	}

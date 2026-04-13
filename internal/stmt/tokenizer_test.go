@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSimple1(t *testing.T) {
@@ -18,7 +20,7 @@ func TestSimple1(t *testing.T) {
 		{"simple-2", "select 1;", 1},
 		{"multilineNestedComment", multilineNestedComment, 1},
 		{"q1", q1, 11},
-		{"audit", audit_stmts, 40},
+		{"audit", auditStmts, 40},
 		{"placeholder", "${table_name}", 1},
 	}
 
@@ -29,8 +31,8 @@ func TestSimple1(t *testing.T) {
 				t.Errorf("%s: expected %d statements, got: %d", test.name, test.expected, cnt)
 			}
 			if strings.TrimSpace(splitResult) != strings.TrimSpace(test.inputSQL) {
-				os.WriteFile("expected.txt", []byte(strings.TrimSpace(test.inputSQL)), 0o755)
-				os.WriteFile("actual.txt", []byte(strings.TrimSpace(splitResult)), 0o755)
+				assert.NoError(t, os.WriteFile("expected.txt", []byte(strings.TrimSpace(test.inputSQL)), 0o600))
+				assert.NoError(t, os.WriteFile("actual.txt", []byte(strings.TrimSpace(splitResult)), 0o600))
 				t.Errorf("Content not matching: %s, expected: [%s], actual: [%s]",
 					test.name,
 					strings.TrimSpace(test.inputSQL),
@@ -309,6 +311,7 @@ func checkSplitStmt(inputSQL string, expected []string) bool {
 	return true
 }
 
+//nolint:gocritic
 func checkSplit(inputSQL string) (string, int) {
 	statements, err := SplitSQLStatements(inputSQL)
 	if err != nil {
@@ -372,7 +375,7 @@ var multilineNestedComment = `
 1
 `
 
-var audit_stmts = `
+var auditStmts = `
 -- An audit history is important on most tables. Provide an audit trigger that
 -- logs to a dedicated audit table for the major relations.
 --
@@ -511,7 +514,7 @@ COMMENT ON COLUMN audit.log.id
 COMMENT ON COLUMN audit.log.schema_name
   IS 'Database schema audited table for this event is in';
 COMMENT ON COLUMN audit.log.table_name
-  IS 'Non-schema-qualified table name of table event occured in';
+  IS 'Non-schema-qualified table name of table event occurred in';
 COMMENT ON COLUMN audit.log.relid
   IS 'Table OID. Changes with drop/create. Get with ''tablename''::REGCLASS';
 COMMENT ON COLUMN audit.log.session_user_name

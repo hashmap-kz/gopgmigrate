@@ -32,6 +32,8 @@ type Tokenizer struct {
 }
 
 // Read the next Unicode rune
+//
+//nolint:gocritic,unparam
 func (t *Tokenizer) nextRune() (rune, int, bool) {
 	if t.position >= len(t.sql) {
 		return 0, 0, false
@@ -42,6 +44,8 @@ func (t *Tokenizer) nextRune() (rune, int, bool) {
 }
 
 // Peek the next Unicode rune without consuming
+//
+//nolint:gocritic,unparam
 func (t *Tokenizer) peekRune() (rune, int, bool) {
 	if t.position >= len(t.sql) {
 		return 0, 0, false
@@ -51,6 +55,8 @@ func (t *Tokenizer) peekRune() (rune, int, bool) {
 }
 
 // Peek the next two Unicode runes without consuming
+//
+//nolint:gocritic
 func (t *Tokenizer) peekTwoRunes() (rune, rune, bool) {
 	if t.position >= len(t.sql) {
 		return 0, 0, false
@@ -58,7 +64,7 @@ func (t *Tokenizer) peekTwoRunes() (rune, rune, bool) {
 	savedPos := t.position
 
 	var has bool
-	r1, _, has := t.nextRune()
+	r1, _, _ := t.nextRune()
 	r2, _, has := t.nextRune()
 
 	t.position = savedPos
@@ -256,7 +262,6 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: TokenEOF}
 	}
 
-	// r, _, _ := t.peekRune()
 	r1, r2, _ := t.peekTwoRunes()
 
 	// Handle single-line comments

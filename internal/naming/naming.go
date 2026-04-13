@@ -157,7 +157,7 @@ func IsSchemaTablePath(what string) bool {
 	return postgresqlSchemaTablePathRegex.MatchString(what)
 }
 
-func IsTx(file MigrationFile) bool {
+func IsTx(file *MigrationFile) bool {
 	parsed, err := ParseMigrationName(file.Base)
 	if err != nil {
 		return false
@@ -173,7 +173,7 @@ func IsTx(file MigrationFile) bool {
 	}
 }
 
-func IsRepeatable(file MigrationFile) bool {
+func IsRepeatable(file *MigrationFile) bool {
 	parsed, err := ParseMigrationName(file.Base)
 	if err != nil {
 		return false

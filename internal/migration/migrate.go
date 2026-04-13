@@ -185,7 +185,7 @@ func applyPendingMigrations(
 	directionDo bool,
 ) error {
 	for _, elem := range pendingMigrations {
-		err := migrateOneScriptDecideTxNoTx(ctx, db, elem, repo, directionDo)
+		err := migrateOneScriptDecideTxNoTx(ctx, db, &elem, repo, directionDo)
 		if err != nil {
 			return err
 		}
@@ -197,7 +197,7 @@ func applyPendingMigrations(
 func migrateOneScriptDecideTxNoTx(
 	ctx context.Context,
 	db *sql.DB,
-	file naming.MigrationFile,
+	file *naming.MigrationFile,
 	repo history.Repo,
 	directionDo bool,
 ) error {
@@ -208,14 +208,15 @@ func migrateOneScriptDecideTxNoTx(
 		if err != nil {
 			return err
 		}
+		//nolint:errcheck
 		defer tx.Rollback()
 
 		script := []string{string(file.Data)}
-		if err = migrateOneScriptFn(ctx, tx, script, file, repo, directionDo); err != nil {
+		if err := migrateOneScriptFn(ctx, tx, script, file, repo, directionDo); err != nil {
 			return err
 		}
 
-		if err = tx.Commit(); err != nil {
+		if err := tx.Commit(); err != nil {
 			return err
 		}
 		return nil
@@ -234,7 +235,7 @@ func migrateOneScriptFn(
 	ctx context.Context,
 	tx history.Transaction,
 	script []string,
-	file naming.MigrationFile,
+	file *naming.MigrationFile,
 	repo history.Repo,
 	directionDo bool,
 ) error {
@@ -292,7 +293,7 @@ func getModeForLog(directionDo bool) string {
 	return "undo"
 }
 
-func getTypeForLog(file naming.MigrationFile) string {
+func getTypeForLog(file *naming.MigrationFile) string {
 	if naming.IsRepeatable(file) {
 		return "rep"
 	}

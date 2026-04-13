@@ -254,6 +254,7 @@ CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
 	})
 }
 
+//nolint:unparam
 func writeTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 
@@ -261,7 +262,7 @@ func writeTestFile(t *testing.T, dir, name, content string) string {
 	err := os.MkdirAll(filepath.Dir(path), 0o755)
 	require.NoError(t, err)
 
-	err = os.WriteFile(path, []byte(content), 0o644)
+	err = os.WriteFile(path, []byte(content), 0o600)
 	require.NoError(t, err)
 
 	return path

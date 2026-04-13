@@ -5,8 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/stretchr/testify/assert"
 	"gopgmigrate/internal/naming"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFilterMigrationFiles(t *testing.T) {
@@ -38,7 +39,7 @@ func TestFilterMigrationFiles(t *testing.T) {
 	t.Run("returns empty slice when nothing matches", func(t *testing.T) {
 		t.Parallel()
 
-		got := filterMigrationFiles(files, func(f naming.MigrationFile) bool {
+		got := filterMigrationFiles(files, func(_ naming.MigrationFile) bool {
 			return false
 		})
 
@@ -49,7 +50,7 @@ func TestFilterMigrationFiles(t *testing.T) {
 	t.Run("returns all files when everything matches", func(t *testing.T) {
 		t.Parallel()
 
-		got := filterMigrationFiles(files, func(f naming.MigrationFile) bool {
+		got := filterMigrationFiles(files, func(_ naming.MigrationFile) bool {
 			return true
 		})
 
@@ -61,7 +62,7 @@ func TestFilterMigrationFiles(t *testing.T) {
 
 		var filesNil []naming.MigrationFile
 
-		got := filterMigrationFiles(filesNil, func(f naming.MigrationFile) bool {
+		got := filterMigrationFiles(filesNil, func(_ naming.MigrationFile) bool {
 			return true
 		})
 
@@ -72,7 +73,7 @@ func TestFilterMigrationFiles(t *testing.T) {
 	t.Run("works with empty input", func(t *testing.T) {
 		t.Parallel()
 
-		got := filterMigrationFiles([]naming.MigrationFile{}, func(f naming.MigrationFile) bool {
+		got := filterMigrationFiles([]naming.MigrationFile{}, func(_ naming.MigrationFile) bool {
 			return true
 		})
 

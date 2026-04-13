@@ -333,23 +333,23 @@ func TestHelpers(t *testing.T) {
 	t.Run("is tx", func(t *testing.T) {
 		t.Parallel()
 
-		assert.True(t, IsTx(MigrationFile{Base: "0000001-users.up.sql"}))
-		assert.True(t, IsTx(MigrationFile{Base: "0000002-users.r.up.sql"}))
-		assert.False(t, IsTx(MigrationFile{Base: "0000003-users.notx.up.sql"}))
-		assert.False(t, IsTx(MigrationFile{Base: "0000004-users.rnotx.up.sql"}))
-		assert.True(t, IsTx(MigrationFile{Base: "0000005-users.down.sql"}))
-		assert.False(t, IsTx(MigrationFile{Base: "broken.sql"}))
+		assert.True(t, IsTx(&MigrationFile{Base: "0000001-users.up.sql"}))
+		assert.True(t, IsTx(&MigrationFile{Base: "0000002-users.r.up.sql"}))
+		assert.False(t, IsTx(&MigrationFile{Base: "0000003-users.notx.up.sql"}))
+		assert.False(t, IsTx(&MigrationFile{Base: "0000004-users.rnotx.up.sql"}))
+		assert.True(t, IsTx(&MigrationFile{Base: "0000005-users.down.sql"}))
+		assert.False(t, IsTx(&MigrationFile{Base: "broken.sql"}))
 	})
 
 	t.Run("is repeatable", func(t *testing.T) {
 		t.Parallel()
 
-		assert.False(t, IsRepeatable(MigrationFile{Base: "0000001-users.up.sql"}))
-		assert.True(t, IsRepeatable(MigrationFile{Base: "0000002-users.r.up.sql"}))
-		assert.False(t, IsRepeatable(MigrationFile{Base: "0000003-users.notx.up.sql"}))
-		assert.True(t, IsRepeatable(MigrationFile{Base: "0000004-users.rnotx.up.sql"}))
-		assert.False(t, IsRepeatable(MigrationFile{Base: "0000005-users.down.sql"}))
-		assert.False(t, IsRepeatable(MigrationFile{Base: "broken.sql"}))
+		assert.False(t, IsRepeatable(&MigrationFile{Base: "0000001-users.up.sql"}))
+		assert.True(t, IsRepeatable(&MigrationFile{Base: "0000002-users.r.up.sql"}))
+		assert.False(t, IsRepeatable(&MigrationFile{Base: "0000003-users.notx.up.sql"}))
+		assert.True(t, IsRepeatable(&MigrationFile{Base: "0000004-users.rnotx.up.sql"}))
+		assert.False(t, IsRepeatable(&MigrationFile{Base: "0000005-users.down.sql"}))
+		assert.False(t, IsRepeatable(&MigrationFile{Base: "broken.sql"}))
 	})
 
 	t.Run("is versioned", func(t *testing.T) {

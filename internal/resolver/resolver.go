@@ -48,6 +48,8 @@ func getFilesInAPathV2(folder string, reg *regexp.Regexp) ([]naming.MigrationFil
 		// Append any file we found, filter it later
 		base := filepath.Base(path)
 		if !d.IsDir() && filepath.Ext(path) == ".sql" && reg.MatchString(base) {
+			//TODO: use os.Root()
+			//nolint:gosec
 			sql, err := os.ReadFile(path)
 			if err != nil {
 				return err

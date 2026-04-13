@@ -99,6 +99,7 @@ func TestGetVersionedMigrationsToApply(t *testing.T) {
 		{Base: "0000002-users.up.sql", Path: "/migrations/0000002-users.up.sql", Data: []byte("users")},
 	}
 
+	//nolint:prealloc
 	mockHistory := []history.MigrateHistory{
 		{Name: "0000001-init.up.sql", Hash: "1"},
 	}
