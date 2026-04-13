@@ -60,22 +60,16 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
-## TODO: cleanup
+## LOCALDEV
 
-.ONESHELL:
-last:
-	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
-	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go last
+.PHONY: migrate
+migrate:
+	go run main.go migrate \
+	--dirname examples/tree \
+	--connstr postgres://postgres:postgres@localhost:5432/bookstore
 
-.ONESHELL:
-r1:
-	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
-	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback-count 1
-
-.ONESHELL:
-r5:
-	export PGMIGRATE_CONNSTR=postgres://postgres:postgres@localhost:5432/bookstore
-	export PGMIGRATE_DIRNAME=examples/tree
-	go run main.go rollback-count 5
+.PHONY: rollback1
+rollback1:
+	go run main.go rollback-count 1 \
+	--dirname examples/tree \
+	--connstr postgres://postgres:postgres@localhost:5432/bookstore
