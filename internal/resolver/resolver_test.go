@@ -254,6 +254,7 @@ CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
 	})
 }
 
+//nolint:unparam
 func writeTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 

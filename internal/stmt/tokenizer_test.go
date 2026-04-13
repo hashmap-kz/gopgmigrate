@@ -311,6 +311,7 @@ func checkSplitStmt(inputSQL string, expected []string) bool {
 	return true
 }
 
+//nolint:gocritic
 func checkSplit(inputSQL string) (string, int) {
 	statements, err := SplitSQLStatements(inputSQL)
 	if err != nil {
