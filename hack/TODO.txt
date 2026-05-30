@@ -1,4 +1,4 @@
-1) PG* env aware
+1) PG* env aware (urgent)
 2) rollback-cnt
 3) unit-tests
 4) readme
@@ -10,6 +10,7 @@
 10) update ci workflows
 11) regex for check "schema.table" is valid pg identifier
 12) live progress, totals, etc...
-
+13) baseline (urgent)
+14)
 
 
