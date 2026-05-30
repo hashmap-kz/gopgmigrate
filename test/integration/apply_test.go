@@ -106,7 +106,7 @@ func TestApply_AtomicMode_RollsBackOnFailure(t *testing.T) {
 	err = m.Run(context.Background())
 	require.Error(t, err)
 
-	// both files were in one transaction — the whole batch must have rolled back
+	// both files were in one transaction - the whole batch must have rolled back
 	assert.False(t, TableExists(t, pg.DB, "public", "users"))
 	assert.Empty(t, QueryHistory(t, pg.DB, histTable))
 }

@@ -86,7 +86,7 @@ func (m *Migrator) Validate() error {
 	return executor.Validate(mf)
 }
 
-// NewValidateOnly creates a Migrator for validation only — no DB connection needed.
+// NewValidateOnly creates a Migrator for validation only - no DB connection needed.
 func NewValidateOnly(cfg Config) (*Migrator, error) {
 	if cfg.ManifestPath == "" {
 		return nil, fmt.Errorf("migrator: ManifestPath is required")

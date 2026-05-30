@@ -37,7 +37,7 @@ func NewPgDatabase(t *testing.T) *PgDatabase {
 	defer root.Close()
 
 	if err := root.Ping(); err != nil {
-		t.Fatalf("ping postgres — is docker-compose up? (%v)", err)
+		t.Fatalf("ping postgres - is docker-compose up? (%v)", err)
 	}
 
 	dbName := fmt.Sprintf("test_%s", strings.ToLower(rand.Text()))

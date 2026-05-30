@@ -36,7 +36,7 @@ func TestRepeatable_ReappliedOnChange(t *testing.T) {
 	require.Len(t, hist1, 1)
 	checksum1 := hist1[0].Checksum
 
-	// change file content — must trigger a re-apply
+	// change file content - must trigger a re-apply
 	dir.Add(t, "001_fn_get_users.sql",
 		"create or replace function get_users() returns void language sql as $$ select 2; $$;")
 

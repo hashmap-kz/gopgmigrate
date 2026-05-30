@@ -21,7 +21,7 @@ func NewMigrationDir(t *testing.T) *MigrationDir {
 }
 
 // Add writes a SQL file at the given relative path.
-// Calling Add with the same filename twice overwrites the first write —
+// Calling Add with the same filename twice overwrites the first write -
 // this is intentional for repeatable migration tests that need to change file content.
 func (m *MigrationDir) Add(t *testing.T, filename, content string) {
 	t.Helper()
@@ -47,7 +47,7 @@ type ManifestEntry struct {
 }
 
 // WriteManifest writes manifest.yaml to the root dir and returns its absolute path.
-// Calling WriteManifest again overwrites the previous manifest — useful for tests
+// Calling WriteManifest again overwrites the previous manifest - useful for tests
 // that need to evolve the manifest between runs.
 func (m *MigrationDir) WriteManifest(t *testing.T, table string, entries []ManifestEntry) string {
 	t.Helper()

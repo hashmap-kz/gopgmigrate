@@ -23,7 +23,7 @@ type EntryStatus struct {
 
 // NoTxHistoryError is returned when a no-tx migration was applied successfully
 // but writing the history record failed. The migration is in the database but
-// unrecorded — re-running without intervention will attempt to apply it again.
+// unrecorded - re-running without intervention will attempt to apply it again.
 //
 // Recovery: execute RecoverySQL() manually, then re-run.
 type NoTxHistoryError struct {
@@ -86,7 +86,7 @@ func Run(ctx context.Context, db *sql.DB, mf *manifest.Manifest, dryRun bool) er
 	}
 
 	// Entries are applied in manifest declaration order.
-	// This is the only ordering guarantee — do not sort or parallelize.
+	// This is the only ordering guarantee - do not sort or parallelize.
 	for _, entry := range mf.Entries {
 		if err := applyEntry(ctx, db, r, applied, entry, mf.Table, dryRun); err != nil {
 			return err
@@ -143,7 +143,7 @@ func Validate(mf *manifest.Manifest) error {
 	return nil
 }
 
-// --- entry dispatch ---
+// entry dispatch
 
 func applyEntry(
 	ctx context.Context,
@@ -167,7 +167,7 @@ func applyEntry(
 	}
 }
 
-// --- default: one tx per file ---
+// default: one tx per file
 
 func applyDefault(
 	ctx context.Context,
@@ -211,7 +211,7 @@ func applyDefault(
 	return nil
 }
 
-// --- atomic: one tx across all files ---
+// atomic: one tx across all files
 
 func applyAtomic(
 	ctx context.Context,
@@ -235,7 +235,7 @@ func applyAtomic(
 
 	if appliedCount > 0 && appliedCount < len(entry.Files) {
 		return fmt.Errorf(
-			"executor: atomic entry partially applied (%d/%d files recorded) — manual intervention required",
+			"executor: atomic entry partially applied (%d/%d files recorded) - manual intervention required",
 			appliedCount, len(entry.Files),
 		)
 	}
@@ -273,7 +273,7 @@ func applyAtomic(
 	})
 }
 
-// --- no-tx: raw execution, no transaction wrapper ---
+// no-tx: raw execution, no transaction wrapper
 
 func applyNoTx(
 	ctx context.Context,
@@ -311,7 +311,7 @@ func applyNoTx(
 			return err
 		}
 
-		// History insert is outside any transaction — gap is inherent to no-tx.
+		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
 		if err := r.Insert(ctx, db, path, "no-tx", checksum, entry.Description); err != nil {
 			return &NoTxHistoryError{
@@ -327,7 +327,7 @@ func applyNoTx(
 	return nil
 }
 
-// --- repeatable: reruns when checksum changes, one tx per file ---
+// repeatable: reruns when checksum changes, one tx per file
 
 func applyRepeatable(
 	ctx context.Context,
@@ -372,7 +372,7 @@ func applyRepeatable(
 	})
 }
 
-// --- helpers ---
+// helpers
 
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -417,7 +417,7 @@ func checksumGuard(path, recorded string) error {
 	}
 	if current != recorded {
 		return fmt.Errorf(
-			"executor: checksum mismatch for applied migration %q — file was modified after apply",
+			"executor: checksum mismatch for applied migration %q - file was modified after apply",
 			path,
 		)
 	}
