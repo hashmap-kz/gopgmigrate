@@ -1,0 +1,13 @@
+1) PG* env aware
+2) rollback-cnt
+3) unit-tests
+4) readme
+5) migration schema name (cfg/cli)
+6) complex examples
+7) integration tests (simplify compose, etc)
+8) make targets (integ, etc)
+9) docker image (for CI)
+10) update ci workflows
+
+
+

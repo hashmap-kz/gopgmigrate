@@ -6,41 +6,45 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashmap-kz/gopgmigrate/v2/pkg/migrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopgmigrate/internal/migration"
 )
 
-// integration/repeatable_test.go
 func TestRepeatable_ReappliedOnChange(t *testing.T) {
 	t.Parallel()
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "0000001-fn-get-users.r.up.sql",
+	dir.Add(t, "001_fn_get_users.sql",
 		"create or replace function get_users() returns void language sql as $$ select 1; $$;")
 
-	opts := &migration.ApplyOpts{
-		MigrationDir:     dir.Root,
-		ConnStr:          pg.ConnStr,
-		HistoryTableName: "public.migrate_history",
+	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
+		{Files: []string{"001_fn_get_users.sql"}, Mode: "repeatable"},
+	})
+	cfg := migrator.Config{ManifestPath: manifest, Table: histTable}
+
+	run := func() {
+		m, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+		require.NoError(t, err)
+		defer m.Close()
+		require.NoError(t, m.Run(context.Background()))
 	}
 
-	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
-
-	hist1 := QueryHistory(t, pg.DB, "public.migrate_history")
+	run()
+	hist1 := QueryHistory(t, pg.DB, histTable)
 	require.Len(t, hist1, 1)
-	hash1 := hist1[0].Hash
+	checksum1 := hist1[0].Checksum
 
-	// change the file content
-	dir.Add(t, "0000001-fn-get-users.r.up.sql",
+	// change file content — must trigger a re-apply
+	dir.Add(t, "001_fn_get_users.sql",
 		"create or replace function get_users() returns void language sql as $$ select 2; $$;")
 
-	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
-
-	hist2 := QueryHistory(t, pg.DB, "public.migrate_history")
+	run()
+	hist2 := QueryHistory(t, pg.DB, histTable)
 	require.Len(t, hist2, 1)
-	assert.NotEqual(t, hash1, hist2[0].Hash) // hash updated
+	assert.NotEqual(t, checksum1, hist2[0].Checksum, "checksum must be updated after re-apply")
+	assert.Equal(t, "repeatable", hist2[0].Kind)
 }
 
 func TestRepeatable_SkippedWhenUnchanged(t *testing.T) {
@@ -48,20 +52,27 @@ func TestRepeatable_SkippedWhenUnchanged(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "0000001-fn-get-users.r.up.sql",
+	dir.Add(t, "001_fn_get_users.sql",
 		"create or replace function get_users() returns void language sql as $$ select 1; $$;")
 
-	opts := &migration.ApplyOpts{
-		MigrationDir:     dir.Root,
-		ConnStr:          pg.ConnStr,
-		HistoryTableName: "public.migrate_history",
+	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
+		{Files: []string{"001_fn_get_users.sql"}, Mode: "repeatable"},
+	})
+	cfg := migrator.Config{ManifestPath: manifest, Table: histTable}
+
+	run := func() {
+		m, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+		require.NoError(t, err)
+		defer m.Close()
+		require.NoError(t, m.Run(context.Background()))
 	}
 
-	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
-	hist1 := QueryHistory(t, pg.DB, "public.migrate_history")
+	run()
+	hist1 := QueryHistory(t, pg.DB, histTable)
+	require.Len(t, hist1, 1)
 
-	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
-	hist2 := QueryHistory(t, pg.DB, "public.migrate_history")
-
-	assert.Equal(t, hist1[0].Hash, hist2[0].Hash)
+	run()
+	hist2 := QueryHistory(t, pg.DB, histTable)
+	require.Len(t, hist2, 1)
+	assert.Equal(t, hist1[0].Checksum, hist2[0].Checksum, "checksum must not change when file is unchanged")
 }
