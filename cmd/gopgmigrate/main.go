@@ -8,10 +8,13 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+var Version = "dev"
+
 func main() {
 	cmd := &cli.Command{
-		Name:  "gopgmigrate",
-		Usage: "YAML-manifest-driven PostgreSQL migrations",
+		Name:    "gopgmigrate",
+		Usage:   "YAML-manifest-driven PostgreSQL migrations",
+		Version: Version,
 		Commands: []*cli.Command{
 			cmdUp(),
 			cmdStatus(),
