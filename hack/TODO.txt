@@ -8,6 +8,8 @@
 8) make targets (integ, etc)
 9) docker image (for CI)
 10) update ci workflows
+11) regex for check "schema.table" is valid pg identifier
+12) live progress, totals, etc...
 
 
 
