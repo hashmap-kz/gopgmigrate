@@ -51,7 +51,7 @@ migrations:
   - files:
       - sql/001_create_users.sql
 
-  # atomic: all files share one transaction — all succeed or all roll back
+  # atomic: all files share one transaction - all succeed or all roll back
   - files:
       - sql/002_add_roles.sql
       - sql/003_seed_roles.sql
@@ -79,24 +79,29 @@ gopgmigrate up --dsn postgres://user:pass@localhost/mydb --manifest migrations/m
 
 ## Modes
 
-**Default** (no `mode` key) — each file runs in its own transaction and is applied exactly once.
+**Default** (no `mode` key) - each file runs in its own transaction and is applied exactly once.
 The file checksum is stored on apply; if the file is later modified, the next run fails with a checksum mismatch error.
 Use this for ordinary schema changes: `CREATE TABLE`, `ALTER TABLE`, data migrations.
 
-**`atomic`** — all files in the entry share a single transaction.
+**`atomic`** - all files in the entry share a single transaction.
 Either every file is applied and committed together, or nothing is.
-Use this for changes that must land as one unit — e.g. a new table and its seed data, or a set of related schema changes in a release.
+Use this for changes that must land as one unit - e.g. a new table and its seed data, or a set of related schema changes in a release.
 
-**`no-tx`** — statements execute outside any `BEGIN`/`COMMIT` block.
+**`no-tx`** - statements execute outside any `BEGIN`/`COMMIT` block.
 Required for statements PostgreSQL refuses to run inside a transaction:
 `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `VACUUM`, `ALTER SYSTEM`.
 If the history write fails after execution, a `NoTxHistoryError` is returned with the exact recovery SQL to run before retrying.
 
-**`repeatable`** — applied on every run where the file checksum has changed since last apply.
+**`repeatable`** - applied on every run where the file checksum has changed since last apply.
 Idempotent SQL only: `CREATE OR REPLACE FUNCTION`, `CREATE OR REPLACE VIEW`, trigger definitions.
 Each repeatable entry must list exactly one file.
 
----
+| Mode         | Transaction             | Behaviour                                       |
+|--------------|-------------------------|-------------------------------------------------|
+| *(default)*  | one tx per file         | runs once; checksum-guarded                     |
+| `atomic`     | one tx across all files | all succeed or all roll back                    |
+| `no-tx`      | none                    | for `CREATE INDEX CONCURRENTLY`, `VACUUM`, etc. |
+| `repeatable` | one tx per file         | re-runs whenever the file checksum changes      |
 
 ### Manifest rules
 
