@@ -12,35 +12,19 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// PgDatabase is a fresh Postgres database created for a single test.
-// It is dropped automatically when the test ends.
 type PgDatabase struct {
-	// ConnStr is the connection string scoped to this test's database.
 	ConnStr string
-	// DB is an open connection to this test's database.
-	DB *sql.DB
+	DB      *sql.DB
 }
 
-// NewPgDatabase creates a throwaway database inside the shared Postgres
-// instance started by docker-compose, connects to it, and registers a
-// cleanup that drops the database when the test ends.
-//
-// Connection parameters are read from environment variables with sensible
-// defaults that match docker-compose.yml:
-//
-//	PGHOST      (default: localhost)
-//	PGPORT      (default: 5432)
-//	PGUSER      (default: test)
-//	PGPASSWORD  (default: test)
 func NewPgDatabase(t *testing.T) *PgDatabase {
 	t.Helper()
 
-	host := "localhost" // envOr("PGHOST", "localhost")
-	port := "15432"     // envOr("PGPORT", "5432")
-	user := "test"      // envOr("PGUSER", "test")
-	pass := "test"      // envOr("PGPASSWORD", "test")
+	host := "localhost"
+	port := "15432"
+	user := "postgres"
+	pass := "postgres"
 
-	// root connection — used only to CREATE / DROP the test database
 	rootConnStr := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/test?sslmode=disable",
 		user, pass, host, port,
@@ -56,7 +40,6 @@ func NewPgDatabase(t *testing.T) *PgDatabase {
 		t.Fatalf("ping postgres — is docker-compose up? (%v)", err)
 	}
 
-	// unique name so parallel tests never collide
 	dbName := fmt.Sprintf("test_%s", strings.ToLower(rand.Text()))
 
 	if _, err := root.Exec("create database " + dbName); err != nil {
