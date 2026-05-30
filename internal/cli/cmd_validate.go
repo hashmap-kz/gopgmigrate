@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func cmdValidate() *cli.Command {
+func CmdValidate() *cli.Command {
 	return &cli.Command{
 		Name:  "validate",
 		Usage: "check manifest integrity and file existence (no DB required)",

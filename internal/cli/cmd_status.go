@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func cmdStatus() *cli.Command {
+func CmdStatus() *cli.Command {
 	return &cli.Command{
 		Name:  "status",
 		Usage: "show applied/pending state of all manifest entries",

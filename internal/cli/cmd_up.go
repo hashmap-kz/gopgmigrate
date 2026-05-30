@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func cmdUp() *cli.Command {
+func CmdUp() *cli.Command {
 	return &cli.Command{
 		Name:  "up",
 		Usage: "apply all pending migrations",

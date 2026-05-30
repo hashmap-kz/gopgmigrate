@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	cli2 "github.com/hashmap-kz/gopgmigrate/v2/internal/cli"
 	"github.com/urfave/cli/v3"
 )
 
@@ -16,9 +17,9 @@ func main() {
 		Usage:   "YAML-manifest-driven PostgreSQL migrations",
 		Version: Version,
 		Commands: []*cli.Command{
-			cmdUp(),
-			cmdStatus(),
-			cmdValidate(),
+			cli2.CmdUp(),
+			cli2.CmdStatus(),
+			cli2.CmdValidate(),
 		},
 	}
 
