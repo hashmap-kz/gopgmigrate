@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/hashmap-kz/gopgmigrate/v2/internal/x/fmtx"
 )
 
 type Status string
@@ -55,15 +57,15 @@ func NewTable(w io.Writer) *Table {
 func (t *Table) HeaderFor(release string) {
 	release = strings.TrimSpace(release)
 	if release != "" {
-		fmt.Fprintln(t.w, release)
-		fmt.Fprintln(t.w, strings.Repeat("-", len(release)))
+		fmtx.Fprintln(t.w, release)
+		fmtx.Fprintln(t.w, strings.Repeat("-", len(release)))
 	}
 
 	t.Header()
 }
 
 func (t *Table) Header() {
-	fmt.Fprintf(
+	fmtx.Fprintf(
 		t.w,
 		"%-7s %-7s %-10s %-8s %-16s %s\n",
 		"STATUS",
@@ -76,7 +78,7 @@ func (t *Table) Header() {
 }
 
 func (t *Table) Blank() {
-	fmt.Fprintln(t.w)
+	fmtx.Fprintln(t.w)
 }
 
 func (t *Table) Row(r Row) {
@@ -105,7 +107,7 @@ func (t *Table) Row(r Row) {
 		descr = "-"
 	}
 
-	fmt.Fprintf(
+	fmtx.Fprintf(
 		t.w,
 		"%-7s %-7s %-10s %-8s %-16s %s\n",
 		status,
