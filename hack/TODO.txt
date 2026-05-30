@@ -1,3 +1,0 @@
-Add 'batch' execution mode: merge all files that may be executed inside and outside transaction in bundles.
-
-

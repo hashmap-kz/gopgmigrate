@@ -1,1 +1,0 @@
-delete from authn.groups where xname = 'test-0000020';

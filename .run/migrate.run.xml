@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="migrate" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="gopgmigrate" />
+    <working_directory value="$PROJECT_DIR$" />
+    <parameters value=" up -m examples/manifest.yaml -dsn 'postgres://postgres:postgres@localhost:5432/postgres'" />
+    <kind value="PACKAGE" />
+    <package value="github.com/hashmap-kz/gopgmigrate/v2/cmd/gopgmigrate" />
+    <directory value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

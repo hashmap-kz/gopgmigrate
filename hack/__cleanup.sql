@@ -1,5 +1,6 @@
-drop schema if exists audit_logs cascade;
-drop schema if exists authn cascade;
+drop schema if exists app cascade;
+drop schema if exists audit cascade;
+drop schema if exists lookup cascade;
 
 do
 $$

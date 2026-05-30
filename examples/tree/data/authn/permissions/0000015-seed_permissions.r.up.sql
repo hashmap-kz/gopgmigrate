@@ -1,1 +1,0 @@
-insert into authn.permissions (xname) values ('test-0000015');

@@ -1,1 +1,0 @@
-create table if not exists authn.permissions (id serial primary key, xname text not null);

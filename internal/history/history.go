@@ -6,245 +6,118 @@ import (
 	"fmt"
 	"time"
 
-	// required driver
+	// required to load pgx
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// Migration Lock Key (must be unique per application)
-const migrationLockKey = 123456
+const advisoryLockKey = 8273645019 // arbitrary stable key for this tool
 
-type Transaction interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+// tx abstracts *sql.DB and *sql.Tx so repo methods work in both contexts.
+type tx interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-type MigrateHistoryCreateInput struct {
-	Version int64
-	Name    string
-	Hash    string
-}
-
-// MigrateHistory tracks executed migrations, ensuring version control and repeatable migrations.
-type MigrateHistory struct {
-	// Auto-incrementing primary key.
-	ID int `json:"id" db:"id"`
-
-	// Version number of the migration (bigint). Used for versioned migrations.
-	Version int64 `json:"mh_version" db:"mh_version"`
-
-	// Name of the migration file applied.
-	Name string `json:"mh_name" db:"mh_name"`
-
-	// SHA256 hash of the migration script to detect changes in repeatable migrations.
-	Hash string `json:"mh_hash" db:"mh_hash"`
-
-	// User who executed the migration.
-	AppliedBy string `json:"mh_applied_by" db:"mh_applied_by"`
-
-	// Timestamp when the migration was applied.
-	AppliedAt time.Time `json:"mh_applied_at" db:"mh_applied_at"`
-
-	// Current transaction ID, for debug purpose, optional, may be empty
-	TxID string `json:"mh_txid" db:"mh_txid"`
-}
-
-type Repo interface {
-	CreateHistoryTable(ctx context.Context, tx Transaction) error
-
-	SaveVersioned(ctx context.Context, tx Transaction, inputEntity *MigrateHistoryCreateInput) error
-	SaveRepeatable(ctx context.Context, tx Transaction, inputEntity *MigrateHistoryCreateInput) error
-	ListAll(ctx context.Context, tx Transaction) ([]MigrateHistory, error)
-	DeleteVersion(ctx context.Context, tx Transaction, v int64) error
-
-	AcquireMigrationLock(ctx context.Context, db Transaction) (bool, error)
-	ReleaseMigrationLock(ctx context.Context, db Transaction) error
+// Row is a single record in the tracking table.
+type Row struct {
+	Path        string
+	Kind        string
+	Checksum    string
+	Description string
+	AppliedBy   string
+	AppliedAt   time.Time
+	TxID        string
 }
 
 type repo struct {
-	tableName string
+	table string
 }
 
-var _ Repo = &repo{}
-
-func NewRepo(_ context.Context, tableName string) Repo {
-	return &repo{
-		tableName: tableName,
-	}
+func newRepo(table string) *repo {
+	return &repo{table: table}
 }
 
-func (r *repo) CreateHistoryTable(ctx context.Context, tx Transaction) error {
-	tag := "repo.CreateHistoryTable"
-
-	query := fmt.Sprintf(`
-		create table if not exists %s
-		(
-		  id            int generated always as identity primary key,
-		  mh_version    bigint unique not null,
-		  mh_name       text unique   not null,
-		  mh_hash       text          not null,
-		  mh_applied_by name          not null default session_user,
-		  mh_applied_at timestamptz   not null default transaction_timestamp(),
-		  mh_txid     text            not null default pg_current_xact_id()::text
-		);
-  `, r.tableName)
-
-	_, err := tx.ExecContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	return err
-}
-
-func (r *repo) SaveVersioned(ctx context.Context, tx Transaction, inputEntity *MigrateHistoryCreateInput) error {
-	tag := "repo.SaveVersioned"
-	query := fmt.Sprintf(`		
-		insert into %s (
-			mh_version,
-			mh_name,
-			mh_hash
+func (r *repo) createTable(ctx context.Context, db tx) error {
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`
+		create table if not exists %s (
+			path        text primary key,
+			kind        text        not null,
+			checksum    text        not null,
+			description text,
+			applied_by  name        not null default session_user,
+			applied_at  timestamptz not null default transaction_timestamp(),
+			txid        text        not null default pg_current_xact_id()::text
 		)
-		values ($1, $2, $3)
-		returning
-			id,
-			mh_version,
-			mh_name,
-			mh_hash,
-			mh_applied_by,
-			mh_applied_at,
-			mh_txid
-		`, r.tableName)
-	_, err := tx.ExecContext(ctx, query,
-		inputEntity.Version,
-		inputEntity.Name,
-		inputEntity.Hash,
-	)
+	`, r.table))
 	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
+		return fmt.Errorf("history: create table: %w", err)
 	}
 	return nil
 }
 
-func (r *repo) SaveRepeatable(
-	ctx context.Context,
-	tx Transaction,
-	inputEntity *MigrateHistoryCreateInput,
-) error {
-	tag := "repo.SaveRepeatable"
-	query := fmt.Sprintf(`    
-		with updated as (
-		  update %s
-			set 
-			  mh_hash       = $3,
-			  mh_applied_by = session_user,
-			  mh_applied_at = transaction_timestamp(),
-			  mh_txid       = pg_current_xact_id()::text
-			where mh_name   = $2
-			returning id
-		)
-		insert
-		into %s (mh_version, mh_name, mh_hash, mh_applied_by, mh_applied_at)
-		select $1, $2, $3, session_user, transaction_timestamp()
-		where not exists (select 1 from updated)
-    `, r.tableName, r.tableName)
-	_, err := tx.ExecContext(ctx, query,
-		inputEntity.Version,
-		inputEntity.Name,
-		inputEntity.Hash,
-	)
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	return nil
-}
-
-func (r *repo) ListAll(ctx context.Context, tx Transaction) ([]MigrateHistory, error) {
-	tag := "repo.ListAll"
-
-	query := fmt.Sprintf(`		
-		select
-			id,
-			mh_version,
-			mh_name,
-			mh_hash,
-			mh_applied_by,
-			mh_applied_at,
-			mh_txid
+func (r *repo) loadAll(ctx context.Context, db tx) (map[string]Row, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		select path, kind, checksum, coalesce(description,''), applied_by, applied_at, txid
 		from %s
-		order by mh_version
-	`, r.tableName)
-
-	rows, err := tx.QueryContext(ctx, query)
+	`, r.table))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", tag, err)
+		return nil, fmt.Errorf("history: list: %w", err)
 	}
 	defer rows.Close()
 
-	var scannedEntities []MigrateHistory
+	out := make(map[string]Row)
 	for rows.Next() {
-		scannedEntity, err := scanFullRow(rows)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", tag, err)
+		var row Row
+		if err := rows.Scan(
+			&row.Path, &row.Kind, &row.Checksum, &row.Description,
+			&row.AppliedBy, &row.AppliedAt, &row.TxID,
+		); err != nil {
+			return nil, fmt.Errorf("history: scan: %w", err)
 		}
-		scannedEntities = append(scannedEntities, *scannedEntity)
+		out[row.Path] = row
 	}
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("history: rows: %w", err)
 	}
-	return scannedEntities, nil
+	return out, nil
 }
 
-func (r *repo) DeleteVersion(ctx context.Context, tx Transaction, v int64) error {
-	tag := "repo.DeleteVersion"
-	query := fmt.Sprintf(`
-		delete from only %s
-		where mh_version = $1
-	`, r.tableName)
-	res, err := tx.ExecContext(ctx, query, v)
+func (r *repo) insert(ctx context.Context, db tx, path, kind, checksum, description string) error {
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`
+		insert into %s (path, kind, checksum, description)
+		values ($1, $2, $3, $4)
+	`, r.table), path, kind, checksum, description)
 	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: %w", tag, err)
-	}
-	if rowsAffected <= 0 {
-		return fmt.Errorf("%s: no rows were deleted for version: %d", tag, v)
+		return fmt.Errorf("history: insert %q: %w", path, err)
 	}
 	return nil
 }
 
-// locks
+func (r *repo) upsert(ctx context.Context, db tx, path, kind, checksum, description string) error {
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`
+		insert into %s (path, kind, checksum, description)
+		values ($1, $2, $3, $4)
+		on conflict (path) do update
+			set checksum    = excluded.checksum,
+			    description = excluded.description,
+			    applied_by  = session_user,
+			    applied_at  = transaction_timestamp(),
+			    txid        = pg_current_xact_id()::text
+	`, r.table), path, kind, checksum, description)
+	if err != nil {
+		return fmt.Errorf("history: upsert %q: %w", path, err)
+	}
+	return nil
+}
 
-// AcquireMigrationLock ensures only one migration process runs at a time
-func (r *repo) AcquireMigrationLock(ctx context.Context, db Transaction) (bool, error) {
+func acquireLock(ctx context.Context, db tx) (bool, error) {
 	var acquired bool
-	err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationLockKey).Scan(&acquired)
+	err := db.QueryRowContext(ctx, "select pg_try_advisory_lock($1)", advisoryLockKey).Scan(&acquired)
 	return acquired, err
 }
 
-// ReleaseMigrationLock releases the advisory lock
-func (r *repo) ReleaseMigrationLock(ctx context.Context, db Transaction) error {
-	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+func releaseLock(ctx context.Context, db tx) error {
+	_, err := db.ExecContext(ctx, "select pg_advisory_unlock($1)", advisoryLockKey)
 	return err
-}
-
-// scan utils
-
-func scanFullRow(row *sql.Rows) (*MigrateHistory, error) {
-	var scannedEntity MigrateHistory
-	err := row.Scan(
-		&scannedEntity.ID,
-		&scannedEntity.Version,
-		&scannedEntity.Name,
-		&scannedEntity.Hash,
-		&scannedEntity.AppliedBy,
-		&scannedEntity.AppliedAt,
-		&scannedEntity.TxID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &scannedEntity, nil
 }
