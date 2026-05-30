@@ -81,7 +81,7 @@ func (t *Table) Blank() {
 	fmtx.Fprintln(t.w)
 }
 
-func (t *Table) Row(r Row) {
+func (t *Table) Row(r *Row) {
 	status := string(r.Status)
 	if status == "" {
 		status = "-"
@@ -120,7 +120,7 @@ func (t *Table) Row(r Row) {
 }
 
 func (t *Table) Run(target string, mode Mode) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusRun,
 		Mode:   mode,
 		Target: target,
@@ -128,7 +128,7 @@ func (t *Table) Run(target string, mode Mode) {
 }
 
 func (t *Table) OK(target string, mode Mode, done Done) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusOK,
 		Mode:   mode,
 		Done:   formatDone(done),
@@ -139,7 +139,7 @@ func (t *Table) OK(target string, mode Mode, done Done) {
 }
 
 func (t *Table) Skip(target string, mode Mode, reason string) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusSkip,
 		Mode:   mode,
 		Descr:  reason,
@@ -148,7 +148,7 @@ func (t *Table) Skip(target string, mode Mode, reason string) {
 }
 
 func (t *Table) Fail(target string, mode Mode, took time.Duration, descr string) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusFail,
 		Mode:   mode,
 		Took:   took,
@@ -158,7 +158,7 @@ func (t *Table) Fail(target string, mode Mode, took time.Duration, descr string)
 }
 
 func (t *Table) BeginAtomic(name string) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusBegin,
 		Mode:   ModeAtomic,
 		Target: atomicTarget(name),
@@ -166,7 +166,7 @@ func (t *Table) BeginAtomic(name string) {
 }
 
 func (t *Table) CommitAtomic(name string, done Done) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusCommit,
 		Mode:   ModeAtomic,
 		Done:   formatDone(Done{Files: done.Files}),
@@ -177,7 +177,7 @@ func (t *Table) CommitAtomic(name string, done Done) {
 }
 
 func (t *Table) AbortAtomic(name string, took time.Duration, descr string) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: StatusAbort,
 		Mode:   ModeAtomic,
 		Took:   took,
@@ -187,7 +187,7 @@ func (t *Table) AbortAtomic(name string, took time.Duration, descr string) {
 }
 
 func (t *Table) Summary(status Status, release string, done Done) {
-	t.Row(Row{
+	t.Row(&Row{
 		Status: status,
 		Mode:   "",
 		Done:   formatDone(Done{Files: done.Files}),
