@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// helpers
-
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
@@ -30,14 +28,10 @@ func writeManifest(t *testing.T, dir string, entries []string) string {
 	return path
 }
 
-// NewValidateOnly
-
 func TestNewValidateOnly_EmptyManifestPath(t *testing.T) {
 	_, err := migrator.NewValidateOnly(migrator.Config{})
 	require.Error(t, err)
 }
-
-// Validate
 
 func TestValidate_OK(t *testing.T) {
 	dir := t.TempDir()

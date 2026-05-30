@@ -27,8 +27,9 @@ COMPOSE      = docker compose -f test/integration/environ/docker-compose.yml
 
 .PHONY: test-integration
 test-integration:
+	go build -o test/integration/bin/$(OUTPUT) ./cmd/gopgmigrate/
 	$(COMPOSE) up -d
-	@until docker exec pg-primary pg_isready -U test >/dev/null 2>&1; do sleep 1; done
+	@until docker exec pg-primary pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 	go test -v -race -count=1 -timeout=5m -tags integration ./test/integration/...; \
 		EXIT=$$?; \
 		$(COMPOSE) down -v; \
@@ -36,7 +37,7 @@ test-integration:
 
 .PHONY: clean
 clean:
-	@rm -rf bin/ dist/ *.log
+	@rm -rf bin/ dist/ *.log test/integration/bin/
 
 .PHONY: snapshot
 snapshot:

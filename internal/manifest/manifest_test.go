@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// helpers
-
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
@@ -29,8 +27,6 @@ func sqlFile(t *testing.T, dir, name string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, name), "select 1;")
 }
-
-// Load
 
 func TestLoad_DefaultTable(t *testing.T) {
 	dir := t.TempDir()
@@ -128,8 +124,6 @@ func TestLoad_EmptyMigrationsList(t *testing.T) {
 	assert.Empty(t, mf.Entries)
 }
 
-// Load: error cases
-
 func TestLoad_MissingManifestFile(t *testing.T) {
 	_, err := manifest.Load("/nonexistent/path/manifest.yaml")
 	require.Error(t, err)
@@ -203,8 +197,6 @@ migrations:
 	assert.Contains(t, err.Error(), "duplicate")
 }
 
-// Checksum
-
 func TestChecksum_Deterministic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "a.sql")
@@ -248,8 +240,6 @@ func TestChecksum_MissingFile(t *testing.T) {
 	_, err := manifest.Checksum("/nonexistent/file.sql")
 	require.Error(t, err)
 }
-
-// ReadFile
 
 func TestReadFile(t *testing.T) {
 	dir := t.TempDir()
