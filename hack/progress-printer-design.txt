@@ -1,0 +1,17 @@
+rel-0.0.2
+---------
+STATUS  MODE    DONE       TIME     DESCR            TARGET
+run     tx      -          -        -                tables/users.sql
+ok      tx      3 stmts    184ms    -                tables/users.sql
+
+begin   atomic  -          -        -                atomic/core
+run     atomic  -          -        -                schemas/extensions.sql
+ok      atomic  1 stmt     32ms     -                schemas/extensions.sql
+run     atomic  -          -        -                tables/base_tables.sql
+ok      atomic  7 stmts    1.8s     -                tables/base_tables.sql
+commit  atomic  2 files    1.9s     8 stmts          atomic/core
+
+run     no-tx   -          -        -                indexes/concurrent_indexes.sql
+ok      no-tx   1 stmt     8.4s     -                indexes/concurrent_indexes.sql
+
+ok      -       4 files    10.5s    12 stmts         rel-0.0.2
