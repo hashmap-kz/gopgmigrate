@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/conn"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/executor"
@@ -12,10 +13,12 @@ import (
 
 // Config holds options for the migrator.
 // Table defaults to "schema_migrations" when empty.
+// Output, when non-nil, receives a progress table during Run. Pass os.Stdout for CLI use.
 type Config struct {
 	ManifestPath string
 	Table        string
 	DryRun       bool
+	Output       io.Writer
 }
 
 // EntryStatus describes the current state of a single migration entry.
@@ -64,7 +67,7 @@ func (m *Migrator) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return executor.Run(ctx, m.db, mf, m.cfg.DryRun)
+	return executor.Run(ctx, m.db, mf, m.cfg.Output, m.cfg.DryRun)
 }
 
 // Status returns the current state of every entry in the manifest.

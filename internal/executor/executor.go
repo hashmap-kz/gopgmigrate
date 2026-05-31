@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/history"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/manifest"
+	"github.com/hashmap-kz/gopgmigrate/v2/internal/progress"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/stmt"
 )
 
@@ -68,17 +70,31 @@ func (e *NoTxHistoryError) RecoverySQL() string {
 type runStats struct {
 	applied int
 	skipped int
+	stmts   int
+}
+
+// runner holds all shared state for a single Run invocation.
+// Methods on runner replace the standalone applyXxx functions,
+// keeping each method signature to (ctx, entry) only.
+type runner struct {
+	db      *sql.DB
+	hist    *history.Exported
+	applied map[string]history.Row
+	table   string
+	dryRun  bool
+	tbl     *progress.Table // nil = no progress output
+	stats   runStats
 }
 
 // Run applies all pending migrations in manifest declaration order.
-func Run(ctx context.Context, db *sql.DB, mf *manifest.Manifest, dryRun bool) error {
-	r := history.NewExported(mf.Table)
+func Run(ctx context.Context, db *sql.DB, mf *manifest.Manifest, output io.Writer, dryRun bool) error {
+	hist := history.NewExported(mf.Table)
 
-	if err := r.Init(ctx, db); err != nil {
+	if err := hist.Init(ctx, db); err != nil {
 		return err
 	}
 
-	ok, err := r.Lock(ctx, db)
+	ok, err := hist.Lock(ctx, db)
 	if err != nil {
 		return fmt.Errorf("executor: acquire lock: %w", err)
 	}
@@ -86,32 +102,53 @@ func Run(ctx context.Context, db *sql.DB, mf *manifest.Manifest, dryRun bool) er
 		return fmt.Errorf("executor: another migration is running (advisory lock held)")
 	}
 	defer func() {
-		if err := r.Unlock(ctx, db); err != nil {
+		if err := hist.Unlock(ctx, db); err != nil {
 			slog.WarnContext(ctx, "executor: release lock", slog.Any("err", err))
 		}
 	}()
 
-	applied, err := r.All(ctx, db)
+	applied, err := hist.All(ctx, db)
 	if err != nil {
 		return err
 	}
 
-	var total runStats
+	var tbl *progress.Table
+	if output != nil {
+		tbl = progress.NewTable(output)
+		tbl.Header()
+	}
+
+	r := &runner{
+		db:      db,
+		hist:    hist,
+		applied: applied,
+		table:   mf.Table,
+		dryRun:  dryRun,
+		tbl:     tbl,
+	}
+
+	start := time.Now()
 
 	// Entries are applied in manifest declaration order.
 	// This is the only ordering guarantee - do not sort or parallelize.
 	for _, entry := range mf.Entries {
-		s, err := applyEntry(ctx, db, r, applied, entry, mf.Table, dryRun)
-		if err != nil {
+		if err := r.applyEntry(ctx, entry); err != nil {
 			return err
 		}
-		total.applied += s.applied
-		total.skipped += s.skipped
+	}
+
+	if tbl != nil {
+		tbl.Summary(progress.TotalDone{
+			Applied:    r.stats.applied,
+			Skipped:    r.stats.skipped,
+			Statements: r.stats.stmts,
+			Took:       time.Since(start),
+		})
 	}
 
 	slog.InfoContext(ctx, "run complete",
-		slog.Int("applied", total.applied),
-		slog.Int("skipped", total.skipped),
+		slog.Int("applied", r.stats.applied),
+		slog.Int("skipped", r.stats.skipped),
 	)
 	return nil
 }
@@ -171,75 +208,71 @@ func Validate(mf *manifest.Manifest) error {
 	return nil
 }
 
-// entry dispatch
-
-func applyEntry(
-	ctx context.Context,
-	db *sql.DB,
-	r *history.Exported,
-	applied map[string]history.Row,
-	entry manifest.Entry,
-	table string,
-	dryRun bool,
-) (runStats, error) {
+func (r *runner) applyEntry(ctx context.Context, entry manifest.Entry) error {
 	switch entry.Mode {
 	case manifest.ModeAtomic:
-		return applyAtomic(ctx, db, r, applied, entry, dryRun)
+		return r.applyAtomic(ctx, entry)
 	case manifest.ModeNoTx:
-		return applyNoTx(ctx, db, r, applied, entry, table, dryRun)
+		return r.applyNoTx(ctx, entry)
 	case manifest.ModeRepeatable:
-		return applyRepeatable(ctx, db, r, applied, entry, dryRun)
+		return r.applyRepeatable(ctx, entry)
 	default:
-		return applyDefault(ctx, db, r, applied, entry, dryRun)
+		return r.applyDefault(ctx, entry)
 	}
 }
 
 // default: one tx per file
 
-func applyDefault(
-	ctx context.Context,
-	db *sql.DB,
-	r *history.Exported,
-	applied map[string]history.Row,
-	entry manifest.Entry,
-	dryRun bool,
-) (runStats, error) {
-	var stats runStats
+func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 	for _, f := range entry.Files {
-		row, exists := applied[f.Path]
+		row, exists := r.applied[f.Path]
 		if exists {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
-				return stats, err
+				return err
 			}
 			slog.InfoContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "already applied"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeTx, "already applied")
+			}
+			r.stats.skipped++
 			continue
 		}
-		if dryRun {
+		if r.dryRun {
 			slog.InfoContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "default"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeTx, "dry-run")
+			}
+			r.stats.skipped++
 			continue
 		}
+
+		if r.tbl != nil {
+			r.tbl.Run(f.Path, progress.ModeTx)
+		}
+		start := time.Now()
+
 		migID := buildMigrationID(entry.ID, f.Path)
-		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
+		var n int
+		if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
 			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, f.Path, content); err != nil {
+			n, err = execStatements(ctx, tx, f.Path, content)
+			if err != nil {
 				return err
 			}
 			checksum, err := manifest.Checksum(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			return r.Insert(ctx, tx, &history.Record{
+			return r.hist.Insert(ctx, tx, &history.Record{
 				MigrationID: migID,
 				Path:        f.Path,
 				Kind:        "once",
@@ -247,43 +280,43 @@ func applyDefault(
 				Description: entry.Description,
 			})
 		}); err != nil {
-			return stats, err
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeTx, time.Since(start), err.Error())
+			}
+			return err
 		}
+
+		took := time.Since(start)
 		slog.InfoContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "default"),
 		)
-		stats.applied++
+		if r.tbl != nil {
+			r.tbl.OK(f.Path, progress.ModeTx, progress.Done{Statements: n, Took: took})
+		}
+		r.stats.applied++
+		r.stats.stmts += n
 	}
-	return stats, nil
+	return nil
 }
 
 // atomic: one tx across all files
 
-func applyAtomic(
-	ctx context.Context,
-	db *sql.DB,
-	r *history.Exported,
-	applied map[string]history.Row,
-	entry manifest.Entry,
-	dryRun bool,
-) (runStats, error) {
-	var stats runStats
-
+func (r *runner) applyAtomic(ctx context.Context, entry manifest.Entry) error {
 	appliedCount := 0
 	for _, f := range entry.Files {
-		row, exists := applied[f.Path]
+		row, exists := r.applied[f.Path]
 		if !exists {
 			continue
 		}
 		if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
-			return stats, err
+			return err
 		}
 		appliedCount++
 	}
 
 	if appliedCount > 0 && appliedCount < len(entry.Files) {
-		return stats, fmt.Errorf(
+		return fmt.Errorf(
 			"executor: atomic entry partially applied (%d/%d files recorded) - manual intervention required",
 			appliedCount, len(entry.Files),
 		)
@@ -292,30 +325,47 @@ func applyAtomic(
 		slog.InfoContext(ctx, "skip atomic",
 			slog.String("reason", "already applied"),
 			slog.Int("files", len(entry.Files)),
-			slog.String("id", entry.ID),
 		)
-		stats.skipped += len(entry.Files)
-		return stats, nil
+		if r.tbl != nil {
+			r.tbl.Skip("atomic/"+entry.ID, progress.ModeAtomic, "already applied")
+		}
+		r.stats.skipped += len(entry.Files)
+		return nil
 	}
 
-	if dryRun {
+	if r.dryRun {
 		for _, f := range entry.Files {
 			slog.InfoContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "atomic"),
 			)
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeAtomic, "dry-run")
+			}
 		}
-		stats.skipped += len(entry.Files)
-		return stats, nil
+		r.stats.skipped += len(entry.Files)
+		return nil
 	}
 
-	if err := execInTx(ctx, db, func(tx *sql.Tx) error {
+	if r.tbl != nil {
+		r.tbl.BeginAtomic(entry.ID)
+	}
+	start := time.Now()
+	var totalStmts int
+
+	if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
 		for _, f := range entry.Files {
+			if r.tbl != nil {
+				r.tbl.Run(f.Path, progress.ModeAtomic)
+			}
+			fileStart := time.Now()
+
 			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, f.Path, content); err != nil {
+			n, err := execStatements(ctx, tx, f.Path, content)
+			if err != nil {
 				return err
 			}
 			checksum, err := manifest.Checksum(f.AbsPath)
@@ -323,7 +373,7 @@ func applyAtomic(
 				return err
 			}
 			migID := buildMigrationID(entry.ID, f.Path)
-			if err := r.Insert(ctx, tx, &history.Record{
+			if err := r.hist.Insert(ctx, tx, &history.Record{
 				MigrationID: migID,
 				Path:        f.Path,
 				Kind:        "once",
@@ -333,136 +383,175 @@ func applyAtomic(
 				return err
 			}
 			slog.InfoContext(ctx, "atomic file applied", slog.String("path", f.Path))
+			if r.tbl != nil {
+				r.tbl.OK(f.Path, progress.ModeAtomic, progress.Done{Statements: n, Took: time.Since(fileStart)})
+			}
+			totalStmts += n
 		}
 		return nil
 	}); err != nil {
-		return stats, err
+		took := time.Since(start)
+		if r.tbl != nil {
+			r.tbl.AbortAtomic(entry.ID, took, err.Error())
+		}
+		return err
 	}
-	stats.applied += len(entry.Files)
-	return stats, nil
+
+	took := time.Since(start)
+	if r.tbl != nil {
+		r.tbl.CommitAtomic(entry.ID, progress.Done{
+			Files:      len(entry.Files),
+			Statements: totalStmts,
+			Took:       took,
+		})
+	}
+	r.stats.applied += len(entry.Files)
+	r.stats.stmts += totalStmts
+	return nil
 }
 
 // no-tx: raw execution, no transaction wrapper
 
-func applyNoTx(
-	ctx context.Context,
-	db *sql.DB,
-	r *history.Exported,
-	applied map[string]history.Row,
-	entry manifest.Entry,
-	table string,
-	dryRun bool,
-) (runStats, error) {
-	var stats runStats
+func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 	for _, f := range entry.Files {
-		row, exists := applied[f.Path]
+		row, exists := r.applied[f.Path]
 		if exists {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
-				return stats, err
+				return err
 			}
 			slog.InfoContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "already applied"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeNoTx, "already applied")
+			}
+			r.stats.skipped++
 			continue
 		}
-		if dryRun {
+		if r.dryRun {
 			slog.InfoContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "no-tx"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeNoTx, "dry-run")
+			}
+			r.stats.skipped++
 			continue
 		}
 
+		if r.tbl != nil {
+			r.tbl.Run(f.Path, progress.ModeNoTx)
+		}
+		start := time.Now()
+
 		content, err := manifest.ReadFile(f.AbsPath)
 		if err != nil {
-			return stats, err
+			return err
 		}
-		if err := execStatements(ctx, db, f.Path, content); err != nil {
-			return stats, err
+		n, err := execStatements(ctx, r.db, f.Path, content)
+		if err != nil {
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeNoTx, time.Since(start), err.Error())
+			}
+			return err
 		}
 
 		checksum, err := manifest.Checksum(f.AbsPath)
 		if err != nil {
-			return stats, err
+			return err
 		}
 
 		migID := buildMigrationID(entry.ID, f.Path)
 		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
-		if err := r.Insert(ctx, db, &history.Record{
+		if err := r.hist.Insert(ctx, r.db, &history.Record{
 			MigrationID: migID,
 			Path:        f.Path,
 			Kind:        "no-tx",
 			Checksum:    checksum,
 			Description: entry.Description,
 		}); err != nil {
-			return stats, &NoTxHistoryError{
+			noTxErr := &NoTxHistoryError{
 				MigrationID: migID,
 				Path:        f.Path,
-				Table:       table,
+				Table:       r.table,
 				Checksum:    checksum,
 				Description: entry.Description,
 				Cause:       err,
 			}
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeNoTx, time.Since(start), "history write failed")
+			}
+			return noTxErr
 		}
+
+		took := time.Since(start)
 		slog.InfoContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "no-tx"),
 		)
-		stats.applied++
+		if r.tbl != nil {
+			r.tbl.OK(f.Path, progress.ModeNoTx, progress.Done{Statements: n, Took: took})
+		}
+		r.stats.applied++
+		r.stats.stmts += n
 	}
-	return stats, nil
+	return nil
 }
 
 // repeatable: reruns when checksum changes, one tx per file
 
-func applyRepeatable(
-	ctx context.Context,
-	db *sql.DB,
-	r *history.Exported,
-	applied map[string]history.Row,
-	entry manifest.Entry,
-	dryRun bool,
-) (runStats, error) {
-	var stats runStats
+func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) error {
 	for _, f := range entry.Files {
 		checksum, err := manifest.Checksum(f.AbsPath)
 		if err != nil {
-			return stats, err
+			return err
 		}
 
-		row, exists := applied[f.Path]
+		row, exists := r.applied[f.Path]
 		if exists && row.Checksum == checksum {
 			slog.InfoContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "unchanged"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeRepeat, "unchanged")
+			}
+			r.stats.skipped++
 			continue
 		}
 
-		if dryRun {
+		if r.dryRun {
 			slog.InfoContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "repeatable"),
 			)
-			stats.skipped++
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeRepeat, "dry-run")
+			}
+			r.stats.skipped++
 			continue
 		}
 
+		if r.tbl != nil {
+			r.tbl.Run(f.Path, progress.ModeRepeat)
+		}
+		start := time.Now()
+
 		migID := buildMigrationID(entry.ID, f.Path)
-		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
+		var n int
+		if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
 			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, f.Path, content); err != nil {
+			n, err = execStatements(ctx, tx, f.Path, content)
+			if err != nil {
 				return err
 			}
-			return r.Upsert(ctx, tx, &history.Record{
+			return r.hist.Upsert(ctx, tx, &history.Record{
 				MigrationID: migID,
 				Path:        f.Path,
 				Kind:        "repeatable",
@@ -470,15 +559,24 @@ func applyRepeatable(
 				Description: entry.Description,
 			})
 		}); err != nil {
-			return stats, err
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeRepeat, time.Since(start), err.Error())
+			}
+			return err
 		}
+
+		took := time.Since(start)
 		slog.InfoContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "repeatable"),
 		)
-		stats.applied++
+		if r.tbl != nil {
+			r.tbl.OK(f.Path, progress.ModeRepeat, progress.Done{Statements: n, Took: took})
+		}
+		r.stats.applied++
+		r.stats.stmts += n
 	}
-	return stats, nil
+	return nil
 }
 
 // helpers
@@ -502,20 +600,22 @@ func execInTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
 	return nil
 }
 
-func execStatements(ctx context.Context, db execer, path, content string) error {
+func execStatements(ctx context.Context, db execer, path, content string) (int, error) {
 	stmts, err := stmt.SplitSQLStatements(content)
 	if err != nil {
-		return fmt.Errorf("executor: parse %q: %w", path, err)
+		return 0, fmt.Errorf("executor: parse %q: %w", path, err)
 	}
+	count := 0
 	for _, s := range stmts {
 		if strings.TrimSpace(s) == "" {
 			continue
 		}
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("executor: exec in %q: %w\nstatement: %s", path, err, s)
+			return count, fmt.Errorf("executor: exec in %q: %w\nstatement: %s", path, err, s)
 		}
+		count++
 	}
-	return nil
+	return count, nil
 }
 
 func buildMigrationID(entryID, path string) string {

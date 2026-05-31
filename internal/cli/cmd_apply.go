@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"os"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/pkg/migrator"
 	"github.com/urfave/cli/v3"
@@ -20,6 +21,7 @@ func CmdApply() *cli.Command {
 			m, err := migrator.NewWithDSN(cmd.String("dsn"), migrator.Config{
 				ManifestPath: cmd.String("manifest"),
 				Table:        cmd.String("table"),
+				Output:       os.Stdout,
 			})
 			if err != nil {
 				return err
