@@ -24,7 +24,7 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		slog.Error("fatal", "err", err)
+		slog.Error("fatal", slog.Any("err", err))
 		os.Exit(1)
 	}
 }
