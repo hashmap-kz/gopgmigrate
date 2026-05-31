@@ -8,10 +8,9 @@ import "github.com/urfave/cli/v3"
 
 func flagDSN() cli.Flag {
 	return &cli.StringFlag{
-		Name:     "dsn",
-		Usage:    "PostgreSQL connection string",
-		Required: true,
-		Sources:  cli.EnvVars("PGMIGRATE_DSN"),
+		Name:    "dsn",
+		Usage:   "PostgreSQL connection string (optional if PG* env vars are set)",
+		Sources: cli.EnvVars("PGMIGRATE_DSN"),
 	}
 }
 

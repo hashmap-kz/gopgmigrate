@@ -76,10 +76,12 @@ gopgmigrate validate --dir <path>
 
 | Flag          | Env var           | Default              |
 |---------------|-------------------|----------------------|
-| `--dsn`       | `PGMIGRATE_DSN`   | -                    |
+| `--dsn`       | `PGMIGRATE_DSN`   | —                    |
 | `--dir`, `-d` | `PGMIGRATE_DIR`   | `migrations`         |
 | `--table`     | `PGMIGRATE_TABLE` | `schema_migrations`  |
-| `--log-level` | -                 | `warn`               |
+| `--log-level` | —                 | `warn`               |
+
+`--dsn` is optional when standard PostgreSQL environment variables are set (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`). When none are present, the tool fails immediately with a clear error before attempting any connection.
 
 **Exit codes:**
 

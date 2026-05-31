@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/conn"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/executor"
@@ -33,15 +34,30 @@ type Migrator struct {
 }
 
 // NewWithDSN creates a Migrator that opens and owns its own DB connection.
+// dsn may be empty when standard PG* environment variables are configured
+// (PGHOST, PGDATABASE, PGUSER, etc.) — pgx reads them automatically.
+// Returns an error early if neither dsn nor any PG* env var is set.
 func NewWithDSN(dsn string, cfg Config) (*Migrator, error) {
-	if dsn == "" {
-		return nil, fmt.Errorf("migrator: dsn is required")
+	if dsn == "" && !hasPGEnv() {
+		return nil, fmt.Errorf("migrator: no connection configured:" +
+			" provide a DSN or set PGHOST / PGPORT / PGDATABASE / PGUSER")
 	}
 	db, err := conn.Open(dsn)
 	if err != nil {
 		return nil, err
 	}
 	return &Migrator{db: db, ownDB: true, cfg: cfg}, nil
+}
+
+// hasPGEnv reports whether any standard PostgreSQL connection environment
+// variable is set. When true, pgx can build a connection without an explicit DSN.
+func hasPGEnv() bool {
+	for _, key := range []string{"PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // NewWithDB creates a Migrator using a caller-managed DB connection.

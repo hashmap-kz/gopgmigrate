@@ -16,9 +16,13 @@ func writeFile(t *testing.T, path, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
-func TestNewWithDSN_EmptyDSN(t *testing.T) {
+func TestNewWithDSN_EmptyDSN_NoPGEnv(t *testing.T) {
+	for _, key := range []string{"PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"} {
+		t.Setenv(key, "")
+	}
 	_, err := migrator.NewWithDSN("", migrator.Config{Dir: "migrations"})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no connection configured")
 }
 
 func TestNewWithDB_NilDB(t *testing.T) {
