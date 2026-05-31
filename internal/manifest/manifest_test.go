@@ -335,3 +335,150 @@ func TestReadFile_MissingFile(t *testing.T) {
 	_, err := manifest.ReadFile("/nonexistent/file.sql")
 	require.Error(t, err)
 }
+
+func TestLoad_Includes_Basic(t *testing.T) {
+	root := t.TempDir()
+	rel1 := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rel1, 0o755))
+
+	sqlFile(t, root, "a.sql")
+	writeFile(t, filepath.Join(rel1, "b.sql"), "select 2;")
+
+	writeFile(t, filepath.Join(rel1, "rel-1.yaml"), `
+migrations:
+  - id: rel-1.entry
+    files: [b.sql]
+`)
+	path := writeManifest(t, root, `
+manifest:
+  table: my_migrations
+includes:
+  - releases/rel-1.yaml
+`)
+
+	mf, err := manifest.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "my_migrations", mf.Table)
+	require.Len(t, mf.Entries, 1)
+	assert.Equal(t, "rel-1.entry", mf.Entries[0].ID)
+	assert.Equal(t, "b.sql", mf.Entries[0].Files[0].Path)
+	assert.Equal(t, filepath.Join(rel1, "b.sql"), mf.Entries[0].Files[0].AbsPath)
+}
+
+func TestLoad_Includes_Order(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+
+	writeFile(t, filepath.Join(rels, "a.sql"), "select 1;")
+	writeFile(t, filepath.Join(rels, "b.sql"), "select 2;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), "migrations:\n  - id: r1\n    files: [a.sql]\n")
+	writeFile(t, filepath.Join(rels, "rel-2.yaml"), "migrations:\n  - id: r2\n    files: [b.sql]\n")
+
+	path := writeManifest(t, root, "includes:\n  - releases/rel-1.yaml\n  - releases/rel-2.yaml\n")
+
+	mf, err := manifest.Load(path)
+	require.NoError(t, err)
+	require.Len(t, mf.Entries, 2)
+	assert.Equal(t, "r1", mf.Entries[0].ID)
+	assert.Equal(t, "r2", mf.Entries[1].ID)
+}
+
+func TestLoad_Includes_BothIncludesAndMigrations(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+	sqlFile(t, root, "a.sql")
+	writeFile(t, filepath.Join(rels, "b.sql"), "select 2;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), "migrations:\n  - id: r1\n    files: [b.sql]\n")
+
+	path := writeManifest(t, root, `
+includes:
+  - releases/rel-1.yaml
+migrations:
+  - id: extra
+    files: [a.sql]
+`)
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot both be present")
+}
+
+func TestLoad_Includes_LeafHasIncludes(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+	writeFile(t, filepath.Join(rels, "a.sql"), "select 1;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), `
+includes:
+  - other.yaml
+migrations:
+  - id: r1
+    files: [a.sql]
+`)
+	path := writeManifest(t, root, "includes:\n  - releases/rel-1.yaml\n")
+
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot have 'includes'")
+}
+
+func TestLoad_Includes_LeafHasManifestSection(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+	writeFile(t, filepath.Join(rels, "a.sql"), "select 1;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), `
+manifest:
+  table: other_table
+migrations:
+  - id: r1
+    files: [a.sql]
+`)
+	path := writeManifest(t, root, "includes:\n  - releases/rel-1.yaml\n")
+
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot have 'manifest' section")
+}
+
+func TestLoad_Includes_GlobalIDUniqueness(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+	writeFile(t, filepath.Join(rels, "a.sql"), "select 1;")
+	writeFile(t, filepath.Join(rels, "b.sql"), "select 2;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), "migrations:\n  - id: same-id\n    files: [a.sql]\n")
+	writeFile(t, filepath.Join(rels, "rel-2.yaml"), "migrations:\n  - id: same-id\n    files: [b.sql]\n")
+
+	path := writeManifest(t, root, "includes:\n  - releases/rel-1.yaml\n  - releases/rel-2.yaml\n")
+
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same-id")
+	assert.Contains(t, err.Error(), "not unique")
+}
+
+func TestLoad_Includes_GlobalPathUniqueness(t *testing.T) {
+	root := t.TempDir()
+	rels := filepath.Join(root, "releases")
+	require.NoError(t, os.MkdirAll(rels, 0o755))
+	writeFile(t, filepath.Join(rels, "a.sql"), "select 1;")
+	writeFile(t, filepath.Join(rels, "rel-1.yaml"), "migrations:\n  - id: r1\n    files: [a.sql]\n")
+	writeFile(t, filepath.Join(rels, "rel-2.yaml"), "migrations:\n  - id: r2\n    files: [a.sql]\n")
+
+	path := writeManifest(t, root, "includes:\n  - releases/rel-1.yaml\n  - releases/rel-2.yaml\n")
+
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
+}
+
+func TestLoad_Includes_MissingLeafFile(t *testing.T) {
+	root := t.TempDir()
+	path := writeManifest(t, root, "includes:\n  - releases/nonexistent.yaml\n")
+
+	_, err := manifest.Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent.yaml")
+}

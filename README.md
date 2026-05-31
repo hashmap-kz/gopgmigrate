@@ -81,31 +81,83 @@ gopgmigrate plan  --dsn postgres://user:pass@localhost/mydb --manifest migration
 gopgmigrate apply --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
 ```
 
+See the [`examples/`](examples/) directory for a real-world layout using per-release leaf files.
+
 ---
 
 ## Manifest
 
-Each entry in `migrations` declares the SQL files to apply, the execution mode, and a required stable ID.
+A manifest is either a **root** file (the entry point) or a **leaf** file (a per-release migration list). Both are YAML.
 
-### `id`
+### Root manifest
 
-Required. Uniquely identifies the entry within the manifest. Used together with the file basename to form the `migration_id` stored in the history table (`id/filename.sql`).
+The root manifest declares the tracking table and the ordered list of leaf files to include:
 
-Allowed characters: `[a-zA-Z0-9._-]`
+```yaml
+manifest:
+  table: schema_migrations   # optional, default: schema_migrations
 
-IDs must be unique within the manifest. Duplicates are rejected at load time with a descriptive error.
+includes:
+  - rel-0.0.1.yaml
+  - rel-0.0.2.yaml
+```
 
-### `files`
+Each line in `includes` is a path to a leaf file, relative to the root manifest location. Entries from all leaf files are flattened in declaration order. Adding a new release means writing a new leaf file and appending one line here — old leaf files are never modified.
 
-Required. One or more paths to SQL files, relative to the manifest file location. File paths must be globally unique across all entries.
+A root manifest may use either `includes` or `migrations`, not both.
 
-### `mode`
+### Leaf manifest
 
-Optional. Controls the transaction behaviour. See [Modes](#modes) below.
+A leaf file contains only a `migrations` list. It has no `manifest` header and no `includes`:
 
-### `description`
+```yaml
+migrations:
+  - id: rel-0.0.1.schemas
+    files:
+      - sql/schemas.sql
 
-Optional. Free-form text stored in the history table alongside the migration record.
+  - id: rel-0.0.1.core-tables
+    files:
+      - sql/users.sql
+      - sql/sessions.sql
+    mode: atomic
+    description: |
+      Core tables applied atomically so a failure does not leave
+      the schema in a half-created state.
+```
+
+File paths in a leaf are resolved relative to the leaf file's own location.
+
+### Standalone manifest
+
+For simpler projects, the root can contain `migrations` directly — no `includes` needed:
+
+```yaml
+manifest:
+  table: schema_migrations
+
+migrations:
+  - id: rel-1.0.users
+    files:
+      - sql/001_create_users.sql
+```
+
+### Entry fields
+
+| Field         | Required | Description |
+|---------------|----------|-------------|
+| `id`          | yes      | Stable identifier, unique within the manifest. Combined with the file basename to form the history key: `id/filename.sql`. Allowed characters: `[a-zA-Z0-9._-]` |
+| `files`       | yes      | One or more SQL file paths, relative to the manifest file. Must be unique across all entries. |
+| `mode`        | no       | Execution mode. See [Modes](#modes). |
+| `description` | no       | Free-form text stored in the history table. |
+
+### Manifest rules
+
+- `includes` and `migrations` cannot both be present in the same file.
+- Leaf files cannot have `includes` or a `manifest` header.
+- `id` must match `[a-zA-Z0-9._-]` and be unique across all loaded entries.
+- File paths must be unique across all entries.
+- Files within the same entry must have unique basenames (they share the same `id` prefix in `migration_id`).
 
 ---
 

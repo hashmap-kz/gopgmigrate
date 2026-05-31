@@ -38,10 +38,29 @@ type Entry struct {
 	Description string
 }
 
-type rawManifest struct {
+// Manifest is the parsed, validated, path-resolved manifest.
+type Manifest struct {
+	Table   string
+	Entries []Entry
+}
+
+// rawRootManifest is the top-level manifest file.
+// It may have either includes or migrations, but not both.
+type rawRootManifest struct {
 	Manifest struct {
 		Table string `json:"table,omitempty"`
 	} `json:"manifest,omitempty"`
+	Includes   []string   `json:"includes,omitempty"`
+	Migrations []rawEntry `json:"migrations,omitempty"`
+}
+
+// rawLeafManifest is an included manifest file.
+// It may only contain migrations. Includes and manifest-level config are forbidden.
+type rawLeafManifest struct {
+	Manifest struct {
+		Table string `json:"table,omitempty"`
+	} `json:"manifest,omitempty"` // forbidden: validated after parse
+	Includes   []string   `json:"includes,omitempty"` // forbidden: validated after parse
 	Migrations []rawEntry `json:"migrations"`
 }
 
@@ -52,41 +71,99 @@ type rawEntry struct {
 	Description string   `json:"description,omitempty"`
 }
 
-// Manifest is the parsed, validated, path-resolved manifest.
-type Manifest struct {
-	Table   string
-	Entries []Entry
-}
-
 // Load parses and validates a manifest YAML file.
-// All file paths are resolved relative to the manifest file location.
+// All file paths in each file are resolved relative to that file's location.
 func Load(manifestPath string) (*Manifest, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("manifest: read %q: %w", manifestPath, err)
 	}
 
-	var raw rawManifest
-	if err := yaml.Unmarshal(data, &raw); err != nil {
+	var root rawRootManifest
+	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("manifest: parse %q: %w", manifestPath, err)
 	}
 
-	table := raw.Manifest.Table
+	if len(root.Includes) > 0 && len(root.Migrations) > 0 {
+		return nil, fmt.Errorf("manifest: %q: 'includes' and 'migrations' cannot both be present", manifestPath)
+	}
+
+	table := root.Manifest.Table
 	if table == "" {
 		table = "schema_migrations"
 	}
 
-	dir := filepath.Dir(manifestPath)
+	rootDir := filepath.Dir(manifestPath)
 
-	entries, err := normalise(raw.Migrations, dir)
-	if err != nil {
-		return nil, err
+	var entries []Entry
+
+	if len(root.Includes) > 0 {
+		for _, inc := range root.Includes {
+			leafPath := filepath.Join(rootDir, inc)
+			leafRaws, err := loadLeaf(leafPath)
+			if err != nil {
+				return nil, err
+			}
+			leafEntries, err := normalise(leafRaws, filepath.Dir(leafPath))
+			if err != nil {
+				return nil, fmt.Errorf("manifest: %s: %w", inc, err)
+			}
+			entries = append(entries, leafEntries...)
+		}
+		if err := validateGlobal(entries); err != nil {
+			return nil, err
+		}
+	} else {
+		entries, err = normalise(root.Migrations, rootDir)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Manifest{
 		Table:   table,
 		Entries: entries,
 	}, nil
+}
+
+func loadLeaf(leafPath string) ([]rawEntry, error) {
+	data, err := os.ReadFile(leafPath)
+	if err != nil {
+		return nil, fmt.Errorf("manifest: read included file %q: %w", leafPath, err)
+	}
+
+	var leaf rawLeafManifest
+	if err := yaml.Unmarshal(data, &leaf); err != nil {
+		return nil, fmt.Errorf("manifest: parse included file %q: %w", leafPath, err)
+	}
+
+	if len(leaf.Includes) > 0 {
+		return nil, fmt.Errorf("manifest: included file %q cannot have 'includes'", leafPath)
+	}
+	if leaf.Manifest.Table != "" {
+		return nil, fmt.Errorf("manifest: included file %q cannot have 'manifest' section", leafPath)
+	}
+
+	return leaf.Migrations, nil
+}
+
+// validateGlobal checks id and path uniqueness across entries from multiple included files.
+func validateGlobal(entries []Entry) error {
+	seenIDs := make(map[string]struct{})
+	seenPaths := make(map[string]struct{})
+	for _, e := range entries {
+		if _, dup := seenIDs[e.ID]; dup {
+			return fmt.Errorf("manifest: id %q is not unique across included files", e.ID)
+		}
+		seenIDs[e.ID] = struct{}{}
+		for _, f := range e.Files {
+			if _, dup := seenPaths[f.AbsPath]; dup {
+				return fmt.Errorf("manifest: duplicate path %q across included files", f.Path)
+			}
+			seenPaths[f.AbsPath] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func normalise(raws []rawEntry, dir string) ([]Entry, error) {

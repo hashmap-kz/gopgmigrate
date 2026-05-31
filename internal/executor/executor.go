@@ -292,6 +292,7 @@ func applyAtomic(
 		slog.InfoContext(ctx, "skip atomic",
 			slog.String("reason", "already applied"),
 			slog.Int("files", len(entry.Files)),
+			slog.String("id", entry.ID),
 		)
 		stats.skipped += len(entry.Files)
 		return stats, nil
