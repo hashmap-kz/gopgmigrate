@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/hashmap-kz/gopgmigrate/v2/internal/x/fmtx"
 )
 
 // Mode controls how a migration file is executed.
@@ -55,7 +57,7 @@ type StrayFilesError struct {
 
 func (e *StrayFilesError) Error() string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "scan: %d stray file(s) found (files must match {0000000}-{name}.{ext}.sql):", len(e.Files))
+	fmtx.Fprintf(&sb, "scan: %d stray file(s) found (files must match {0000000}-{name}.{ext}.sql):", len(e.Files))
 	for _, f := range e.Files {
 		sb.WriteString("\n  ")
 		sb.WriteString(f)
