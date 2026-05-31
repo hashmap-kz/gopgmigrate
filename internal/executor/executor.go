@@ -230,7 +230,7 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
 			}
-			slog.InfoContext(ctx, "skip",
+			slog.DebugContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "already applied"),
 			)
@@ -241,7 +241,7 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 			continue
 		}
 		if r.dryRun {
-			slog.InfoContext(ctx, "dry-run",
+			slog.DebugContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "default"),
 			)
@@ -287,7 +287,7 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 		}
 
 		took := time.Since(start)
-		slog.InfoContext(ctx, "applied",
+		slog.DebugContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "default"),
 		)
@@ -322,7 +322,7 @@ func (r *runner) applyAtomic(ctx context.Context, entry manifest.Entry) error {
 		)
 	}
 	if appliedCount == len(entry.Files) {
-		slog.InfoContext(ctx, "skip atomic",
+		slog.DebugContext(ctx, "skip atomic",
 			slog.String("reason", "already applied"),
 			slog.Int("files", len(entry.Files)),
 		)
@@ -335,7 +335,7 @@ func (r *runner) applyAtomic(ctx context.Context, entry manifest.Entry) error {
 
 	if r.dryRun {
 		for _, f := range entry.Files {
-			slog.InfoContext(ctx, "dry-run",
+			slog.DebugContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "atomic"),
 			)
@@ -382,7 +382,7 @@ func (r *runner) applyAtomic(ctx context.Context, entry manifest.Entry) error {
 			}); err != nil {
 				return err
 			}
-			slog.InfoContext(ctx, "atomic file applied", slog.String("path", f.Path))
+			slog.DebugContext(ctx, "atomic file applied", slog.String("path", f.Path))
 			if r.tbl != nil {
 				r.tbl.OK(f.Path, progress.ModeAtomic, progress.Done{Statements: n, Took: time.Since(fileStart)})
 			}
@@ -419,7 +419,7 @@ func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
 			}
-			slog.InfoContext(ctx, "skip",
+			slog.DebugContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "already applied"),
 			)
@@ -430,7 +430,7 @@ func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 			continue
 		}
 		if r.dryRun {
-			slog.InfoContext(ctx, "dry-run",
+			slog.DebugContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "no-tx"),
 			)
@@ -488,7 +488,7 @@ func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 		}
 
 		took := time.Since(start)
-		slog.InfoContext(ctx, "applied",
+		slog.DebugContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "no-tx"),
 		)
@@ -512,7 +512,7 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 
 		row, exists := r.applied[f.Path]
 		if exists && row.Checksum == checksum {
-			slog.InfoContext(ctx, "skip",
+			slog.DebugContext(ctx, "skip",
 				slog.String("path", f.Path),
 				slog.String("reason", "unchanged"),
 			)
@@ -524,7 +524,7 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 		}
 
 		if r.dryRun {
-			slog.InfoContext(ctx, "dry-run",
+			slog.DebugContext(ctx, "dry-run",
 				slog.String("path", f.Path),
 				slog.String("mode", "repeatable"),
 			)
@@ -566,7 +566,7 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 		}
 
 		took := time.Since(start)
-		slog.InfoContext(ctx, "applied",
+		slog.DebugContext(ctx, "applied",
 			slog.String("path", f.Path),
 			slog.String("mode", "repeatable"),
 		)
