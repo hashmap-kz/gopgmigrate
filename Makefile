@@ -42,3 +42,9 @@ clean:
 .PHONY: snapshot
 snapshot:
 	GORELEASER_FORCE_TOKEN=github goreleaser release --skip sign --skip publish --snapshot --clean
+
+.PHONY: ci
+ci:
+	$(MAKE) lint
+	$(MAKE) test
+	$(MAKE) test-integration
