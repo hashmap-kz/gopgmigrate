@@ -12,7 +12,7 @@
 12) live progress, totals, etc...
 13) baseline (urgent)
 14) CLI to generate bash from migration file (psql commands against migration dir)
-
+15) migrate CMD (from flyway, etc...), for testing
 
 
 
