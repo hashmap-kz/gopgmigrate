@@ -20,7 +20,7 @@ SQL files stay plain SQL. No DSL, no ORM coupling, no magic.
 - **Checksum guard** - modifying an applied migration is a hard error
 - **Advisory locking** - prevents concurrent runs against the same database
 - **Repeatable migrations** - re-applied automatically when content changes
-- **Dry-run** - prints pending work without touching the database
+- **Plan before apply** - inspect pending migrations without touching the database
 - **Library + CLI** - embed in your app or run as a standalone binary
 
 ---
@@ -74,10 +74,11 @@ migrations:
     mode: no-tx
 ```
 
-Apply:
+Preview what would be applied, then apply:
 
 ```sh
-gopgmigrate up --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
+gopgmigrate plan  --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
+gopgmigrate apply --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
 ```
 
 ---
@@ -146,10 +147,18 @@ Each file in the entry is checked and re-applied independently.
 ## CLI
 
 ```
-gopgmigrate up        --dsn <dsn> --manifest <path> [--table <table>] [--dry-run]
+gopgmigrate apply     --dsn <dsn> --manifest <path> [--table <table>]
+gopgmigrate plan      --dsn <dsn> --manifest <path> [--table <table>]
 gopgmigrate status    --dsn <dsn> --manifest <path> [--table <table>]
 gopgmigrate validate  --manifest <path>
 ```
+
+| Command    | Description                                                                           |
+|------------|---------------------------------------------------------------------------------------|
+| `apply`    | Apply all pending migrations in manifest order                                        |
+| `plan`     | Show pending migrations without applying. Exits 2 if any are pending, 0 if up to date |
+| `status`   | Print a table of all manifest entries with their applied state                        |
+| `validate` | Check that all files referenced in the manifest exist (no DB required)                |
 
 All flags fall back to environment variables:
 
@@ -158,7 +167,29 @@ All flags fall back to environment variables:
 | `--dsn`      | `PGMIGRATE_DSN`      | -                          |
 | `--manifest` | `PGMIGRATE_MANIFEST` | `migrations/manifest.yaml` |
 | `--table`    | `PGMIGRATE_TABLE`    | `schema_migrations`        |
-| `--dry-run`  | `PGMIGRATE_DRY_RUN`  | `false`                    |
+
+### `plan` exit codes
+
+| Code | Meaning                                          |
+|------|--------------------------------------------------|
+| `0`  | Nothing to apply, database is up to date         |
+| `1`  | Error (connection failure, manifest error, etc.) |
+| `2`  | Pending migrations exist                         |
+
+This makes `plan` composable in CI pipelines - a non-zero exit can gate a deploy or trigger an alert.
+
+### `status` output
+
+```
+PATH                                   KIND        APPLIED_AT
+sql/001_create_users.sql               once        2024-03-12 14:02:11
+sql/002_add_roles.sql                  once        2024-03-12 14:02:11
+sql/003_seed_roles.sql                 once        2024-03-12 14:02:11
+sql/004_create_index_concurrently.sql  no-tx       2024-03-12 14:02:12
+sql/views/vw_users.sql                 repeatable  -
+```
+
+Pending entries show `-` in `APPLIED_AT`. Column widths adjust to the longest value in the result set.
 
 ---
 
@@ -196,8 +227,8 @@ Migrations are tracked in `schema_migrations` (configurable via `--table`):
 create table schema_migrations (
     record_id    serial      primary key,
     migration_id text        not null unique,  -- <entry-id>/<filename>, e.g. rel-1.0.users/001_create_users.sql
-    path         text        not null,         -- resolved file path on disk
-    kind         text        not null,         -- once | atomic | repeatable | no-tx
+    path         text        not null,         -- manifest-relative path, e.g. sql/001_create_users.sql
+    kind         text        not null,         -- once | no-tx | repeatable
     checksum     text        not null,         -- sha256 of file contents at apply time
     description  text,
     applied_by   name        not null default session_user,
