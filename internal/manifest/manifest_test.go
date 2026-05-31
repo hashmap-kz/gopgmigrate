@@ -163,6 +163,24 @@ func TestScan_PathsResolved(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "0000001-init.up.sql"), f.AbsPath)
 }
 
+func TestScan_SortedGloballyAcrossDeepNesting(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "c", "d", "0000003-c.up.sql"), "select 1;")
+	writeFile(t, filepath.Join(dir, "a", "0000001-a.up.sql"), "select 1;")
+	writeFile(t, filepath.Join(dir, "0000002-b.up.sql"), "select 1;")
+	writeFile(t, filepath.Join(dir, "e", "f", "g", "0000005-e.up.sql"), "select 1;")
+	writeFile(t, filepath.Join(dir, "e", "0000004-d.r.sql"), "select 1;")
+
+	mf, err := Scan(dir)
+	require.NoError(t, err)
+	require.Len(t, mf.Entries, 5)
+	assert.Equal(t, int64(1), mf.Entries[0].Revision)
+	assert.Equal(t, int64(2), mf.Entries[1].Revision)
+	assert.Equal(t, int64(3), mf.Entries[2].Revision)
+	assert.Equal(t, int64(4), mf.Entries[3].Revision)
+	assert.Equal(t, int64(5), mf.Entries[4].Revision)
+}
+
 func TestScan_IDIsStem(t *testing.T) {
 	dir := t.TempDir()
 	sqlFile(t, dir, "0000001-create-users-table.up.sql")
