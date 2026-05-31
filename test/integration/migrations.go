@@ -36,3 +36,7 @@ func (m *MigrationDir) Add(t *testing.T, filename, content string) {
 func (m *MigrationDir) Sub(subdir string) string {
 	return filepath.Join(m.Root, subdir)
 }
+
+func removeFile(dir, filename string) error {
+	return os.Remove(filepath.Join(dir, filename))
+}

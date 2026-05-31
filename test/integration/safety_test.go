@@ -99,6 +99,37 @@ func TestStatus_ShowsAppliedAndPending(t *testing.T) {
 	assert.False(t, statuses[1].Applied, "second migration should be pending")
 }
 
+func TestSafety_MissingAppliedFileIsError(t *testing.T) {
+	t.Parallel()
+	pg := NewPgDatabase(t)
+	dir := NewMigrationDir(t)
+
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	dir.Add(t, "0000002-add-email.up.sql", "alter table users add column email text;")
+
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
+
+	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
+
+	// remove a file that has already been applied
+	require.NoError(t, removeFile(dir.Root, "0000002-add-email.up.sql"))
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m2.Close()
+
+	err = m2.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0000002-add-email.up.sql")
+
+	_, err = m2.Status(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0000002-add-email.up.sql")
+}
+
 func TestStatus_ShowsChecksumMismatch(t *testing.T) {
 	t.Parallel()
 	pg := NewPgDatabase(t)

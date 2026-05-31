@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -105,6 +106,10 @@ func Run(ctx context.Context, db *sql.DB, mf *manifest.Manifest, output io.Write
 		return err
 	}
 
+	if err := integrityCheck(mf, applied); err != nil {
+		return err
+	}
+
 	var tbl *progress.Table
 	if output != nil {
 		tbl = progress.NewTable(output)
@@ -154,6 +159,10 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 	}
 	applied, err := r.All(ctx, db)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := integrityCheck(mf, applied); err != nil {
 		return nil, err
 	}
 
@@ -569,6 +578,33 @@ func execStatements(ctx context.Context, db execer, path, content string) (int, 
 		count++
 	}
 	return count, nil
+}
+
+// integrityCheck verifies that every path recorded in the history table exists
+// in the current scan. Applied migrations that are no longer present on disk
+// indicate a mismatched --dir or deleted files, both of which are hard errors.
+func integrityCheck(mf *manifest.Manifest, applied map[string]history.Row) error {
+	inScan := make(map[string]struct{}, len(mf.Entries))
+	for _, e := range mf.Entries {
+		for _, f := range e.Files {
+			inScan[f.Path] = struct{}{}
+		}
+	}
+	var missing []string
+	for path := range applied {
+		if _, ok := inScan[path]; !ok {
+			missing = append(missing, path)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf(
+		"executor: %d applied migration(s) not found in the migrations directory"+
+			" (wrong --dir, or files were deleted after apply):\n  %s",
+		len(missing), strings.Join(missing, "\n  "),
+	)
 }
 
 // checksumGuard returns an error if the on-disk file differs from the recorded checksum.
