@@ -7,11 +7,10 @@ import (
 
 // Record holds the fields written to the history table for a single applied migration.
 type Record struct {
-	MigrationID string
+	MigrationID int64
 	Path        string
 	Kind        string
 	Checksum    string
-	Description string
 }
 
 // Exported is the only type accessible outside this package.

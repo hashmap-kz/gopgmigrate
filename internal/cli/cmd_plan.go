@@ -14,13 +14,13 @@ func CmdPlan() *cli.Command {
 		Usage: "show pending migrations without applying (exits 2 if any are pending)",
 		Flags: []cli.Flag{
 			flagDSN(),
-			flagManifest(),
+			flagDir(),
 			flagTable(),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			m, err := migrator.NewWithDSN(cmd.String("dsn"), migrator.Config{
-				ManifestPath: cmd.String("manifest"),
-				Table:        cmd.String("table"),
+				Dir:   cmd.String("dir"),
+				Table: cmd.String("table"),
 			})
 			if err != nil {
 				return err

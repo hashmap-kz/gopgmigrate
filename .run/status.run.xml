@@ -2,7 +2,7 @@
   <configuration default="false" name="status" type="GoApplicationRunConfiguration" factoryName="Go Application">
     <module name="gopgmigrate" />
     <working_directory value="$PROJECT_DIR$" />
-    <parameters value="status -m examples/manifest.yaml -dsn 'postgres://postgres:postgres@localhost:5432/postgres'" />
+    <parameters value="status -d examples/migrations -dsn 'postgres://postgres:postgres@localhost:5432/postgres'" />
     <kind value="PACKAGE" />
     <package value="github.com/hashmap-kz/gopgmigrate/v2/cmd/gopgmigrate" />
     <directory value="$PROJECT_DIR$" />

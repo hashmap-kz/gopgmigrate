@@ -15,10 +15,10 @@ import (
 // Table defaults to "schema_migrations" when empty.
 // Output, when non-nil, receives a progress table during Run. Pass os.Stdout for CLI use.
 type Config struct {
-	ManifestPath string
-	Table        string
-	DryRun       bool
-	Output       io.Writer
+	Dir    string
+	Table  string
+	DryRun bool
+	Output io.Writer
 }
 
 // EntryStatus describes the current state of a single migration entry.
@@ -91,17 +91,17 @@ func (m *Migrator) Validate() error {
 
 // NewValidateOnly creates a Migrator for validation only - no DB connection needed.
 func NewValidateOnly(cfg Config) (*Migrator, error) {
-	if cfg.ManifestPath == "" {
-		return nil, fmt.Errorf("migrator: ManifestPath is required")
+	if cfg.Dir == "" {
+		return nil, fmt.Errorf("migrator: Dir is required")
 	}
 	return &Migrator{cfg: cfg}, nil
 }
 
 func (m *Migrator) loadManifest() (*manifest.Manifest, error) {
-	if m.cfg.ManifestPath == "" {
-		return nil, fmt.Errorf("migrator: ManifestPath is required")
+	if m.cfg.Dir == "" {
+		return nil, fmt.Errorf("migrator: Dir is required")
 	}
-	mf, err := manifest.Load(m.cfg.ManifestPath)
+	mf, err := manifest.Scan(m.cfg.Dir)
 	if err != nil {
 		return nil, err
 	}

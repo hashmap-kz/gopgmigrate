@@ -18,20 +18,16 @@ func TestSafety_ChecksumMismatchRejected(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	cfg := migrator.Config{ManifestPath: manifest, Table: histTable}
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
 
 	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
 	require.NoError(t, err)
 	defer m1.Close()
 	require.NoError(t, m1.Run(context.Background()))
 
-	// modify the already-applied versioned migration
-	dir.Add(t, "001_create_users.sql", "create table users (id bigint primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id bigint primary key);")
 
 	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
 	require.NoError(t, err)
@@ -46,17 +42,13 @@ func TestSafety_AdvisoryLockBlocksConcurrent(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_slow.sql", "select pg_sleep(2);")
-
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_slow.sql"}},
-	})
+	dir.Add(t, "0000001-slow.up.sql", "select pg_sleep(2);")
 
 	errCh := make(chan error, 2)
 	run := func() {
 		m, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{
-			ManifestPath: manifest,
-			Table:        histTable,
+			Dir:   dir.Root,
+			Table: histTable,
 		})
 		if err != nil {
 			errCh <- err
@@ -67,7 +59,7 @@ func TestSafety_AdvisoryLockBlocksConcurrent(t *testing.T) {
 	}
 
 	go run()
-	time.Sleep(200 * time.Millisecond) // let first goroutine acquire the advisory lock
+	time.Sleep(200 * time.Millisecond)
 	go run()
 
 	err1 := <-errCh
@@ -87,24 +79,16 @@ func TestStatus_ShowsAppliedAndPending(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	dir.Add(t, "002_add_email.sql", "alter table users add column email text;")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	// apply only the first migration
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	m1, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{ManifestPath: manifest, Table: histTable})
+	m1, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{Dir: dir.Root, Table: histTable})
 	require.NoError(t, err)
 	defer m1.Close()
 	require.NoError(t, m1.Run(context.Background()))
 
-	// add the second migration and check status
-	manifest = dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-		{Files: []string{"002_add_email.sql"}},
-	})
-	m2, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{ManifestPath: manifest, Table: histTable})
+	dir.Add(t, "0000002-add-email.up.sql", "alter table users add column email text;")
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{Dir: dir.Root, Table: histTable})
 	require.NoError(t, err)
 	defer m2.Close()
 
@@ -120,20 +104,16 @@ func TestStatus_ShowsChecksumMismatch(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	cfg := migrator.Config{ManifestPath: manifest, Table: histTable}
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
 
 	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
 	require.NoError(t, err)
 	defer m1.Close()
 	require.NoError(t, m1.Run(context.Background()))
 
-	// modify the applied file
-	dir.Add(t, "001_create_users.sql", "create table users (id bigint primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id bigint primary key);")
 
 	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
 	require.NoError(t, err)

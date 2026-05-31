@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,14 +17,13 @@ import (
 
 // EntryStatus describes the current state of a single file in the manifest.
 type EntryStatus struct {
-	MigrationID string
+	MigrationID int64
 	Path        string
 	Kind        string
 	Applied     bool
 	Pending     bool      // true if Run would execute this file
 	AppliedAt   time.Time // zero value when not yet applied
 	Checksum    string
-	Description string
 }
 
 // NoTxHistoryError is returned when a no-tx migration was applied successfully
@@ -34,11 +32,10 @@ type EntryStatus struct {
 //
 // Recovery: execute RecoverySQL() manually, then re-run.
 type NoTxHistoryError struct {
-	MigrationID string
+	MigrationID int64
 	Path        string
 	Table       string
 	Checksum    string
-	Description string
 	Cause       error
 }
 
@@ -57,13 +54,9 @@ func (e *NoTxHistoryError) Unwrap() error { return e.Cause }
 
 // RecoverySQL returns the exact INSERT needed to mark this migration as applied.
 func (e *NoTxHistoryError) RecoverySQL() string {
-	desc := "NULL"
-	if e.Description != "" {
-		desc = fmt.Sprintf("'%s'", e.Description)
-	}
 	return fmt.Sprintf(
-		"INSERT INTO %s (migration_id, path, kind, checksum, description) VALUES ('%s', '%s', 'no-tx', '%s', %s);",
-		e.Table, e.MigrationID, e.Path, e.Checksum, desc,
+		"INSERT INTO %s (migration_id, path, kind, checksum) VALUES (%d, '%s', 'no-tx', '%s');",
+		e.Table, e.MigrationID, e.Path, e.Checksum,
 	)
 }
 
@@ -174,21 +167,21 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 			row, exists := applied[f.Path]
 			kind := kindLabel(entry)
 			pending := !exists
-			if exists && entry.Mode != manifest.ModeRepeatable && row.Checksum != checksum {
+			repeatable := entry.Mode == manifest.ModeRepeatable || entry.Mode == manifest.ModeRepeatableNoTx
+			if exists && !repeatable && row.Checksum != checksum {
 				kind += " [CHECKSUM MISMATCH]"
 			}
-			if exists && entry.Mode == manifest.ModeRepeatable && row.Checksum != checksum {
+			if exists && repeatable && row.Checksum != checksum {
 				pending = true
 			}
 			out = append(out, EntryStatus{
-				MigrationID: buildMigrationID(entry.ID, f.Path),
+				MigrationID: entry.Revision,
 				Path:        f.Path,
 				Kind:        kind,
 				Applied:     exists,
 				Pending:     pending,
 				AppliedAt:   row.AppliedAt,
 				Checksum:    checksum,
-				Description: entry.Description,
 			})
 		}
 	}
@@ -210,12 +203,12 @@ func Validate(mf *manifest.Manifest) error {
 
 func (r *runner) applyEntry(ctx context.Context, entry manifest.Entry) error {
 	switch entry.Mode {
-	case manifest.ModeAtomic:
-		return r.applyAtomic(ctx, entry)
 	case manifest.ModeNoTx:
 		return r.applyNoTx(ctx, entry)
 	case manifest.ModeRepeatable:
 		return r.applyRepeatable(ctx, entry)
+	case manifest.ModeRepeatableNoTx:
+		return r.applyRepeatableNoTx(ctx, entry)
 	default:
 		return r.applyDefault(ctx, entry)
 	}
@@ -257,7 +250,6 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 		}
 		start := time.Now()
 
-		migID := buildMigrationID(entry.ID, f.Path)
 		var n int
 		if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
 			content, err := manifest.ReadFile(f.AbsPath)
@@ -273,11 +265,10 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 				return err
 			}
 			return r.hist.Insert(ctx, tx, &history.Record{
-				MigrationID: migID,
+				MigrationID: entry.Revision,
 				Path:        f.Path,
 				Kind:        "once",
 				Checksum:    checksum,
-				Description: entry.Description,
 			})
 		}); err != nil {
 			if r.tbl != nil {
@@ -297,116 +288,6 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 		r.stats.applied++
 		r.stats.stmts += n
 	}
-	return nil
-}
-
-// atomic: one tx across all files
-
-func (r *runner) applyAtomic(ctx context.Context, entry manifest.Entry) error {
-	appliedCount := 0
-	for _, f := range entry.Files {
-		row, exists := r.applied[f.Path]
-		if !exists {
-			continue
-		}
-		if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
-			return err
-		}
-		appliedCount++
-	}
-
-	if appliedCount > 0 && appliedCount < len(entry.Files) {
-		return fmt.Errorf(
-			"executor: atomic entry partially applied (%d/%d files recorded) - manual intervention required",
-			appliedCount, len(entry.Files),
-		)
-	}
-	if appliedCount == len(entry.Files) {
-		slog.DebugContext(ctx, "skip atomic",
-			slog.String("reason", "already applied"),
-			slog.Int("files", len(entry.Files)),
-		)
-		if r.tbl != nil {
-			r.tbl.Skip("atomic/"+entry.ID, progress.ModeAtomic, "already applied")
-		}
-		r.stats.skipped += len(entry.Files)
-		return nil
-	}
-
-	if r.dryRun {
-		for _, f := range entry.Files {
-			slog.DebugContext(ctx, "dry-run",
-				slog.String("path", f.Path),
-				slog.String("mode", "atomic"),
-			)
-			if r.tbl != nil {
-				r.tbl.Skip(f.Path, progress.ModeAtomic, "dry-run")
-			}
-		}
-		r.stats.skipped += len(entry.Files)
-		return nil
-	}
-
-	if r.tbl != nil {
-		r.tbl.BeginAtomic(entry.ID)
-	}
-	start := time.Now()
-	var totalStmts int
-
-	if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
-		for _, f := range entry.Files {
-			if r.tbl != nil {
-				r.tbl.Run(f.Path, progress.ModeAtomic)
-			}
-			fileStart := time.Now()
-
-			content, err := manifest.ReadFile(f.AbsPath)
-			if err != nil {
-				return err
-			}
-			n, err := execStatements(ctx, tx, f.Path, content)
-			if err != nil {
-				return err
-			}
-			checksum, err := manifest.Checksum(f.AbsPath)
-			if err != nil {
-				return err
-			}
-			migID := buildMigrationID(entry.ID, f.Path)
-			if err := r.hist.Insert(ctx, tx, &history.Record{
-				MigrationID: migID,
-				Path:        f.Path,
-				Kind:        "once",
-				Checksum:    checksum,
-				Description: entry.Description,
-			}); err != nil {
-				return err
-			}
-			slog.DebugContext(ctx, "atomic file applied", slog.String("path", f.Path))
-			if r.tbl != nil {
-				r.tbl.OK(f.Path, progress.ModeAtomic, progress.Done{Statements: n, Took: time.Since(fileStart)})
-			}
-			totalStmts += n
-		}
-		return nil
-	}); err != nil {
-		took := time.Since(start)
-		if r.tbl != nil {
-			r.tbl.AbortAtomic(entry.ID, took, err.Error())
-		}
-		return err
-	}
-
-	took := time.Since(start)
-	if r.tbl != nil {
-		r.tbl.CommitAtomic(entry.ID, progress.Done{
-			Files:      len(entry.Files),
-			Statements: totalStmts,
-			Took:       took,
-		})
-	}
-	r.stats.applied += len(entry.Files)
-	r.stats.stmts += totalStmts
 	return nil
 }
 
@@ -463,22 +344,19 @@ func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 			return err
 		}
 
-		migID := buildMigrationID(entry.ID, f.Path)
 		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
 		if err := r.hist.Insert(ctx, r.db, &history.Record{
-			MigrationID: migID,
+			MigrationID: entry.Revision,
 			Path:        f.Path,
 			Kind:        "no-tx",
 			Checksum:    checksum,
-			Description: entry.Description,
 		}); err != nil {
 			noTxErr := &NoTxHistoryError{
-				MigrationID: migID,
+				MigrationID: entry.Revision,
 				Path:        f.Path,
 				Table:       r.table,
 				Checksum:    checksum,
-				Description: entry.Description,
 				Cause:       err,
 			}
 			if r.tbl != nil {
@@ -540,7 +418,6 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 		}
 		start := time.Now()
 
-		migID := buildMigrationID(entry.ID, f.Path)
 		var n int
 		if err := execInTx(ctx, r.db, func(tx *sql.Tx) error {
 			content, err := manifest.ReadFile(f.AbsPath)
@@ -552,11 +429,10 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 				return err
 			}
 			return r.hist.Upsert(ctx, tx, &history.Record{
-				MigrationID: migID,
+				MigrationID: entry.Revision,
 				Path:        f.Path,
 				Kind:        "repeatable",
 				Checksum:    checksum,
-				Description: entry.Description,
 			})
 		}); err != nil {
 			if r.tbl != nil {
@@ -572,6 +448,83 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 		)
 		if r.tbl != nil {
 			r.tbl.OK(f.Path, progress.ModeRepeat, progress.Done{Statements: n, Took: took})
+		}
+		r.stats.applied++
+		r.stats.stmts += n
+	}
+	return nil
+}
+
+// repeatable-no-tx: reruns when checksum changes, outside a transaction
+
+func (r *runner) applyRepeatableNoTx(ctx context.Context, entry manifest.Entry) error {
+	for _, f := range entry.Files {
+		checksum, err := manifest.Checksum(f.AbsPath)
+		if err != nil {
+			return err
+		}
+
+		row, exists := r.applied[f.Path]
+		if exists && row.Checksum == checksum {
+			slog.DebugContext(ctx, "skip",
+				slog.String("path", f.Path),
+				slog.String("reason", "unchanged"),
+			)
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeRepeatNoTx, "unchanged")
+			}
+			r.stats.skipped++
+			continue
+		}
+
+		if r.dryRun {
+			slog.DebugContext(ctx, "dry-run",
+				slog.String("path", f.Path),
+				slog.String("mode", "repeatable-notx"),
+			)
+			if r.tbl != nil {
+				r.tbl.Skip(f.Path, progress.ModeRepeatNoTx, "dry-run")
+			}
+			r.stats.skipped++
+			continue
+		}
+
+		if r.tbl != nil {
+			r.tbl.Run(f.Path, progress.ModeRepeatNoTx)
+		}
+		start := time.Now()
+
+		content, err := manifest.ReadFile(f.AbsPath)
+		if err != nil {
+			return err
+		}
+		n, err := execStatements(ctx, r.db, f.Path, content)
+		if err != nil {
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeRepeatNoTx, time.Since(start), err.Error())
+			}
+			return err
+		}
+
+		if err := r.hist.Upsert(ctx, r.db, &history.Record{
+			MigrationID: entry.Revision,
+			Path:        f.Path,
+			Kind:        "repeatable-notx",
+			Checksum:    checksum,
+		}); err != nil {
+			if r.tbl != nil {
+				r.tbl.Fail(f.Path, progress.ModeRepeatNoTx, time.Since(start), "history write failed")
+			}
+			return err
+		}
+
+		took := time.Since(start)
+		slog.DebugContext(ctx, "applied",
+			slog.String("path", f.Path),
+			slog.String("mode", "repeatable-notx"),
+		)
+		if r.tbl != nil {
+			r.tbl.OK(f.Path, progress.ModeRepeatNoTx, progress.Done{Statements: n, Took: took})
 		}
 		r.stats.applied++
 		r.stats.stmts += n
@@ -618,10 +571,6 @@ func execStatements(ctx context.Context, db execer, path, content string) (int, 
 	return count, nil
 }
 
-func buildMigrationID(entryID, path string) string {
-	return entryID + "/" + filepath.Base(path)
-}
-
 // checksumGuard returns an error if the on-disk file differs from the recorded checksum.
 func checksumGuard(absPath, recorded string) error {
 	current, err := manifest.Checksum(absPath)
@@ -639,12 +588,12 @@ func checksumGuard(absPath, recorded string) error {
 
 func kindLabel(e manifest.Entry) string {
 	switch e.Mode {
-	case manifest.ModeAtomic:
-		return "atomic"
 	case manifest.ModeNoTx:
 		return "no-tx"
 	case manifest.ModeRepeatable:
 		return "repeatable"
+	case manifest.ModeRepeatableNoTx:
+		return "repeatable-notx"
 	default:
 		return "once"
 	}

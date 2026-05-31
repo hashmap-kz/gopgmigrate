@@ -14,14 +14,14 @@ func CmdApply() *cli.Command {
 		Usage: "apply all pending migrations",
 		Flags: []cli.Flag{
 			flagDSN(),
-			flagManifest(),
+			flagDir(),
 			flagTable(),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			m, err := migrator.NewWithDSN(cmd.String("dsn"), migrator.Config{
-				ManifestPath: cmd.String("manifest"),
-				Table:        cmd.String("table"),
-				Output:       os.Stdout,
+				Dir:    cmd.String("dir"),
+				Table:  cmd.String("table"),
+				Output: os.Stdout,
 			})
 			if err != nil {
 				return err

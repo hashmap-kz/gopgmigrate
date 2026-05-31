@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
 
 	gopgmigratecli "github.com/hashmap-kz/gopgmigrate/v2/internal/cli"
+	"github.com/hashmap-kz/gopgmigrate/v2/internal/manifest"
 	cliv3 "github.com/urfave/cli/v3"
 )
 
@@ -38,6 +40,10 @@ func main() {
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
 		slog.Error("fatal", slog.Any("err", err))
+		var stray *manifest.StrayFilesError
+		if errors.As(err, &stray) {
+			os.Exit(3)
+		}
 		os.Exit(1)
 	}
 }

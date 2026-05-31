@@ -15,13 +15,13 @@ func flagDSN() cli.Flag {
 	}
 }
 
-func flagManifest() cli.Flag {
+func flagDir() cli.Flag {
 	return &cli.StringFlag{
-		Name:    "manifest",
-		Aliases: []string{"m"},
-		Usage:   "path to manifest YAML file",
-		Value:   "migrations/manifest.yaml",
-		Sources: cli.EnvVars("PGMIGRATE_MANIFEST"),
+		Name:    "dir",
+		Aliases: []string{"d"},
+		Usage:   "path to migrations directory",
+		Value:   "migrations",
+		Sources: cli.EnvVars("PGMIGRATE_DIR"),
 	}
 }
 

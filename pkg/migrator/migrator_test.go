@@ -1,7 +1,6 @@
 package migrator_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,62 +16,31 @@ func writeFile(t *testing.T, path, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
-func writeManifest(t *testing.T, dir string, entries []string) string {
-	t.Helper()
-	var yaml string
-	yaml += "migrations:\n"
-	for i, f := range entries {
-		yaml += fmt.Sprintf("  - id: entry-%d\n", i+1)
-		yaml += "    files: [" + f + "]\n"
-	}
-	path := filepath.Join(dir, "manifest.yaml")
-	writeFile(t, path, yaml)
-	return path
-}
-
-func TestNewValidateOnly_EmptyManifestPath(t *testing.T) {
+func TestNewValidateOnly_EmptyDir(t *testing.T) {
 	_, err := migrator.NewValidateOnly(migrator.Config{})
 	require.Error(t, err)
 }
 
 func TestValidate_OK(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "001.sql"), "create table t (id int);")
-	manifest := writeManifest(t, dir, []string{"001.sql"})
+	writeFile(t, filepath.Join(dir, "0000001-init.up.sql"), "create table t (id int);")
 
-	m, err := migrator.NewValidateOnly(migrator.Config{ManifestPath: manifest})
+	m, err := migrator.NewValidateOnly(migrator.Config{Dir: dir})
 	require.NoError(t, err)
 	require.NoError(t, m.Validate())
 }
 
-func TestValidate_MissingFile(t *testing.T) {
-	dir := t.TempDir()
-	// manifest references a file that was never written
-	manifest := writeManifest(t, dir, []string{"nonexistent.sql"})
-
-	m, err := migrator.NewValidateOnly(migrator.Config{ManifestPath: manifest})
+func TestValidate_MissingDirectory(t *testing.T) {
+	m, err := migrator.NewValidateOnly(migrator.Config{Dir: "/nonexistent/path"})
 	require.NoError(t, err)
 	err = m.Validate()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "nonexistent.sql")
 }
 
-func TestValidate_MultipleFiles_AllMustExist(t *testing.T) {
+func TestValidate_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "001.sql"), "select 1;")
-	// 002.sql intentionally missing
 
-	var yaml string
-	yaml += "migrations:\n"
-	yaml += "  - id: entry-1\n"
-	yaml += "    files: [001.sql, 002.sql]\n"
-	yaml += "    mode: atomic\n"
-	manifestPath := filepath.Join(dir, "manifest.yaml")
-	writeFile(t, manifestPath, yaml)
-
-	m, err := migrator.NewValidateOnly(migrator.Config{ManifestPath: manifestPath})
+	m, err := migrator.NewValidateOnly(migrator.Config{Dir: dir})
 	require.NoError(t, err)
-	err = m.Validate()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "002.sql")
+	assert.NoError(t, m.Validate())
 }

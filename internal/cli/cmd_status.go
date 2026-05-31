@@ -14,13 +14,13 @@ func CmdStatus() *cli.Command {
 		Usage: "show applied/pending state of all manifest entries",
 		Flags: []cli.Flag{
 			flagDSN(),
-			flagManifest(),
+			flagDir(),
 			flagTable(),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			m, err := migrator.NewWithDSN(cmd.String("dsn"), migrator.Config{
-				ManifestPath: cmd.String("manifest"),
-				Table:        cmd.String("table"),
+				Dir:   cmd.String("dir"),
+				Table: cmd.String("table"),
 			})
 			if err != nil {
 				return err

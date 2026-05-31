@@ -65,12 +65,9 @@ func TestCLI_Apply(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	res := runCLI(t, "apply", "--dsn", pg.ConnStr, "--manifest", manifest, "--table", histTable)
+	res := runCLI(t, "apply", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable)
 	assert.Equal(t, 0, res.Code, "stderr: %s", res.Stderr)
 	assert.True(t, TableExists(t, pg.DB, "public", "users"))
 	assert.Len(t, QueryHistory(t, pg.DB, histTable), 1)
@@ -81,11 +78,8 @@ func TestCLI_Apply_Idempotent(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	args := []string{"apply", "--dsn", pg.ConnStr, "--manifest", manifest, "--table", histTable}
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	args := []string{"apply", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable}
 
 	res1 := runCLI(t, args...)
 	assert.Equal(t, 0, res1.Code, "first run stderr: %s", res1.Stderr)
@@ -101,16 +95,13 @@ func TestCLI_Apply_ChecksumMismatchFails(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	args := []string{"apply", "--dsn", pg.ConnStr, "--manifest", manifest, "--table", histTable}
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	args := []string{"apply", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable}
 
 	res1 := runCLI(t, args...)
 	require.Equal(t, 0, res1.Code, "stderr: %s", res1.Stderr)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id bigint primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id bigint primary key);")
 
 	res2 := runCLI(t, args...)
 	assert.NotEqual(t, 0, res2.Code)
@@ -119,13 +110,9 @@ func TestCLI_Apply_ChecksumMismatchFails(t *testing.T) {
 func TestCLI_Apply_MissingRequiredDSN(t *testing.T) {
 	t.Parallel()
 	dir := NewMigrationDir(t)
+	dir.Add(t, "0000001-init.up.sql", "select 1;")
 
-	dir.Add(t, "001.sql", "select 1;")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001.sql"}},
-	})
-
-	res := runCLI(t, "apply", "--manifest", manifest)
+	res := runCLI(t, "apply", "--dir", dir.Root)
 	assert.NotEqual(t, 0, res.Code)
 }
 
@@ -134,16 +121,13 @@ func TestCLI_Plan_HasPending(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	res := runCLI(t, "plan", "--dsn", pg.ConnStr, "--manifest", manifest, "--table", histTable)
+	res := runCLI(t, "plan", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable)
 	assert.Equal(t, 2, res.Code)
 	assert.False(t, TableExists(t, pg.DB, "public", "users"))
 	assert.Empty(t, QueryHistory(t, pg.DB, histTable))
-	assert.Contains(t, res.Stdout, "001_create_users.sql")
+	assert.Contains(t, res.Stdout, "0000001-create-users.up.sql")
 }
 
 func TestCLI_Plan_NothingPending(t *testing.T) {
@@ -151,11 +135,8 @@ func TestCLI_Plan_NothingPending(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	args := []string{"--dsn", pg.ConnStr, "--manifest", manifest, "--table", histTable}
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	args := []string{"--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable}
 
 	require.Equal(t, 0, runCLI(t, append([]string{"apply"}, args...)...).Code)
 
@@ -169,48 +150,45 @@ func TestCLI_Status(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	dir.Add(t, "002_add_email.sql", "alter table users add column email text;")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	dir.Add(t, "0000002-add-email.up.sql", "alter table users add column email text;")
 
-	partialManifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
-	res := runCLI(t, "apply", "--dsn", pg.ConnStr, "--manifest", partialManifest, "--table", histTable)
+	res := runCLI(t, "apply", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable)
 	require.Equal(t, 0, res.Code, "apply stderr: %s", res.Stderr)
 
-	fullManifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-		{Files: []string{"002_add_email.sql"}},
-	})
-	res = runCLI(t, "status", "--dsn", pg.ConnStr, "--manifest", fullManifest, "--table", histTable)
+	res = runCLI(t, "status", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable)
 	assert.Equal(t, 0, res.Code, "status stderr: %s", res.Stderr)
 	assert.Contains(t, res.Stdout, "PATH")
-	assert.Contains(t, res.Stdout, "001_create_users.sql")
-	assert.Contains(t, res.Stdout, "002_add_email.sql")
+	assert.Contains(t, res.Stdout, "0000001-create-users.up.sql")
+	assert.Contains(t, res.Stdout, "0000002-add-email.up.sql")
 }
 
 func TestCLI_Validate_OK(t *testing.T) {
 	t.Parallel()
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "001_create_users.sql", "create table users (id int primary key);")
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"001_create_users.sql"}},
-	})
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	res := runCLI(t, "validate", "--manifest", manifest)
+	res := runCLI(t, "validate", "--dir", dir.Root)
 	assert.Equal(t, 0, res.Code, "stderr: %s", res.Stderr)
-	assert.Contains(t, res.Stdout, "manifest OK")
+	assert.Contains(t, res.Stdout, "OK")
 }
 
-func TestCLI_Validate_MissingFile(t *testing.T) {
+func TestCLI_Validate_MissingDir(t *testing.T) {
 	t.Parallel()
+
+	res := runCLI(t, "validate", "--dir", "/nonexistent/path")
+	assert.NotEqual(t, 0, res.Code)
+}
+
+func TestCLI_Apply_StrayFileExitsThree(t *testing.T) {
+	t.Parallel()
+	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	manifest := dir.WriteManifest(t, histTable, []ManifestEntry{
-		{Files: []string{"nonexistent.sql"}},
-	})
+	dir.Add(t, "0000001-init.up.sql", "create table users (id int primary key);")
+	dir.Add(t, "README.md", "# docs")
 
-	res := runCLI(t, "validate", "--manifest", manifest)
-	assert.NotEqual(t, 0, res.Code)
+	res := runCLI(t, "apply", "--dsn", pg.ConnStr, "--dir", dir.Root, "--table", histTable)
+	assert.Equal(t, 3, res.Code)
 }

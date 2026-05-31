@@ -11,13 +11,13 @@ import (
 func CmdValidate() *cli.Command {
 	return &cli.Command{
 		Name:  "validate",
-		Usage: "check manifest integrity and file existence (no DB required)",
+		Usage: "check migration files (no DB required)",
 		Flags: []cli.Flag{
-			flagManifest(),
+			flagDir(),
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			m, err := migrator.NewValidateOnly(migrator.Config{
-				ManifestPath: cmd.String("manifest"),
+				Dir: cmd.String("dir"),
 			})
 			if err != nil {
 				return err
@@ -25,7 +25,7 @@ func CmdValidate() *cli.Command {
 			if err := m.Validate(); err != nil {
 				return err
 			}
-			fmt.Println("manifest OK")
+			fmt.Println("OK")
 			return nil
 		},
 	}

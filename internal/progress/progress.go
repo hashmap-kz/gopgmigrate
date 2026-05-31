@@ -3,7 +3,6 @@ package progress
 import (
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/x/fmtx"
@@ -12,22 +11,19 @@ import (
 type Status string
 
 const (
-	StatusRun    Status = "run"
-	StatusOK     Status = "ok"
-	StatusSkip   Status = "skip"
-	StatusFail   Status = "fail"
-	StatusBegin  Status = "begin"
-	StatusCommit Status = "commit"
-	StatusAbort  Status = "abort"
+	StatusRun  Status = "run"
+	StatusOK   Status = "ok"
+	StatusSkip Status = "skip"
+	StatusFail Status = "fail"
 )
 
 type Mode string
 
 const (
-	ModeTx     Mode = "tx"
-	ModeNoTx   Mode = "no-tx"
-	ModeAtomic Mode = "atomic"
-	ModeRepeat Mode = "repeat"
+	ModeTx         Mode = "tx"
+	ModeNoTx       Mode = "no-tx"
+	ModeRepeat     Mode = "repeat"
+	ModeRepeatNoTx Mode = "repeat-notx"
 )
 
 type Row struct {
@@ -40,10 +36,8 @@ type Row struct {
 }
 
 type Done struct {
-	Files      int
 	Statements int
 	Took       time.Duration
-	Descr      string
 }
 
 // TotalDone carries the aggregate counters for the Summary line.
@@ -56,46 +50,31 @@ type TotalDone struct {
 }
 
 type Table struct {
-	w        io.Writer
-	inAtomic bool
+	w io.Writer
 }
 
 func NewTable(w io.Writer) *Table {
 	return &Table{w: w}
 }
 
-// prefix returns the 1-char visual marker for a row.
-// Boundary rows (begin/commit/abort) always use their own markers.
-// File-level rows (run/ok/fail/skip) use | when inside an atomic block.
 func (t *Table) prefix(s Status) string {
-	switch s {
-	case StatusCommit:
-		return "+"
-	case StatusAbort:
-		return "x"
-	case StatusBegin:
-		return "-"
-	case StatusSkip:
-		return "~"
-	}
-	if t.inAtomic {
-		return "|"
-	}
 	switch s {
 	case StatusOK:
 		return "+"
 	case StatusFail:
 		return "x"
+	case StatusSkip:
+		return "~"
 	default:
 		return "-"
 	}
 }
 
-const rowFmt = "%s %-7s %-7s %-10s %-8s %-16s %s\n"
+const rowFmt = "%s %-7s %-7s %-10s %-8s %s\n"
 
 func (t *Table) Header() {
-	fmtx.Fprintf(t.w, "  %-7s %-7s %-10s %-8s %-16s %s\n",
-		"STATUS", "MODE", "DONE", "TIME", "DESCR", "TARGET")
+	fmtx.Fprintf(t.w, "  %-7s %-7s %-10s %-8s %s\n",
+		"STATUS", "MODE", "DONE", "TIME", "TARGET")
 }
 
 func (t *Table) Blank() {
@@ -119,11 +98,7 @@ func (t *Table) Row(r *Row) {
 	if r.Took > 0 {
 		took = formatDuration(r.Took)
 	}
-	descr := r.Descr
-	if descr == "" {
-		descr = "-"
-	}
-	fmtx.Fprintf(t.w, rowFmt, t.prefix(r.Status), status, mode, done, took, descr, r.Target)
+	fmtx.Fprintf(t.w, rowFmt, t.prefix(r.Status), status, mode, done, took, r.Target)
 }
 
 func (t *Table) Run(target string, mode Mode) {
@@ -136,7 +111,6 @@ func (t *Table) OK(target string, mode Mode, done Done) {
 		Mode:   mode,
 		Done:   formatDone(done),
 		Took:   done.Took,
-		Descr:  done.Descr,
 		Target: target,
 	})
 }
@@ -149,57 +123,13 @@ func (t *Table) Fail(target string, mode Mode, took time.Duration, descr string)
 	t.Row(&Row{Status: StatusFail, Mode: mode, Took: took, Descr: descr, Target: target})
 }
 
-func (t *Table) BeginAtomic(name string) {
-	t.Row(&Row{Status: StatusBegin, Mode: ModeAtomic, Target: atomicTarget(name)})
-	t.inAtomic = true
-}
-
-func (t *Table) CommitAtomic(name string, done Done) {
-	t.inAtomic = false
-	t.Row(&Row{
-		Status: StatusCommit,
-		Mode:   ModeAtomic,
-		Done:   formatDone(Done{Files: done.Files}),
-		Took:   done.Took,
-		Descr:  formatDescr(done),
-		Target: atomicTarget(name),
-	})
-}
-
-func (t *Table) AbortAtomic(name string, took time.Duration, descr string) {
-	t.inAtomic = false
-	t.Row(&Row{Status: StatusAbort, Mode: ModeAtomic, Took: took, Descr: descr, Target: atomicTarget(name)})
-}
-
 func (t *Table) Summary(d TotalDone) {
 	fmtx.Fprintf(t.w, "TOTAL: applied: %d; skipped: %d; errors: %d; time: %s; stmts: %d\n",
 		d.Applied, d.Skipped, d.Errors, formatDuration(d.Took), d.Statements)
 }
 
-func atomicTarget(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "atomic"
-	}
-	return "atomic/" + name
-}
-
 func formatDone(d Done) string {
-	switch {
-	case d.Files > 0:
-		return fmt.Sprintf("%d files", d.Files)
-	case d.Statements > 0:
-		return fmt.Sprintf("%d stmt%s", d.Statements, plural(d.Statements))
-	default:
-		return "-"
-	}
-}
-
-func formatDescr(d Done) string {
-	if d.Descr != "" {
-		return d.Descr
-	}
-	if d.Files > 0 && d.Statements > 0 {
+	if d.Statements > 0 {
 		return fmt.Sprintf("%d stmt%s", d.Statements, plural(d.Statements))
 	}
 	return "-"
