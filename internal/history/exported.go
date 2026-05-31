@@ -5,6 +5,15 @@ import (
 	"database/sql"
 )
 
+// Record holds the fields written to the history table for a single applied migration.
+type Record struct {
+	MigrationID string
+	Path        string
+	Kind        string
+	Checksum    string
+	Description string
+}
+
 // Exported is the only type accessible outside this package.
 // It wraps repo and exposes exactly what the executor needs.
 type Exported struct {
@@ -23,12 +32,12 @@ func (e *Exported) All(ctx context.Context, db *sql.DB) (map[string]Row, error) 
 	return e.r.loadAll(ctx, db)
 }
 
-func (e *Exported) Insert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
-	return e.r.insert(ctx, db, migrationID, path, kind, checksum, description)
+func (e *Exported) Insert(ctx context.Context, db tx, rec *Record) error {
+	return e.r.insert(ctx, db, rec)
 }
 
-func (e *Exported) Upsert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
-	return e.r.upsert(ctx, db, migrationID, path, kind, checksum, description)
+func (e *Exported) Upsert(ctx context.Context, db tx, rec *Record) error {
+	return e.r.upsert(ctx, db, rec)
 }
 
 func (e *Exported) Lock(ctx context.Context, db *sql.DB) (bool, error) {

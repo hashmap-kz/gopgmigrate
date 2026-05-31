@@ -87,18 +87,18 @@ func (r *repo) loadAll(ctx context.Context, db tx) (map[string]Row, error) {
 	return out, nil
 }
 
-func (r *repo) insert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
+func (r *repo) insert(ctx context.Context, db tx, rec *Record) error {
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
 		insert into %s (migration_id, path, kind, checksum, description)
 		values ($1, $2, $3, $4, $5)
-	`, r.table), migrationID, path, kind, checksum, description)
+	`, r.table), rec.MigrationID, rec.Path, rec.Kind, rec.Checksum, rec.Description)
 	if err != nil {
-		return fmt.Errorf("history: insert %q: %w", migrationID, err)
+		return fmt.Errorf("history: insert %q: %w", rec.MigrationID, err)
 	}
 	return nil
 }
 
-func (r *repo) upsert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
+func (r *repo) upsert(ctx context.Context, db tx, rec *Record) error {
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
 		insert into %s (migration_id, path, kind, checksum, description)
 		values ($1, $2, $3, $4, $5)
@@ -108,9 +108,9 @@ func (r *repo) upsert(ctx context.Context, db tx, migrationID, path, kind, check
 			    applied_by  = session_user,
 			    applied_at  = transaction_timestamp(),
 			    txid        = pg_current_xact_id()::text
-	`, r.table), migrationID, path, kind, checksum, description)
+	`, r.table), rec.MigrationID, rec.Path, rec.Kind, rec.Checksum, rec.Description)
 	if err != nil {
-		return fmt.Errorf("history: upsert %q: %w", migrationID, err)
+		return fmt.Errorf("history: upsert %q: %w", rec.MigrationID, err)
 	}
 	return nil
 }

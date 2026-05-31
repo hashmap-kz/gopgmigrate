@@ -204,7 +204,13 @@ func applyDefault(
 			if err != nil {
 				return err
 			}
-			return r.Insert(ctx, tx, migID, f.Path, "once", checksum, entry.Description)
+			return r.Insert(ctx, tx, &history.Record{
+				MigrationID: migID,
+				Path:        f.Path,
+				Kind:        "once",
+				Checksum:    checksum,
+				Description: entry.Description,
+			})
 		}); err != nil {
 			return err
 		}
@@ -267,7 +273,13 @@ func applyAtomic(
 				return err
 			}
 			migID := buildMigrationID(entry.ID, f.Path)
-			if err := r.Insert(ctx, tx, migID, f.Path, "once", checksum, entry.Description); err != nil {
+			if err := r.Insert(ctx, tx, &history.Record{
+				MigrationID: migID,
+				Path:        f.Path,
+				Kind:        "once",
+				Checksum:    checksum,
+				Description: entry.Description,
+			}); err != nil {
 				return err
 			}
 			slog.Info("atomic file applied", "path", f.Path)
@@ -317,7 +329,13 @@ func applyNoTx(
 		migID := buildMigrationID(entry.ID, f.Path)
 		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
-		if err := r.Insert(ctx, db, migID, f.Path, "no-tx", checksum, entry.Description); err != nil {
+		if err := r.Insert(ctx, db, &history.Record{
+			MigrationID: migID,
+			Path:        f.Path,
+			Kind:        "no-tx",
+			Checksum:    checksum,
+			Description: entry.Description,
+		}); err != nil {
 			return &NoTxHistoryError{
 				MigrationID: migID,
 				Path:        f.Path,
@@ -368,7 +386,13 @@ func applyRepeatable(
 			if err := execStatements(ctx, tx, f.Path, content); err != nil {
 				return err
 			}
-			return r.Upsert(ctx, tx, migID, f.Path, "repeatable", checksum, entry.Description)
+			return r.Upsert(ctx, tx, &history.Record{
+				MigrationID: migID,
+				Path:        f.Path,
+				Kind:        "repeatable",
+				Checksum:    checksum,
+				Description: entry.Description,
+			})
 		}); err != nil {
 			return err
 		}
