@@ -16,6 +16,16 @@ func writeFile(t *testing.T, path, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
+func TestNewWithDSN_EmptyDSN(t *testing.T) {
+	_, err := migrator.NewWithDSN("", migrator.Config{Dir: "migrations"})
+	require.Error(t, err)
+}
+
+func TestNewWithDB_NilDB(t *testing.T) {
+	_, err := migrator.NewWithDB(nil, migrator.Config{Dir: "migrations"})
+	require.Error(t, err)
+}
+
 func TestNewValidateOnly_EmptyDir(t *testing.T) {
 	_, err := migrator.NewValidateOnly(migrator.Config{})
 	require.Error(t, err)

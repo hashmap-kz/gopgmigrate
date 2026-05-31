@@ -574,33 +574,53 @@ func execStatements(ctx context.Context, db execer, path, content string) (int, 
 	return count, nil
 }
 
-// integrityCheck verifies that every revision recorded in the history table
-// exists in the current scan. Applied revisions absent from the scan indicate
-// a mismatched --dir or deleted files, both of which are hard errors.
+// integrityCheck verifies two invariants against the history table:
+//  1. every recorded revision still exists in the current scan
+//  2. no recorded migration has had its mode changed since it was applied
 func integrityCheck(mf *manifest.Manifest, applied map[int64]history.Row) error {
-	inScan := make(map[int64]struct{}, len(mf.Entries))
-	for _, e := range mf.Entries {
-		inScan[e.Revision] = struct{}{}
-	}
 	var missing []int64
-	for rev := range applied {
-		if _, ok := inScan[rev]; !ok {
+	var modeChanged []string
+
+	inScan := make(map[int64]manifest.Entry, len(mf.Entries))
+	for _, e := range mf.Entries {
+		inScan[e.Revision] = e
+	}
+
+	for rev, row := range applied {
+		e, ok := inScan[rev]
+		if !ok {
 			missing = append(missing, rev)
+			continue
+		}
+		if want := kindLabel(e); row.Kind != want {
+			modeChanged = append(modeChanged,
+				fmt.Sprintf("%07d: applied as %q, now %q", rev, row.Kind, want))
 		}
 	}
-	if len(missing) == 0 {
+
+	var errs []string
+	if len(missing) > 0 {
+		sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+		parts := make([]string, len(missing))
+		for i, rev := range missing {
+			parts[i] = fmt.Sprintf("%07d", rev)
+		}
+		errs = append(errs, fmt.Sprintf(
+			"%d applied migration(s) not found in the migrations directory"+
+				" (wrong --dir, or files were deleted after apply):\n  %s",
+			len(missing), strings.Join(parts, "\n  ")))
+	}
+	if len(modeChanged) > 0 {
+		sort.Strings(modeChanged)
+		errs = append(errs, fmt.Sprintf(
+			"%d migration(s) have a different mode than when applied"+
+				" (renaming .up.sql <-> .r.sql etc. is not allowed):\n  %s",
+			len(modeChanged), strings.Join(modeChanged, "\n  ")))
+	}
+	if len(errs) == 0 {
 		return nil
 	}
-	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
-	parts := make([]string, len(missing))
-	for i, rev := range missing {
-		parts[i] = fmt.Sprintf("%07d", rev)
-	}
-	return fmt.Errorf(
-		"executor: %d applied migration(s) not found in the migrations directory"+
-			" (wrong --dir, or files were deleted after apply):\n  %s",
-		len(missing), strings.Join(parts, "\n  "),
-	)
+	return fmt.Errorf("executor: %s", strings.Join(errs, "\nexecutor: "))
 }
 
 // checksumGuard returns an error if the on-disk file differs from the recorded checksum.
