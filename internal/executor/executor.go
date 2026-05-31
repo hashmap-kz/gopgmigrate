@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/history"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/manifest"
@@ -15,9 +16,12 @@ import (
 
 // EntryStatus describes the current state of a single file in the manifest.
 type EntryStatus struct {
+	MigrationID string
 	Path        string
 	Kind        string
 	Applied     bool
+	Pending     bool      // true if Run would execute this file
+	AppliedAt   time.Time // zero value when not yet applied
 	Checksum    string
 	Description string
 }
@@ -132,15 +136,22 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 			}
 			row, exists := applied[f.Path]
 			kind := kindLabel(entry)
+			pending := !exists
 			if exists && entry.Mode != manifest.ModeRepeatable && row.Checksum != checksum {
 				kind += " [CHECKSUM MISMATCH]"
 			}
+			if exists && entry.Mode == manifest.ModeRepeatable && row.Checksum != checksum {
+				pending = true
+			}
 			out = append(out, EntryStatus{
+				MigrationID: buildMigrationID(entry.ID, f.Path),
 				Path:        f.Path,
 				Kind:        kind,
+				Applied:     exists,
+				Pending:     pending,
+				AppliedAt:   row.AppliedAt,
 				Checksum:    checksum,
 				Description: entry.Description,
-				Applied:     exists,
 			})
 		}
 	}

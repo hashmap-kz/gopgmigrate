@@ -17,7 +17,8 @@ func main() {
 		Usage:   "YAML-manifest-driven PostgreSQL migrations",
 		Version: Version,
 		Commands: []*cli.Command{
-			cli2.CmdUp(),
+			cli2.CmdApply(),
+			cli2.CmdPlan(),
 			cli2.CmdStatus(),
 			cli2.CmdValidate(),
 		},

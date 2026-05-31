@@ -32,11 +32,3 @@ func flagTable() cli.Flag {
 		Sources: cli.EnvVars("PGMIGRATE_TABLE"),
 	}
 }
-
-func flagDryRun() cli.Flag {
-	return &cli.BoolFlag{
-		Name:    "dry-run",
-		Usage:   "print pending migrations without applying",
-		Sources: cli.EnvVars("PGMIGRATE_DRY_RUN"),
-	}
-}

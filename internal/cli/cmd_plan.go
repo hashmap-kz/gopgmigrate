@@ -8,10 +8,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func CmdStatus() *cli.Command {
+func CmdPlan() *cli.Command {
 	return &cli.Command{
-		Name:  "status",
-		Usage: "show applied/pending state of all manifest entries",
+		Name:  "plan",
+		Usage: "show pending migrations without applying (exits 2 if any are pending)",
 		Flags: []cli.Flag{
 			flagDSN(),
 			flagManifest(),
@@ -32,26 +32,31 @@ func CmdStatus() *cli.Command {
 				return err
 			}
 
-			pathW := len("PATH")
-			kindW := len("KIND")
+			var pending []migrator.EntryStatus
 			for _, s := range statuses {
-				if len(s.Path) > pathW {
-					pathW = len(s.Path)
-				}
-				if len(s.Kind) > kindW {
-					kindW = len(s.Kind)
+				if s.Pending {
+					pending = append(pending, s)
 				}
 			}
 
-			fmt.Printf("%-*s  %-*s  %s\n", pathW, "PATH", kindW, "KIND", "APPLIED_AT")
-			for _, s := range statuses {
-				appliedAt := "-"
-				if s.Applied && !s.AppliedAt.IsZero() {
-					appliedAt = s.AppliedAt.UTC().Format("2006-01-02 15:04:05")
-				}
-				fmt.Printf("%-*s  %-*s  %s\n", pathW, s.Path, kindW, s.Kind, appliedAt)
+			if len(pending) == 0 {
+				fmt.Println("nothing to apply.")
+				return nil
 			}
-			return nil
+
+			pathW := 0
+			for _, s := range pending {
+				if len(s.Path) > pathW {
+					pathW = len(s.Path)
+				}
+			}
+
+			fmt.Printf("pending migrations (%d):\n\n", len(pending))
+			for _, s := range pending {
+				fmt.Printf("  %-*s  %s\n", pathW, s.Path, s.Kind)
+			}
+			fmt.Println("\nrun 'apply' to execute.")
+			return cli.Exit("", 2)
 		},
 	}
 }
