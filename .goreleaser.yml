@@ -73,7 +73,7 @@ nfpms:
   - file_name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     maintainer: alexey.zh
     homepage: "https://github.com/gopgmigrate/gopgmigrate"
-    description: "Manifest-driven PostgreSQL migrations for Go"
+    description: "SQL-first PostgreSQL migrations for Go"
     license: "Apache-2.0"
     formats:
       - deb
@@ -97,7 +97,7 @@ brews:
       name: alexey.zh
       email: mailbox.stdio@gmail.com
     homepage: https://github.com/hashmap-kz/homebrew-tap
-    description: "ncdu for postgres"
+    description: "SQL-first PostgreSQL migrations for Go"
     license: "MIT"
     install: |
       bin.install "gopgmigrate"

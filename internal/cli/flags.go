@@ -27,7 +27,7 @@ func flagDir() cli.Flag {
 func flagTable() cli.Flag {
 	return &cli.StringFlag{
 		Name:    "table",
-		Usage:   "tracking table name (overrides manifest)",
+		Usage:   "history table name, accepts schema.table format",
 		Sources: cli.EnvVars("PGMIGRATE_TABLE"),
 	}
 }

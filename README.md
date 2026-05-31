@@ -27,7 +27,7 @@ Drop SQL files in a directory. The filename encodes the execution mode. Done.
 The 7-digit prefix controls execution order **globally across all subdirectories**.
 Every file in the migrations directory must match - any stray file is an error (exit 3).
 
-**Examples:**
+**Example:**
 
 ```
 migrations/
@@ -86,23 +86,27 @@ gopgmigrate status   --dsn <dsn> --dir <path>
 gopgmigrate validate --dir <path>
 ```
 
-| Command    | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| `apply`    | Apply all pending migrations in revision order                        |
-| `plan`     | Show pending migrations without applying                              |
-| `status`   | Print applied/pending state of all migrations                         |
-| `validate` | Scan the directory and verify all files match the naming convention   |
+| Command    | Description                                                         |
+|------------|---------------------------------------------------------------------|
+| `apply`    | Apply all pending migrations in revision order                      |
+| `plan`     | Show pending migrations without applying                            |
+| `status`   | Print applied/pending state of all migrations                       |
+| `validate` | Scan the directory and verify all files match the naming convention |
 
 **Flags:**
 
-| Flag          | Env var           | Default              |
-|---------------|-------------------|----------------------|
-| `--dsn`       | `PGMIGRATE_DSN`   | —                    |
-| `--dir`, `-d` | `PGMIGRATE_DIR`   | `migrations`         |
-| `--table`     | `PGMIGRATE_TABLE` | `schema_migrations`  |
-| `--log-level` | —                 | `warn`               |
+| Flag          | Env var           | Default             |
+|---------------|-------------------|---------------------|
+| `--dsn`       | `PGMIGRATE_DSN`   | -                   |
+| `--dir`, `-d` | `PGMIGRATE_DIR`   | `migrations`        |
+| `--table`     | `PGMIGRATE_TABLE` | `schema_migrations` |
+| `--log-level` | -                 | `warn`              |
 
-`--dsn` is optional when standard PostgreSQL environment variables are set (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`). When none are present, the tool fails immediately with a clear error before attempting any connection.
+`--dsn` is optional when standard PostgreSQL environment
+variables are set (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
+When none are present, the tool fails immediately with a clear error before attempting any connection.
+
+`--table` accepts a schema-qualified name (e.g. `myschema.migrations`).
 
 **Exit codes:**
 
@@ -118,7 +122,7 @@ gopgmigrate validate --dir <path>
 ### Library
 
 ```go
-m, err := migrator.NewWithDSN("postgres://user:pass@localhost/mydb", migrator.Config{
+m, err := migrator.NewWithDSN(os.Getenv("DATABASE_URL"), migrator.Config{
     Dir: "./migrations",
 })
 if err != nil {
@@ -129,14 +133,15 @@ defer m.Close()
 if err := m.Run(ctx); err != nil {
     var noTxErr *migrator.NoTxHistoryError
     if errors.As(err, &noTxErr) {
-        // the migration ran but the history record failed to write
-        // run noTxErr.RecoverySQL() manually, then retry
+        // migration ran but history record failed to write
+        // execute noTxErr.RecoverySQL() manually, then re-run
         fmt.Println(noTxErr.RecoverySQL())
     }
     log.Fatal(err)
 }
 ```
 
+`NewWithDSN` accepts an empty DSN when PG* environment variables are configured.
 `NewWithDB` accepts an existing `*sql.DB`. `NewValidateOnly` validates without a database connection.
 
 ---
@@ -144,9 +149,9 @@ if err := m.Run(ctx); err != nil {
 ## How it works
 
 1. Walks the migrations directory recursively, collects files matching the naming convention
-2. Sorts by the 7-digit revision prefix
-3. Compares against the history table; applies only what is pending
-4. Records every applied migration with its checksum, timestamp, and transaction ID
+2. Sorts by the 7-digit revision prefix; duplicate revisions anywhere in the tree are an error
+3. Cross-checks the scan against the history table: missing files or changed execution modes are hard errors
+4. Applies pending migrations in order; records each with its checksum, timestamp, and transaction ID
 
 Modifying an applied `.up.sql` or `.notx.sql` file is a hard error - the checksum no longer matches.
 Modifying a `.r.sql` or `.rnotx.sql` file triggers a re-apply on the next run.
@@ -155,41 +160,13 @@ Advisory locking prevents concurrent runs against the same database.
 
 ---
 
-### Design rationale
-
-This tool is built around one simple idea: your migration files should stay plain, usable SQL.
-
-**Flexible directory layouts**  
-Real projects rarely fit into one flat folder. You may want to split schema and data changes, group migrations by
-release, or organise them by module or environment. This tool does not force a directory structure, so you can arrange
-files in the way that makes sense for your project.
-
-**Plain SQL, nothing hidden**  
-Migration files should be easy to read, review, copy, and run directly in your database IDE or with `psql`. That is why
-every migration here is just normal executable SQL, with no embedded DSL, no magic comments, and no mixed control syntax
-inside the file.
-
-**Undo is intentionally omitted by design**  
-Keeping rollback files mixed together with forward migrations makes simple shell workflows harder and riskier. Those 
-undo scripts are mostly untested and redundant. When you really need to UNDO something - it's a straightforward plain
-migration file. This approach keeps everything predictable. 
-
-**No lock-in**  
-Your SQL files should still be useful even without this tool. They remain normal SQL files that can be sorted, reviewed,
-and executed independently. The tool helps manage migrations, but it does not own your migration format.
-
-**Repeatables and non-transactional migrations are built in**  
-Updating views, functions, triggers, extensions, or maintenance logic is a normal part of working with PostgreSQL. Some
-operations also need to run outside a transaction. These cases are supported naturally and are expressed in the
-filename, without extra configuration or custom syntax.
-
-### Transaction behaviour
+## Non-transactional migrations
 
 PostgreSQL supports transactional DDL - most `CREATE`, `ALTER`, and `DROP` statements can be wrapped in `BEGIN/COMMIT`
-and rolled back on failure. This tool defaults to transactional execution and makes the non-transactional case explicit
-in the filename.
+and rolled back on failure. The tool defaults to transactional execution; `.notx.sql` and `.rnotx.sql`
+make the exception explicit in the filename.
 
-Statements that **cannot** run inside a transaction and require `.notx.sql` or `.rnotx.sql`:
+Statements that cannot run inside a transaction:
 
 - `VACUUM`
 - `ALTER SYSTEM`
@@ -202,10 +179,10 @@ Statements that **cannot** run inside a transaction and require `.notx.sql` or `
 
 ## Directory layouts
 
-Migration files can live anywhere under the root directory. The tool walks recursively and sorts globally by revision.
+Files can live anywhere under the root directory - the tool walks recursively and sorts globally by revision.
 Organise however makes sense for your project.
 
-### Flat
+**Flat:**
 
 ```
 migrations/
@@ -215,7 +192,7 @@ migrations/
   0000004-vacuum-users.notx.sql
 ```
 
-### By concern
+**By concern:**
 
 ```
 migrations/
@@ -224,35 +201,46 @@ migrations/
     0000002-add-roles-table.up.sql
   data/
     0000003-seed-roles.up.sql
-    0000004-seed-users.up.sql
   functions/
-    0000005-fn-get-users.r.sql
-    0000006-fn-get-roles.r.sql
-  no-transaction/
-    0000007-vacuum-users.notx.sql
+    0000004-fn-get-users.r.sql
+  indexes/
+    0000005-vacuum-users.notx.sql
 ```
 
-### By release and concern
+**By release:**
 
 ```
 migrations/
-  v1.0.0/
-    schema/
-      0000001-create-users-table.up.sql
-      0000002-add-roles-table.up.sql
-    data/
-      0000003-seed-roles.up.sql
-    functions/
-      0000004-fn-get-users.r.sql
-  v1.1.0/
-    schema/
-      0000005-add-audit-columns.up.sql
-    no-transaction/
-      0000006-vacuum-users.notx.sql
+  rel-1.0/
+    0000001-create-users-table.up.sql
+    0000002-add-roles-table.up.sql
+    0000003-fn-get-users.r.sql
+  rel-2.0/
+    0000004-add-audit-columns.up.sql
+    0000005-vacuum-users.notx.sql
 ```
 
-One rule applies in all layouts: **version numbers are global**. Two files with the same revision number anywhere in the
-tree is an error.
+One rule applies everywhere: **revision numbers are global**.
+Two files with the same revision anywhere in the tree is an error.
+
+---
+
+## History table
+
+Created automatically on first run (`schema_migrations` by default, override with `--table`):
+
+```sql
+create table schema_migrations
+(
+    record_id    serial primary key,
+    migration_id int         not null unique, -- 7-digit revision number
+    kind         text        not null,        -- once | no-tx | repeatable | repeatable-notx
+    checksum     text        not null,        -- sha256 of file contents at apply time
+    applied_by   name        not null default session_user,
+    applied_at   timestamptz not null default transaction_timestamp(),
+    txid         text        not null default pg_current_xact_id()::text
+);
+```
 
 ---
 
