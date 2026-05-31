@@ -54,16 +54,6 @@ func NewTable(w io.Writer) *Table {
 	return &Table{w: w}
 }
 
-func (t *Table) HeaderFor(release string) {
-	release = strings.TrimSpace(release)
-	if release != "" {
-		fmtx.Fprintln(t.w, release)
-		fmtx.Fprintln(t.w, strings.Repeat("-", len(release)))
-	}
-
-	t.Header()
-}
-
 func (t *Table) Header() {
 	fmtx.Fprintf(
 		t.w,
