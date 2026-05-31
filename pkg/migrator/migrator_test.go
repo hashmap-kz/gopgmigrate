@@ -1,6 +1,7 @@
 package migrator_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,8 +21,9 @@ func writeManifest(t *testing.T, dir string, entries []string) string {
 	t.Helper()
 	var yaml string
 	yaml += "migrations:\n"
-	for _, f := range entries {
-		yaml += "  - files: [" + f + "]\n"
+	for i, f := range entries {
+		yaml += fmt.Sprintf("  - id: entry-%d\n", i+1)
+		yaml += "    files: [" + f + "]\n"
 	}
 	path := filepath.Join(dir, "manifest.yaml")
 	writeFile(t, path, yaml)
@@ -62,7 +64,8 @@ func TestValidate_MultipleFiles_AllMustExist(t *testing.T) {
 
 	var yaml string
 	yaml += "migrations:\n"
-	yaml += "  - files: [001.sql, 002.sql]\n"
+	yaml += "  - id: entry-1\n"
+	yaml += "    files: [001.sql, 002.sql]\n"
 	yaml += "    mode: atomic\n"
 	manifestPath := filepath.Join(dir, "manifest.yaml")
 	writeFile(t, manifestPath, yaml)

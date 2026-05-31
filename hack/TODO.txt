@@ -1,5 +1,5 @@
 1) PG* env aware (urgent)
-2) rollback-cnt
+2) rollback-cnt (NO: forward only rollback)
 3) unit-tests
 4) readme
 5) migration schema name (cfg/cli)
@@ -11,6 +11,14 @@
 11) regex for check "schema.table" is valid pg identifier
 12) live progress, totals, etc...
 13) baseline (urgent)
-14)
+14) CLI to generate bash from migration file (psql commands against migration dir)
+
+
+
+
+
+
+
+
 
 

@@ -41,6 +41,7 @@ func (m *MigrationDir) Sub(subdir string) string {
 
 // ManifestEntry describes one entry in the migrations list.
 type ManifestEntry struct {
+	ID          string   // required; if empty, auto-generated as "entry-N"
 	Files       []string // paths relative to MigrationDir.Root
 	Mode        string   // "", "atomic", "no-tx", "repeatable"
 	Description string
@@ -57,8 +58,13 @@ func (m *MigrationDir) WriteManifest(t *testing.T, table string, entries []Manif
 		fmt.Fprintf(&sb, "  table: %s\n", table)
 	}
 	sb.WriteString("migrations:\n")
-	for _, e := range entries {
-		sb.WriteString("  - files:\n")
+	for i, e := range entries {
+		id := e.ID
+		if id == "" {
+			id = fmt.Sprintf("entry-%d", i+1)
+		}
+		fmt.Fprintf(&sb, "  - id: %s\n", id)
+		sb.WriteString("    files:\n")
 		for _, f := range e.Files {
 			fmt.Fprintf(&sb, "      - %s\n", f)
 		}

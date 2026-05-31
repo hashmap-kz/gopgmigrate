@@ -8,6 +8,7 @@ import (
 )
 
 type HistoryRow struct {
+	MigrationID string
 	Path        string
 	Kind        string
 	Checksum    string
@@ -18,7 +19,7 @@ func QueryHistory(t *testing.T, db *sql.DB, table string) []HistoryRow {
 	t.Helper()
 	rows, err := db.QueryContext(
 		t.Context(),
-		"select path, kind, checksum, coalesce(description,'') from "+table+" order by applied_at",
+		"select migration_id, path, kind, checksum, coalesce(description,'') from "+table+" order by record_id",
 	)
 	if err != nil {
 		t.Fatalf("query history: %v", err)
@@ -28,7 +29,7 @@ func QueryHistory(t *testing.T, db *sql.DB, table string) []HistoryRow {
 	var result []HistoryRow
 	for rows.Next() {
 		var r HistoryRow
-		if err := rows.Scan(&r.Path, &r.Kind, &r.Checksum, &r.Description); err != nil {
+		if err := rows.Scan(&r.MigrationID, &r.Path, &r.Kind, &r.Checksum, &r.Description); err != nil {
 			t.Fatalf("scan history row: %v", err)
 		}
 		result = append(result, r)

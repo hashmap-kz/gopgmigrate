@@ -21,6 +21,8 @@ type tx interface {
 
 // Row is a single record in the tracking table.
 type Row struct {
+	RecordID    int
+	MigrationID string
 	Path        string
 	Kind        string
 	Checksum    string
@@ -41,13 +43,15 @@ func newRepo(table string) *repo {
 func (r *repo) createTable(ctx context.Context, db tx) error {
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
 		create table if not exists %s (
-			path        text primary key,
-			kind        text        not null,
-			checksum    text        not null,
-			description text,
-			applied_by  name        not null default session_user,
-			applied_at  timestamptz not null default transaction_timestamp(),
-			txid        text        not null default pg_current_xact_id()::text
+			record_id    serial      primary key,
+			migration_id text        not null unique,
+			path         text        not null,
+			kind         text        not null,
+			checksum     text        not null,
+			description  text,
+			applied_by   name        not null default session_user,
+			applied_at   timestamptz not null default transaction_timestamp(),
+			txid         text        not null default pg_current_xact_id()::text
 		)
 	`, r.table))
 	if err != nil {
@@ -58,7 +62,7 @@ func (r *repo) createTable(ctx context.Context, db tx) error {
 
 func (r *repo) loadAll(ctx context.Context, db tx) (map[string]Row, error) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
-		select path, kind, checksum, coalesce(description,''), applied_by, applied_at, txid
+		select record_id, migration_id, path, kind, checksum, coalesce(description,''), applied_by, applied_at, txid
 		from %s
 	`, r.table))
 	if err != nil {
@@ -70,7 +74,7 @@ func (r *repo) loadAll(ctx context.Context, db tx) (map[string]Row, error) {
 	for rows.Next() {
 		var row Row
 		if err := rows.Scan(
-			&row.Path, &row.Kind, &row.Checksum, &row.Description,
+			&row.RecordID, &row.MigrationID, &row.Path, &row.Kind, &row.Checksum, &row.Description,
 			&row.AppliedBy, &row.AppliedAt, &row.TxID,
 		); err != nil {
 			return nil, fmt.Errorf("history: scan: %w", err)
@@ -83,30 +87,30 @@ func (r *repo) loadAll(ctx context.Context, db tx) (map[string]Row, error) {
 	return out, nil
 }
 
-func (r *repo) insert(ctx context.Context, db tx, path, kind, checksum, description string) error {
+func (r *repo) insert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
-		insert into %s (path, kind, checksum, description)
-		values ($1, $2, $3, $4)
-	`, r.table), path, kind, checksum, description)
+		insert into %s (migration_id, path, kind, checksum, description)
+		values ($1, $2, $3, $4, $5)
+	`, r.table), migrationID, path, kind, checksum, description)
 	if err != nil {
-		return fmt.Errorf("history: insert %q: %w", path, err)
+		return fmt.Errorf("history: insert %q: %w", migrationID, err)
 	}
 	return nil
 }
 
-func (r *repo) upsert(ctx context.Context, db tx, path, kind, checksum, description string) error {
+func (r *repo) upsert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
-		insert into %s (path, kind, checksum, description)
-		values ($1, $2, $3, $4)
-		on conflict (path) do update
+		insert into %s (migration_id, path, kind, checksum, description)
+		values ($1, $2, $3, $4, $5)
+		on conflict (migration_id) do update
 			set checksum    = excluded.checksum,
 			    description = excluded.description,
 			    applied_by  = session_user,
 			    applied_at  = transaction_timestamp(),
 			    txid        = pg_current_xact_id()::text
-	`, r.table), path, kind, checksum, description)
+	`, r.table), migrationID, path, kind, checksum, description)
 	if err != nil {
-		return fmt.Errorf("history: upsert %q: %w", path, err)
+		return fmt.Errorf("history: upsert %q: %w", migrationID, err)
 	}
 	return nil
 }

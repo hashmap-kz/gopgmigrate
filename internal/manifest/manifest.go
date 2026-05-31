@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"sigs.k8s.io/yaml"
 )
@@ -19,8 +20,11 @@ const (
 	ModeRepeatable Mode = "repeatable" // reruns when checksum changes, one tx per file
 )
 
+var validID = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
 // Entry is a single item in the migrations list.
 type Entry struct {
+	ID          string
 	Files       []string
 	Mode        Mode
 	Description string
@@ -34,6 +38,7 @@ type rawManifest struct {
 }
 
 type rawEntry struct {
+	ID          string   `json:"id"`
 	Files       []string `json:"files"`
 	Mode        Mode     `json:"mode,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -77,36 +82,53 @@ func Load(manifestPath string) (*Manifest, error) {
 }
 
 func normalise(raws []rawEntry, dir string) ([]Entry, error) {
-	seen := make(map[string]struct{})
+	seenPaths := make(map[string]struct{})
+	seenIDs := make(map[string]int) // id -> 1-based entry number
 	entries := make([]Entry, 0, len(raws))
 
 	for i, r := range raws {
+		n := i + 1 // 1-based entry number for error messages
+
+		if r.ID == "" {
+			return nil, fmt.Errorf("manifest: entry %d: 'id' is required", n)
+		}
+		if !validID.MatchString(r.ID) {
+			return nil, fmt.Errorf("manifest: entry %d: id %q contains invalid characters (allowed: [a-zA-Z0-9._-])", n, r.ID)
+		}
+		if prev, dup := seenIDs[r.ID]; dup {
+			return nil, fmt.Errorf("manifest: entry %d: id %q is not unique (already declared at entry %d)", n, r.ID, prev)
+		}
+		seenIDs[r.ID] = n
+
 		if len(r.Files) == 0 {
-			return nil, fmt.Errorf("manifest: entry %d: 'files' must not be empty", i)
+			return nil, fmt.Errorf("manifest: entry %d: 'files' must not be empty", n)
 		}
 
 		if r.Mode != ModeDefault &&
 			r.Mode != ModeAtomic &&
 			r.Mode != ModeNoTx &&
 			r.Mode != ModeRepeatable {
-			return nil, fmt.Errorf("manifest: entry %d: unknown mode %q", i, r.Mode)
+			return nil, fmt.Errorf("manifest: entry %d: unknown mode %q", n, r.Mode)
 		}
 
-		if r.Mode == ModeRepeatable && len(r.Files) > 1 {
-			return nil, fmt.Errorf("manifest: entry %d: repeatable mode supports only one file per entry", i)
-		}
-
+		seenBasenames := make(map[string]string) // basename -> first file path
 		resolved := make([]string, len(r.Files))
 		for j, f := range r.Files {
 			p := filepath.Join(dir, f)
-			if _, dup := seen[p]; dup {
-				return nil, fmt.Errorf("manifest: entry %d: duplicate path %q", i, p)
+			if _, dup := seenPaths[p]; dup {
+				return nil, fmt.Errorf("manifest: entry %d: duplicate path %q", n, p)
 			}
-			seen[p] = struct{}{}
+			seenPaths[p] = struct{}{}
+			base := filepath.Base(p)
+			if prev, dup := seenBasenames[base]; dup {
+				return nil, fmt.Errorf("manifest: entry %d: files %q and %q produce the same migration_id (duplicate basename %q)", n, prev, p, base)
+			}
+			seenBasenames[base] = p
 			resolved[j] = p
 		}
 
 		entries = append(entries, Entry{
+			ID:          r.ID,
 			Files:       resolved,
 			Mode:        r.Mode,
 			Description: r.Description,

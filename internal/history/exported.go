@@ -23,12 +23,12 @@ func (e *Exported) All(ctx context.Context, db *sql.DB) (map[string]Row, error) 
 	return e.r.loadAll(ctx, db)
 }
 
-func (e *Exported) Insert(ctx context.Context, db tx, path, kind, checksum, description string) error {
-	return e.r.insert(ctx, db, path, kind, checksum, description)
+func (e *Exported) Insert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
+	return e.r.insert(ctx, db, migrationID, path, kind, checksum, description)
 }
 
-func (e *Exported) Upsert(ctx context.Context, db tx, path, kind, checksum, description string) error {
-	return e.r.upsert(ctx, db, path, kind, checksum, description)
+func (e *Exported) Upsert(ctx context.Context, db tx, migrationID, path, kind, checksum, description string) error {
+	return e.r.upsert(ctx, db, migrationID, path, kind, checksum, description)
 }
 
 func (e *Exported) Lock(ctx context.Context, db *sql.DB) (bool, error) {

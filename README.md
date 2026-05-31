@@ -16,6 +16,7 @@ SQL files stay plain SQL. No DSL, no ORM coupling, no magic.
 
 - **Explicit ordering** - manifest declaration order is execution order, always
 - **Four execution modes** - transactional, atomic batch, non-transactional, repeatable
+- **Stable migration IDs** - each entry has a required `id`; the history record is keyed by `id/filename`
 - **Checksum guard** - modifying an applied migration is a hard error
 - **Advisory locking** - prevents concurrent runs against the same database
 - **Repeatable migrations** - re-applied automatically when content changes
@@ -48,23 +49,27 @@ manifest:
 
 migrations:
   # default: each file runs in its own transaction, applied once
-  - files:
+  - id: rel-1.0.users
+    files:
       - sql/001_create_users.sql
 
   # atomic: all files share one transaction - all succeed or all roll back
-  - files:
+  - id: rel-1.0.roles
+    files:
       - sql/002_add_roles.sql
       - sql/003_seed_roles.sql
     mode: atomic
     description: "release-1.0"
 
   # repeatable: re-applied whenever the file checksum changes
-  - files:
+  - id: views.vw-users
+    files:
       - sql/views/vw_users.sql
     mode: repeatable
 
   # no-tx: runs outside any transaction (required for VACUUM, CREATE INDEX CONCURRENTLY, etc.)
-  - files:
+  - id: rel-1.0.indexes
+    files:
       - sql/004_create_index_concurrently.sql
     mode: no-tx
 ```
@@ -74,6 +79,32 @@ Apply:
 ```sh
 gopgmigrate up --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
 ```
+
+---
+
+## Manifest
+
+Each entry in `migrations` declares the SQL files to apply, the execution mode, and a required stable ID.
+
+### `id`
+
+Required. Uniquely identifies the entry within the manifest. Used together with the file basename to form the `migration_id` stored in the history table (`id/filename.sql`).
+
+Allowed characters: `[a-zA-Z0-9._-]`
+
+IDs must be unique within the manifest. Duplicates are rejected at load time with a descriptive error.
+
+### `files`
+
+Required. One or more paths to SQL files, relative to the manifest file location. File paths must be globally unique across all entries.
+
+### `mode`
+
+Optional. Controls the transaction behaviour. See [Modes](#modes) below.
+
+### `description`
+
+Optional. Free-form text stored in the history table alongside the migration record.
 
 ---
 
@@ -94,7 +125,7 @@ If the history write fails after execution, a `NoTxHistoryError` is returned wit
 
 **`repeatable`** - applied on every run where the file checksum has changed since last apply.
 Idempotent SQL only: `CREATE OR REPLACE FUNCTION`, `CREATE OR REPLACE VIEW`, trigger definitions.
-Each repeatable entry must list exactly one file.
+Each file in the entry is checked and re-applied independently.
 
 | Mode         | Transaction             | Behaviour                                       |
 |--------------|-------------------------|-------------------------------------------------|
@@ -105,9 +136,10 @@ Each repeatable entry must list exactly one file.
 
 ### Manifest rules
 
+- `id` is required, must match `[a-zA-Z0-9._-]`, and must be unique within the manifest.
 - `files` is required and must not be empty.
-- Duplicate file paths across any entries are rejected at load time.
-- `repeatable` + more than one file per entry is a hard error.
+- File paths must be unique across all entries.
+- Files within the same entry must have unique basenames (they share the same `id` prefix in `migration_id`).
 
 ---
 
@@ -162,13 +194,15 @@ Migrations are tracked in `schema_migrations` (configurable via `--table`):
 
 ```sql
 create table schema_migrations (
-    path        text primary key,
-    kind        text        not null,  -- once | repeatable | no-tx
-    checksum    text        not null,  -- sha256 of file contents
-    description text,
-    applied_by  name        not null default session_user,
-    applied_at  timestamptz not null default transaction_timestamp(),
-    txid        text        not null default pg_current_xact_id()::text
+    record_id    serial      primary key,
+    migration_id text        not null unique,  -- <entry-id>/<filename>, e.g. rel-1.0.users/001_create_users.sql
+    path         text        not null,         -- resolved file path on disk
+    kind         text        not null,         -- once | atomic | repeatable | no-tx
+    checksum     text        not null,         -- sha256 of file contents at apply time
+    description  text,
+    applied_by   name        not null default session_user,
+    applied_at   timestamptz not null default transaction_timestamp(),
+    txid         text        not null default pg_current_xact_id()::text
 );
 ```
 

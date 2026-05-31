@@ -2,35 +2,34 @@ manifest:
   table: schema_migrations
 
 migrations:
-  # rel-0.0.1
-
-  - files:
+  - id: rel-0.0.1.schemas
+    files:
       - sql/rel-0.0.1/schemas/schemas.sql
     description: "rel-0.0.1: create schemas"
 
-  - files:
+  - id: rel-0.0.1.lookup-tables
+    files:
       - sql/rel-0.0.1/tables/lookup_tables.sql
       - sql/rel-0.0.1/tables/lookup_seed.sql
     mode: atomic
     description: "rel-0.0.1: lookup tables + seed"
 
-  - files:
+  - id: rel-0.0.1.core-tables
+    files:
       - sql/rel-0.0.1/tables/users.sql
       - sql/rel-0.0.1/tables/sessions.sql
       - sql/rel-0.0.1/tables/audit_log.sql
     description: "rel-0.0.1: core tables"
 
-  - files:
+  - id: rel-0.0.1.concurrent-indexes
+    files:
       - sql/rel-0.0.1/indexes/concurrent_indexes.sql
     mode: no-tx
     description: "rel-0.0.1: concurrent indexes"
 
-  - files:
+  - id: rel-0.0.1.basic-views
+    files:
       - sql/rel-0.0.1/views/v_user_summary.sql
-    mode: repeatable
-    description: "rel-0.0.1: user summary view"
-
-  - files:
       - sql/rel-0.0.1/views/v_recent_changes.sql
     mode: repeatable
-    description: "rel-0.0.1: audit recent changes view"
+    description: "rel-0.0.1: user summary view"

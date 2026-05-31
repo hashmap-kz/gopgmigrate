@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/history"
@@ -27,6 +28,7 @@ type EntryStatus struct {
 //
 // Recovery: execute RecoverySQL() manually, then re-run.
 type NoTxHistoryError struct {
+	MigrationID string
 	Path        string
 	Table       string
 	Checksum    string
@@ -54,8 +56,8 @@ func (e *NoTxHistoryError) RecoverySQL() string {
 		desc = fmt.Sprintf("'%s'", e.Description)
 	}
 	return fmt.Sprintf(
-		"INSERT INTO %s (path, kind, checksum, description) VALUES ('%s', 'no-tx', '%s', %s);",
-		e.Table, e.Path, e.Checksum, desc,
+		"INSERT INTO %s (migration_id, path, kind, checksum, description) VALUES ('%s', '%s', 'no-tx', '%s', %s);",
+		e.Table, e.MigrationID, e.Path, e.Checksum, desc,
 	)
 }
 
@@ -190,6 +192,7 @@ func applyDefault(
 			slog.Info("dry-run", "path", path, "mode", "default")
 			continue
 		}
+		migID := buildMigrationID(entry.ID, path)
 		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
 			content, err := manifest.ReadFile(path)
 			if err != nil {
@@ -202,7 +205,7 @@ func applyDefault(
 			if err != nil {
 				return err
 			}
-			return r.Insert(ctx, tx, path, "once", checksum, entry.Description)
+			return r.Insert(ctx, tx, migID, path, "once", checksum, entry.Description)
 		}); err != nil {
 			return err
 		}
@@ -264,7 +267,8 @@ func applyAtomic(
 			if err != nil {
 				return err
 			}
-			if err := r.Insert(ctx, tx, path, "once", checksum, entry.Description); err != nil {
+			migID := buildMigrationID(entry.ID, path)
+			if err := r.Insert(ctx, tx, migID, path, "once", checksum, entry.Description); err != nil {
 				return err
 			}
 			slog.Info("atomic file applied", "path", path)
@@ -311,10 +315,12 @@ func applyNoTx(
 			return err
 		}
 
+		migID := buildMigrationID(entry.ID, path)
 		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
-		if err := r.Insert(ctx, db, path, "no-tx", checksum, entry.Description); err != nil {
+		if err := r.Insert(ctx, db, migID, path, "no-tx", checksum, entry.Description); err != nil {
 			return &NoTxHistoryError{
+				MigrationID: migID,
 				Path:        path,
 				Table:       table,
 				Checksum:    checksum,
@@ -337,39 +343,39 @@ func applyRepeatable(
 	entry manifest.Entry,
 	dryRun bool,
 ) error {
-	// manifest load guarantees exactly one file for repeatable
-	path := entry.Files[0]
-
-	checksum, err := manifest.Checksum(path)
-	if err != nil {
-		return err
-	}
-
-	row, exists := applied[path]
-	if exists && row.Checksum == checksum {
-		slog.Info("skip", "path", path, "reason", "unchanged")
-		return nil
-	}
-
-	if dryRun {
-		slog.Info("dry-run", "path", path, "mode", "repeatable")
-		return nil
-	}
-
-	return execInTx(ctx, db, func(tx *sql.Tx) error {
-		content, err := manifest.ReadFile(path)
+	for _, path := range entry.Files {
+		checksum, err := manifest.Checksum(path)
 		if err != nil {
 			return err
 		}
-		if err := execStatements(ctx, tx, path, content); err != nil {
-			return err
+
+		row, exists := applied[path]
+		if exists && row.Checksum == checksum {
+			slog.Info("skip", "path", path, "reason", "unchanged")
+			continue
 		}
-		if err := r.Upsert(ctx, tx, path, "repeatable", checksum, entry.Description); err != nil {
+
+		if dryRun {
+			slog.Info("dry-run", "path", path, "mode", "repeatable")
+			continue
+		}
+
+		migID := buildMigrationID(entry.ID, path)
+		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
+			content, err := manifest.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if err := execStatements(ctx, tx, path, content); err != nil {
+				return err
+			}
+			return r.Upsert(ctx, tx, migID, path, "repeatable", checksum, entry.Description)
+		}); err != nil {
 			return err
 		}
 		slog.Info("applied", "path", path, "mode", "repeatable")
-		return nil
-	})
+	}
+	return nil
 }
 
 // helpers
@@ -407,6 +413,10 @@ func execStatements(ctx context.Context, db execer, path, content string) error 
 		}
 	}
 	return nil
+}
+
+func buildMigrationID(entryID, path string) string {
+	return entryID + "/" + filepath.Base(path)
 }
 
 // checksumGuard returns an error if the on-disk file differs from the recorded checksum.
