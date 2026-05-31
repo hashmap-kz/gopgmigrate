@@ -1,1 +1,0 @@
-create table if not exists authn.roles (id serial primary key, xname text not null);

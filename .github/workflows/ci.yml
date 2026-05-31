@@ -8,10 +8,13 @@ on:
       - "release/**"
     paths-ignore: &paths-ignore
       - ".github/**"
+      - ".run/**"
+      - ".vscode/**"
       - "docs/**"
       - "examples/**"
       - "charts/**"
       - "hack/**"
+      - "ui/static/**"
       - "**/*.md"
       - "**/*.gitignore"
       - "**/*.gitattributes"
@@ -47,3 +50,12 @@ jobs:
       - name: Run unit tests
         run: go test -v -race ./...
         shell: bash
+
+      # Run goreleaser to be sure that 'everything is always ready to release'
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+
+      - name: Run GoReleaser (snapshot)
+        run: make snapshot

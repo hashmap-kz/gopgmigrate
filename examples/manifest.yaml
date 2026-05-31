@@ -1,0 +1,8 @@
+manifest:
+  table: schema_migrations
+
+# Each release lives in its own file. Adding a new release means writing
+# a new leaf file and appending one line here. Old releases are never touched.
+includes:
+  - rel-0.0.1.yaml
+  - rel-0.0.2.yaml

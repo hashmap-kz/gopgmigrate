@@ -1,325 +1,297 @@
-<!-- omit in toc -->
 # gopgmigrate
 
-SQL-first PostgreSQL migrations - rollbacks, repeatable scripts, any directory layout
+Manifest-driven PostgreSQL migrations for Go.
 
 [![License](https://img.shields.io/github/license/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/blob/master/LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/gopgmigrate)](https://goreportcard.com/report/github.com/hashmap-kz/gopgmigrate)
-[![Go Reference](https://pkg.go.dev/badge/github.com/hashmap-kz/gopgmigrate.svg)](https://pkg.go.dev/github.com/hashmap-kz/gopgmigrate)
+[![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/gopgmigrate/v2)](https://goreportcard.com/report/github.com/hashmap-kz/gopgmigrate/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/hashmap-kz/gopgmigrate/v2.svg)](https://pkg.go.dev/github.com/hashmap-kz/gopgmigrate/v2)
 [![Workflow Status](https://img.shields.io/github/actions/workflow/status/hashmap-kz/gopgmigrate/ci.yml?branch=master)](https://github.com/hashmap-kz/gopgmigrate/actions/workflows/ci.yml?query=branch:master)
-[![GitHub Issues](https://img.shields.io/github/issues/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/issues)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/blob/master/go.mod#L3)
-[![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/gopgmigrate)](https://github.com/hashmap-kz/gopgmigrate/releases/latest)
-[![Start contributing](https://img.shields.io/github/issues/hashmap-kz/gopgmigrate/good%20first%20issue?color=7057ff&label=Contribute)](https://github.com/hashmap-kz/gopgmigrate/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22)
 
-Runs migrations sequentially with advisory locking, transactional safety, and hash-based change detection - no config
-files, no YAML, no ORM coupling, no hidden DSL, no magic. Just SQL files and a clear naming convention.
-
-<!-- Plugin used: Markdown TOC & Chapter Number -->
-
-<!-- omit in toc -->
-## Table of Contents
-
-<!-- TOC tocDepth:2..3 chapterDepth:2..6 -->
-
-- [How it works](#how-it-works)
-- [Usage](#usage)
-  - [CLI](#cli)
-    - [Flags](#flags)
-    - [Examples](#examples)
-  - [Library](#library)
-    - [Examples](#examples-1)
-- [Naming conventions](#naming-conventions)
-  - [Why extensions - not directories or prefixes](#why-extensions---not-directories-or-prefixes)
-  - [Design rationale](#design-rationale)
-  - [Transaction behaviour](#transaction-behaviour)
-- [Directory layouts](#directory-layouts)
-  - [Flat](#flat)
-  - [By concern](#by-concern)
-  - [By release and concern](#by-release-and-concern)
-  - [By environment](#by-environment)
-- [Contributing](#contributing)
-- [License](#license)
-
-<!-- /TOC -->
+Migration order and execution mode are declared in a YAML manifest - not inferred from filenames or directories.
+SQL files stay plain SQL. No DSL, no ORM coupling, no magic.
 
 ---
 
-## How it works
+## Features
 
-1. Scans the migration directory recursively for `.sql` files
-2. Compares them against the history table in your database
-3. Applies only what is pending, in version order
-4. Records every applied migration with its hash, timestamp, and transaction ID
-
-Version ordering is **global** across all subdirectories. Subdirectories are purely for your own organisation - the tool
-sorts only by the 7-digit revision prefix.
+- **Explicit ordering** - manifest declaration order is execution order, always
+- **Four execution modes** - transactional, atomic batch, non-transactional, repeatable
+- **Stable migration IDs** - each entry has a required `id`; the history record is keyed by `id/filename`
+- **Checksum guard** - modifying an applied migration is a hard error
+- **Advisory locking** - prevents concurrent runs against the same database
+- **Repeatable migrations** - re-applied automatically when content changes
+- **Plan before apply** - inspect pending migrations without touching the database
+- **Library + CLI** - embed in your app or run as a standalone binary
 
 ---
 
-## Usage
-
-**[`^        back to top        ^`](#table-of-contents)**
-
-### CLI
+## Installation
 
 ```sh
-gopgmigrate <command> [flags]
-
-Commands:
-  migrate          Apply all pending migrations
-  rollback-count   Roll back the last N applied migrations
-  last             Show the last applied migration
+go install github.com/hashmap-kz/gopgmigrate/v2/cmd/gopgmigrate@latest
 ```
 
-#### Flags
-
-All commands share the same flags. Each flag falls back to an environment variable when not set.
-
-| Flag              | Env var                        | Default                  | Description                               |
-|-------------------|--------------------------------|--------------------------|-------------------------------------------|
-| `--dirname`       | `PGMIGRATE_DIRNAME`            | -                        | Migration directory (required)            |
-| `--connstr`       | `PGMIGRATE_CONNSTR`            | -                        | PostgreSQL connection string (required)   |
-| `--history-table` | `PGMIGRATE_HISTORY_TABLE_NAME` | `public.migrate_history` | History table in `schema.table` format    |
-| `--log-level`     | -                              | `info`                   | `debug` · `info` · `warn` · `error`       |
-| `--dry-run`       | -                              | `false`                  | Print pending migrations without applying |
-
-#### Examples
+As a library:
 
 ```sh
-# apply all pending migrations
-gopgmigrate migrate \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb \
-  --history-table public.migrate_history
-
-# preview what would be applied
-gopgmigrate migrate \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb \
-  --dry-run
-
-# roll back the last 2 applied migrations
-gopgmigrate rollback-count 2 \
-  --dirname ./migrations \
-  --connstr postgres://user:pass@localhost:5432/mydb
-
-# using environment variables
-export PGMIGRATE_DIRNAME=./migrations
-export PGMIGRATE_CONNSTR=postgres://user:pass@localhost:5432/mydb
-
-gopgmigrate migrate
-gopgmigrate rollback-count 1 --dry-run
+go get github.com/hashmap-kz/gopgmigrate/v2
 ```
 
-### Library
+---
 
-#### Examples
+## Quick start
+
+Create a manifest file (default path: `migrations/manifest.yaml`):
+
+```yaml
+manifest:
+  table: schema_migrations   # optional, default: schema_migrations
+
+migrations:
+  # default: each file runs in its own transaction, applied once
+  - id: rel-1.0.users
+    files:
+      - sql/001_create_users.sql
+
+  # atomic: all files share one transaction - all succeed or all roll back
+  - id: rel-1.0.roles
+    files:
+      - sql/002_add_roles.sql
+      - sql/003_seed_roles.sql
+    mode: atomic
+    description: "release-1.0"
+
+  # repeatable: re-applied whenever the file checksum changes
+  - id: views.vw-users
+    files:
+      - sql/views/vw_users.sql
+    mode: repeatable
+
+  # no-tx: runs outside any transaction (required for VACUUM, CREATE INDEX CONCURRENTLY, etc.)
+  - id: rel-1.0.indexes
+    files:
+      - sql/004_create_index_concurrently.sql
+    mode: no-tx
+```
+
+Preview what would be applied, then apply:
+
+```sh
+gopgmigrate plan  --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
+gopgmigrate apply --dsn postgres://user:pass@localhost/mydb --manifest migrations/manifest.yaml
+```
+
+See the [`examples/`](examples/) directory for a real-world layout using per-release leaf files.
+
+---
+
+## Manifest
+
+A manifest is either a **root** file (the entry point) or a **leaf** file (a per-release migration list). Both are YAML.
+
+### Root manifest
+
+The root manifest declares the tracking table and the ordered list of leaf files to include:
+
+```yaml
+manifest:
+  table: schema_migrations   # optional, default: schema_migrations
+
+includes:
+  - rel-0.0.1.yaml
+  - rel-0.0.2.yaml
+```
+
+Each line in `includes` is a path to a leaf file, relative to the root manifest location. Entries from all leaf files are flattened in declaration order. Adding a new release means writing a new leaf file and appending one line here — old leaf files are never modified.
+
+A root manifest may use either `includes` or `migrations`, not both.
+
+### Leaf manifest
+
+A leaf file contains only a `migrations` list. It has no `manifest` header and no `includes`:
+
+```yaml
+migrations:
+  - id: rel-0.0.1.schemas
+    files:
+      - sql/schemas.sql
+
+  - id: rel-0.0.1.core-tables
+    files:
+      - sql/users.sql
+      - sql/sessions.sql
+    mode: atomic
+    description: |
+      Core tables applied atomically so a failure does not leave
+      the schema in a half-created state.
+```
+
+File paths in a leaf are resolved relative to the leaf file's own location.
+
+### Standalone manifest
+
+For simpler projects, the root can contain `migrations` directly — no `includes` needed:
+
+```yaml
+manifest:
+  table: schema_migrations
+
+migrations:
+  - id: rel-1.0.users
+    files:
+      - sql/001_create_users.sql
+```
+
+### Entry fields
+
+| Field         | Required | Description |
+|---------------|----------|-------------|
+| `id`          | yes      | Stable identifier, unique within the manifest. Combined with the file basename to form the history key: `id/filename.sql`. Allowed characters: `[a-zA-Z0-9._-]` |
+| `files`       | yes      | One or more SQL file paths, relative to the manifest file. Must be unique across all entries. |
+| `mode`        | no       | Execution mode. See [Modes](#modes). |
+| `description` | no       | Free-form text stored in the history table. |
+
+### Manifest rules
+
+- `includes` and `migrations` cannot both be present in the same file.
+- Leaf files cannot have `includes` or a `manifest` header.
+- `id` must match `[a-zA-Z0-9._-]` and be unique across all loaded entries.
+- File paths must be unique across all entries.
+- Files within the same entry must have unique basenames (they share the same `id` prefix in `migration_id`).
+
+---
+
+## Modes
+
+**Default** (no `mode` key) - each file runs in its own transaction and is applied exactly once.
+The file checksum is stored on apply; if the file is later modified, the next run fails with a checksum mismatch error.
+Use this for ordinary schema changes: `CREATE TABLE`, `ALTER TABLE`, data migrations.
+
+**`atomic`** - all files in the entry share a single transaction.
+Either every file is applied and committed together, or nothing is.
+Use this for changes that must land as one unit - e.g. a new table and its seed data, or a set of related schema changes in a release.
+
+**`no-tx`** - statements execute outside any `BEGIN`/`COMMIT` block.
+Required for statements PostgreSQL refuses to run inside a transaction:
+`CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `VACUUM`, `ALTER SYSTEM`.
+If the history write fails after execution, a `NoTxHistoryError` is returned with the exact recovery SQL to run before retrying.
+
+**`repeatable`** - applied on every run where the file checksum has changed since last apply.
+Idempotent SQL only: `CREATE OR REPLACE FUNCTION`, `CREATE OR REPLACE VIEW`, trigger definitions.
+Each file in the entry is checked and re-applied independently.
+
+| Mode         | Transaction             | Behaviour                                       |
+|--------------|-------------------------|-------------------------------------------------|
+| *(default)*  | one tx per file         | runs once; checksum-guarded                     |
+| `atomic`     | one tx across all files | all succeed or all roll back                    |
+| `no-tx`      | none                    | for `CREATE INDEX CONCURRENTLY`, `VACUUM`, etc. |
+| `repeatable` | one tx per file         | re-runs whenever the file checksum changes      |
+
+### Manifest rules
+
+- `id` is required, must match `[a-zA-Z0-9._-]`, and must be unique within the manifest.
+- `files` is required and must not be empty.
+- File paths must be unique across all entries.
+- Files within the same entry must have unique basenames (they share the same `id` prefix in `migration_id`).
+
+---
+
+## CLI
+
+```
+gopgmigrate apply     --dsn <dsn> --manifest <path> [--table <table>]
+gopgmigrate plan      --dsn <dsn> --manifest <path> [--table <table>]
+gopgmigrate status    --dsn <dsn> --manifest <path> [--table <table>]
+gopgmigrate validate  --manifest <path>
+```
+
+| Command    | Description                                                                           |
+|------------|---------------------------------------------------------------------------------------|
+| `apply`    | Apply all pending migrations in manifest order                                        |
+| `plan`     | Show pending migrations without applying. Exits 2 if any are pending, 0 if up to date |
+| `status`   | Print a table of all manifest entries with their applied state                        |
+| `validate` | Check that all files referenced in the manifest exist (no DB required)                |
+
+All flags fall back to environment variables:
+
+| Flag         | Env var              | Default                    |
+|--------------|----------------------|----------------------------|
+| `--dsn`      | `PGMIGRATE_DSN`      | -                          |
+| `--manifest` | `PGMIGRATE_MANIFEST` | `migrations/manifest.yaml` |
+| `--table`    | `PGMIGRATE_TABLE`    | `schema_migrations`        |
+
+### `plan` exit codes
+
+| Code | Meaning                                          |
+|------|--------------------------------------------------|
+| `0`  | Nothing to apply, database is up to date         |
+| `1`  | Error (connection failure, manifest error, etc.) |
+| `2`  | Pending migrations exist                         |
+
+This makes `plan` composable in CI pipelines - a non-zero exit can gate a deploy or trigger an alert.
+
+### `status` output
+
+```
+PATH                                   KIND        APPLIED_AT
+sql/001_create_users.sql               once        2024-03-12 14:02:11
+sql/002_add_roles.sql                  once        2024-03-12 14:02:11
+sql/003_seed_roles.sql                 once        2024-03-12 14:02:11
+sql/004_create_index_concurrently.sql  no-tx       2024-03-12 14:02:12
+sql/views/vw_users.sql                 repeatable  -
+```
+
+Pending entries show `-` in `APPLIED_AT`. Column widths adjust to the longest value in the result set.
+
+---
+
+## Library usage
 
 ```go
-err := migration.RunMigrationsUp(context.Background(), &migration.ApplyOpts{
-	MigrationDir:     "./migrations",
-	ConnStr:          "postgres://user:pass@localhost:5432/mydb",
-	HistoryTableName: "public.migrate_history",
+m, err := migrator.NewWithDSN("postgres://user:pass@localhost/mydb", migrator.Config{
+    ManifestPath: "./migrations/manifest.yaml",
 })
+if err != nil {
+    log.Fatal(err)
+}
+defer m.Close()
+
+if err := m.Run(ctx); err != nil {
+    var noTxErr *migrator.NoTxHistoryError
+    if errors.As(err, &noTxErr) {
+        // migration ran but the history record failed to write
+        // execute noTxErr.RecoverySQL() manually, then re-run
+        fmt.Println(noTxErr.RecoverySQL())
+    }
+    log.Fatal(err)
+}
 ```
+
+Use `NewWithDB` to supply an existing `*sql.DB`, or `NewValidateOnly` to validate the manifest without a database connection.
 
 ---
 
-## Naming conventions
+## History table
 
-**[`^        back to top        ^`](#table-of-contents)**
+Migrations are tracked in `schema_migrations` (configurable via `--table`):
 
-Every migration file encodes its complete behaviour in its name.
-
-![Migration Naming Convention](docs/assets/migration-names.svg)
-
-```
-{0000000}-{name}.{kind}.sql
-```
-
-| Extension       | Behaviour                                                  |
-|-----------------|------------------------------------------------------------|
-| `.up.sql`       | Versioned · runs once · transactional                      |
-| `.r.up.sql`     | Repeatable · re-runs on content change · transactional     |
-| `.notx.up.sql`  | Versioned · runs once · non-transactional                  |
-| `.rnotx.up.sql` | Repeatable · re-runs on content change · non-transactional |
-| `.down.sql`     | Rollback · always transactional                            |
-
-The revision is exactly **7 zero-padded digits**. The name is free-form (hyphens and underscores, no dots). The
-extension is the complete behaviour declaration - no other metadata needed.
-
-```
-0000001-create-users-table.up.sql
-0000002-add-roles-table.up.sql
-0000003-fn-get-users.r.up.sql        <- repeatable: re-applied when content changes
-0000004-vacuum-users.notx.up.sql     <- non-transactional: runs outside BEGIN/COMMIT
-0000005-refresh-stats.rnotx.up.sql   <- repeatable + non-transactional
-
-0000001-create-users-table.down.sql  <- rollback for revision 1
-0000002-add-roles-table.down.sql
+```sql
+create table schema_migrations (
+    record_id    serial      primary key,
+    migration_id text        not null unique,  -- <entry-id>/<filename>, e.g. rel-1.0.users/001_create_users.sql
+    path         text        not null,         -- manifest-relative path, e.g. sql/001_create_users.sql
+    kind         text        not null,         -- once | no-tx | repeatable
+    checksum     text        not null,         -- sha256 of file contents at apply time
+    description  text,
+    applied_by   name        not null default session_user,
+    applied_at   timestamptz not null default transaction_timestamp(),
+    txid         text        not null default pg_current_xact_id()::text
+);
 ```
 
-### Why extensions - not directories or prefixes
-
-The extension is what shell tools understand natively. No parsing, no convention memorisation:
-
-```sh
-# apply everything - reproduce the full database from scratch
-find migrations/ -name "*.up.sql" | sort | xargs -I{} psql $DSN -f {}
-
-# rollback in reverse
-find migrations/ -name "*.down.sql" | sort -r | xargs -I{} psql $DSN -f {}
-
-# repeatable files only - refresh all functions and views
-find migrations/ -name "*.r.up.sql" -o -name "*.rnotx.up.sql" | sort | xargs -I{} psql $DSN -f {}
-
-# non-transactional only
-find migrations/ -name "*.notx.up.sql" -o -name "*.rnotx.up.sql" | sort | xargs -I{} psql $DSN -f {}
-```
-
-The tool adds safety on top: advisory locking, history tracking, hash verification, stray file detection. The bash path
-is your emergency escape hatch - it always works.
-
-### Design rationale
-
-This tool is built around one simple idea: your migration files should stay plain, usable SQL.
-
-**Flexible directory layouts**  
-Real projects rarely fit into one flat folder. You may want to split schema and data changes, group migrations by
-release, or organise them by module or environment. This tool does not force a directory structure, so you can arrange
-files in the way that makes sense for your project.
-
-**Plain SQL, nothing hidden**  
-Migration files should be easy to read, review, copy, and run directly in your database IDE or with `psql`. That is why
-every migration here is just normal executable SQL, with no embedded DSL, no magic comments, and no mixed control syntax
-inside the file.
-
-**Safe separation of forward and rollback scripts**  
-Keeping rollback files mixed together with forward migrations makes simple shell workflows harder and riskier. This tool
-keeps them separate, so basic commands and file globs stay predictable and safe.
-
-**No lock-in**  
-Your SQL files should still be useful even without this tool. They remain normal SQL files that can be sorted, reviewed,
-and executed independently. The tool helps manage migrations, but it does not own your migration format.
-
-**Repeatables and non-transactional migrations are built in**  
-Updating views, functions, triggers, extensions, or maintenance logic is a normal part of working with PostgreSQL. Some
-operations also need to run outside a transaction. These cases are supported naturally and are expressed in the
-filename, without extra configuration or custom syntax.
-
-### Transaction behaviour
-
-PostgreSQL supports transactional DDL - most `CREATE`, `ALTER`, and `DROP` statements can be wrapped in `BEGIN/COMMIT`
-and rolled back on failure. This tool defaults to transactional execution and makes the non-transactional case explicit
-in the filename.
-
-Statements that **cannot** run inside a transaction and require `.notx.up.sql` or `.rnotx.up.sql`:
-
-- `VACUUM`
-- `ALTER SYSTEM`
-- `REINDEX SCHEMA / DATABASE / SYSTEM`
-- `CREATE INDEX CONCURRENTLY`
-- `DROP INDEX CONCURRENTLY`
-- `ALTER TYPE ... ADD VALUE` (before PostgreSQL 12)
-
-Non-transactional files are split into individual statements and executed one by one. If one fails, previously executed
-statements in that file cannot be rolled back - plan accordingly.
+The table is created automatically on first run.
 
 ---
-
-## Directory layouts
-
-**[`^        back to top        ^`](#table-of-contents)**
-
-Migration files can live anywhere under the root directory. The tool walks recursively and sorts globally by revision.
-Organise however makes sense for your project.
-
-### Flat
-
-```
-migrations/
-  0000001-create-users-table.up.sql
-  0000001-create-users-table.down.sql
-  0000002-add-roles-table.up.sql
-  0000002-add-roles-table.down.sql
-  0000003-fn-get-users.r.up.sql
-  0000004-vacuum-users.notx.up.sql
-```
-
-### By concern
-
-```
-migrations/
-  schema/
-    0000001-create-users-table.up.sql
-    0000002-add-roles-table.up.sql
-  data/
-    0000003-seed-roles.up.sql
-    0000004-seed-users.up.sql
-  functions/
-    0000005-fn-get-users.r.up.sql
-    0000006-fn-get-roles.r.up.sql
-  no-transaction/
-    0000007-vacuum-users.notx.up.sql
-  down/
-    0000001-create-users-table.down.sql
-    0000002-add-roles-table.down.sql
-    0000003-seed-roles.down.sql
-```
-
-### By release and concern
-
-```
-migrations/
-  v1.0.0/
-    schema/
-      0000001-create-users-table.up.sql
-      0000002-add-roles-table.up.sql
-    data/
-      0000003-seed-roles.up.sql
-    functions/
-      0000004-fn-get-users.r.up.sql
-  v1.1.0/
-    schema/
-      0000005-add-audit-columns.up.sql
-    no-transaction/
-      0000006-vacuum-users.notx.up.sql
-  down/
-    0000001-create-users-table.down.sql
-    0000002-add-roles-table.down.sql
-    0000003-seed-roles.down.sql
-    0000005-add-audit-columns.down.sql
-    0000006-vacuum-users.down.sql
-```
-
-### By environment
-
-```
-migrations/
-  dev/
-    schema/
-      0000001-create-users-table.up.sql
-    data/
-      0000002-seed-dev-users.up.sql
-    functions/
-      0000003-fn-get-users.r.up.sql
-  prod/
-    schema/
-      0000001-create-users-table.up.sql
-    functions/
-      0000003-fn-get-users.r.up.sql
-```
-
-One rule applies in all layouts: **version numbers are global**. Two files with the same revision number anywhere in the
-tree is an error.
-
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

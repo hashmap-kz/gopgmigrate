@@ -1,0 +1,27 @@
+migrations:
+  - id: rel-0.0.2.user-preferences
+    files:
+      - sql/rel-0.0.2/tables/user_preferences.sql
+      - sql/rel-0.0.2/tables/notifications.sql
+    mode: atomic
+    description: |
+      User preferences and notifications tables applied atomically.
+      notifications references user_preferences via foreign key, so both
+      must succeed or neither should land.
+
+  - id: rel-0.0.2.concurrent-indexes
+    files:
+      - sql/rel-0.0.2/indexes/concurrent_indexes.sql
+    mode: no-tx
+    description: |
+      Concurrent indexes on the new tables. No-tx required because
+      CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
+
+  - id: rel-0.0.2.views
+    files:
+      - sql/rel-0.0.2/views/v_user_summary.sql
+    mode: repeatable
+    description: |
+      Updated user summary view extended with preference data.
+      Repeatable so any future tweak to the view is re-applied automatically
+      without a new versioned migration entry.

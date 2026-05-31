@@ -1,1 +1,0 @@
-alter table authn.users drop column xdata;
