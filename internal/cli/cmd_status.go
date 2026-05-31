@@ -11,7 +11,13 @@ import (
 func CmdStatus() *cli.Command {
 	return &cli.Command{
 		Name:  "status",
-		Usage: "show applied/pending state of all manifest entries",
+		Usage: "show applied/pending state of all migrations",
+		Description: `Examples:
+   # show full migration state
+   gopgmigrate status --dsn $DSN
+
+   # show state using PG* environment variables
+   PGHOST=db PGDATABASE=mydb PGUSER=app gopgmigrate status`,
 		Flags: []cli.Flag{
 			flagDSN(),
 			flagDir(),

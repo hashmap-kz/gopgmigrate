@@ -12,6 +12,12 @@ func CmdValidate() *cli.Command {
 	return &cli.Command{
 		Name:  "validate",
 		Usage: "check migration files (no DB required)",
+		Description: `Examples:
+   # validate the default ./migrations directory
+   gopgmigrate validate
+
+   # validate a custom directory
+   gopgmigrate validate --dir ./db/migrations`,
 		Flags: []cli.Flag{
 			flagDir(),
 		},

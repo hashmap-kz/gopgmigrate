@@ -12,6 +12,12 @@ func CmdPlan() *cli.Command {
 	return &cli.Command{
 		Name:  "plan",
 		Usage: "show pending migrations without applying (exits 2 if any are pending)",
+		Description: `Examples:
+   # preview what would be applied
+   gopgmigrate plan --dsn $DSN
+
+   # gate a deploy in CI: fail the pipeline if migrations are pending
+   gopgmigrate plan --dsn $DSN && ./deploy.sh`,
 		Flags: []cli.Flag{
 			flagDSN(),
 			flagDir(),

@@ -17,7 +17,7 @@ var Version = "dev"
 func main() {
 	cmd := &cliv3.Command{
 		Name:    "gopgmigrate",
-		Usage:   "YAML-manifest-driven PostgreSQL migrations",
+		Usage:   "SQL-first PostgreSQL migrations",
 		Version: Version,
 		Flags: []cliv3.Flag{
 			&cliv3.StringFlag{
