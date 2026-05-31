@@ -62,7 +62,9 @@ func TestLoad_PathsResolvedRelativeToManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, mf.Entries, 1)
 	require.Len(t, mf.Entries[0].Files, 1)
-	assert.Equal(t, filepath.Join(dir, "a.sql"), mf.Entries[0].Files[0])
+	f := mf.Entries[0].Files[0]
+	assert.Equal(t, "a.sql", f.Path)
+	assert.Equal(t, filepath.Join(dir, "a.sql"), f.AbsPath)
 }
 
 func TestLoad_IDPropagated(t *testing.T) {

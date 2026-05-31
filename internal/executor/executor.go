@@ -110,18 +110,18 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 
 	var out []EntryStatus
 	for _, entry := range mf.Entries {
-		for _, path := range entry.Files {
-			checksum, err := manifest.Checksum(path)
+		for _, f := range entry.Files {
+			checksum, err := manifest.Checksum(f.AbsPath)
 			if err != nil {
 				return nil, err
 			}
-			row, exists := applied[path]
+			row, exists := applied[f.Path]
 			kind := kindLabel(entry)
 			if exists && entry.Mode != manifest.ModeRepeatable && row.Checksum != checksum {
 				kind += " [CHECKSUM MISMATCH]"
 			}
 			out = append(out, EntryStatus{
-				Path:        path,
+				Path:        f.Path,
 				Kind:        kind,
 				Checksum:    checksum,
 				Description: entry.Description,
@@ -136,8 +136,8 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 // Does not require a DB connection.
 func Validate(mf *manifest.Manifest) error {
 	for _, entry := range mf.Entries {
-		for _, path := range entry.Files {
-			if _, err := manifest.Checksum(path); err != nil {
+		for _, f := range entry.Files {
+			if _, err := manifest.Checksum(f.AbsPath); err != nil {
 				return fmt.Errorf("validate: %w", err)
 			}
 		}
@@ -162,7 +162,6 @@ func applyEntry(
 	case manifest.ModeNoTx:
 		return applyNoTx(ctx, db, r, applied, entry, table, dryRun)
 	case manifest.ModeRepeatable:
-		// repeatable enforces single file at manifest load time
 		return applyRepeatable(ctx, db, r, applied, entry, dryRun)
 	default:
 		return applyDefault(ctx, db, r, applied, entry, dryRun)
@@ -179,37 +178,37 @@ func applyDefault(
 	entry manifest.Entry,
 	dryRun bool,
 ) error {
-	for _, path := range entry.Files {
-		row, exists := applied[path]
+	for _, f := range entry.Files {
+		row, exists := applied[f.Path]
 		if exists {
-			if err := checksumGuard(path, row.Checksum); err != nil {
+			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
 			}
-			slog.Info("skip", "path", path, "reason", "already applied")
+			slog.Info("skip", "path", f.Path, "reason", "already applied")
 			continue
 		}
 		if dryRun {
-			slog.Info("dry-run", "path", path, "mode", "default")
+			slog.Info("dry-run", "path", f.Path, "mode", "default")
 			continue
 		}
-		migID := buildMigrationID(entry.ID, path)
+		migID := buildMigrationID(entry.ID, f.Path)
 		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
-			content, err := manifest.ReadFile(path)
+			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, path, content); err != nil {
+			if err := execStatements(ctx, tx, f.Path, content); err != nil {
 				return err
 			}
-			checksum, err := manifest.Checksum(path)
+			checksum, err := manifest.Checksum(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			return r.Insert(ctx, tx, migID, path, "once", checksum, entry.Description)
+			return r.Insert(ctx, tx, migID, f.Path, "once", checksum, entry.Description)
 		}); err != nil {
 			return err
 		}
-		slog.Info("applied", "path", path, "mode", "default")
+		slog.Info("applied", "path", f.Path, "mode", "default")
 	}
 	return nil
 }
@@ -225,12 +224,12 @@ func applyAtomic(
 	dryRun bool,
 ) error {
 	appliedCount := 0
-	for _, path := range entry.Files {
-		row, exists := applied[path]
+	for _, f := range entry.Files {
+		row, exists := applied[f.Path]
 		if !exists {
 			continue
 		}
-		if err := checksumGuard(path, row.Checksum); err != nil {
+		if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 			return err
 		}
 		appliedCount++
@@ -248,30 +247,30 @@ func applyAtomic(
 	}
 
 	if dryRun {
-		for _, path := range entry.Files {
-			slog.Info("dry-run", "path", path, "mode", "atomic")
+		for _, f := range entry.Files {
+			slog.Info("dry-run", "path", f.Path, "mode", "atomic")
 		}
 		return nil
 	}
 
 	return execInTx(ctx, db, func(tx *sql.Tx) error {
-		for _, path := range entry.Files {
-			content, err := manifest.ReadFile(path)
+		for _, f := range entry.Files {
+			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, path, content); err != nil {
+			if err := execStatements(ctx, tx, f.Path, content); err != nil {
 				return err
 			}
-			checksum, err := manifest.Checksum(path)
+			checksum, err := manifest.Checksum(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			migID := buildMigrationID(entry.ID, path)
-			if err := r.Insert(ctx, tx, migID, path, "once", checksum, entry.Description); err != nil {
+			migID := buildMigrationID(entry.ID, f.Path)
+			if err := r.Insert(ctx, tx, migID, f.Path, "once", checksum, entry.Description); err != nil {
 				return err
 			}
-			slog.Info("atomic file applied", "path", path)
+			slog.Info("atomic file applied", "path", f.Path)
 		}
 		return nil
 	})
@@ -288,47 +287,47 @@ func applyNoTx(
 	table string,
 	dryRun bool,
 ) error {
-	for _, path := range entry.Files {
-		row, exists := applied[path]
+	for _, f := range entry.Files {
+		row, exists := applied[f.Path]
 		if exists {
-			if err := checksumGuard(path, row.Checksum); err != nil {
+			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
 			}
-			slog.Info("skip", "path", path, "reason", "already applied")
+			slog.Info("skip", "path", f.Path, "reason", "already applied")
 			continue
 		}
 		if dryRun {
-			slog.Info("dry-run", "path", path, "mode", "no-tx")
+			slog.Info("dry-run", "path", f.Path, "mode", "no-tx")
 			continue
 		}
 
-		content, err := manifest.ReadFile(path)
+		content, err := manifest.ReadFile(f.AbsPath)
 		if err != nil {
 			return err
 		}
-		if err := execStatements(ctx, db, path, content); err != nil {
+		if err := execStatements(ctx, db, f.Path, content); err != nil {
 			return err
 		}
 
-		checksum, err := manifest.Checksum(path)
+		checksum, err := manifest.Checksum(f.AbsPath)
 		if err != nil {
 			return err
 		}
 
-		migID := buildMigrationID(entry.ID, path)
+		migID := buildMigrationID(entry.ID, f.Path)
 		// History insert is outside any transaction - gap is inherent to no-tx.
 		// On failure, return a NoTxHistoryError with recovery SQL.
-		if err := r.Insert(ctx, db, migID, path, "no-tx", checksum, entry.Description); err != nil {
+		if err := r.Insert(ctx, db, migID, f.Path, "no-tx", checksum, entry.Description); err != nil {
 			return &NoTxHistoryError{
 				MigrationID: migID,
-				Path:        path,
+				Path:        f.Path,
 				Table:       table,
 				Checksum:    checksum,
 				Description: entry.Description,
 				Cause:       err,
 			}
 		}
-		slog.Info("applied", "path", path, "mode", "no-tx")
+		slog.Info("applied", "path", f.Path, "mode", "no-tx")
 	}
 	return nil
 }
@@ -343,37 +342,37 @@ func applyRepeatable(
 	entry manifest.Entry,
 	dryRun bool,
 ) error {
-	for _, path := range entry.Files {
-		checksum, err := manifest.Checksum(path)
+	for _, f := range entry.Files {
+		checksum, err := manifest.Checksum(f.AbsPath)
 		if err != nil {
 			return err
 		}
 
-		row, exists := applied[path]
+		row, exists := applied[f.Path]
 		if exists && row.Checksum == checksum {
-			slog.Info("skip", "path", path, "reason", "unchanged")
+			slog.Info("skip", "path", f.Path, "reason", "unchanged")
 			continue
 		}
 
 		if dryRun {
-			slog.Info("dry-run", "path", path, "mode", "repeatable")
+			slog.Info("dry-run", "path", f.Path, "mode", "repeatable")
 			continue
 		}
 
-		migID := buildMigrationID(entry.ID, path)
+		migID := buildMigrationID(entry.ID, f.Path)
 		if err := execInTx(ctx, db, func(tx *sql.Tx) error {
-			content, err := manifest.ReadFile(path)
+			content, err := manifest.ReadFile(f.AbsPath)
 			if err != nil {
 				return err
 			}
-			if err := execStatements(ctx, tx, path, content); err != nil {
+			if err := execStatements(ctx, tx, f.Path, content); err != nil {
 				return err
 			}
-			return r.Upsert(ctx, tx, migID, path, "repeatable", checksum, entry.Description)
+			return r.Upsert(ctx, tx, migID, f.Path, "repeatable", checksum, entry.Description)
 		}); err != nil {
 			return err
 		}
-		slog.Info("applied", "path", path, "mode", "repeatable")
+		slog.Info("applied", "path", f.Path, "mode", "repeatable")
 	}
 	return nil
 }
@@ -420,15 +419,15 @@ func buildMigrationID(entryID, path string) string {
 }
 
 // checksumGuard returns an error if the on-disk file differs from the recorded checksum.
-func checksumGuard(path, recorded string) error {
-	current, err := manifest.Checksum(path)
+func checksumGuard(absPath, recorded string) error {
+	current, err := manifest.Checksum(absPath)
 	if err != nil {
 		return err
 	}
 	if current != recorded {
 		return fmt.Errorf(
 			"executor: checksum mismatch for applied migration %q - file was modified after apply",
-			path,
+			absPath,
 		)
 	}
 	return nil

@@ -22,10 +22,18 @@ const (
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
+// File is a single SQL file within an entry.
+// Path is the manifest-relative forward-slash path used for history storage and display.
+// AbsPath is the resolved absolute path used for file I/O.
+type File struct {
+	Path    string
+	AbsPath string
+}
+
 // Entry is a single item in the migrations list.
 type Entry struct {
 	ID          string
-	Files       []string
+	Files       []File
 	Mode        Mode
 	Description string
 }
@@ -111,20 +119,21 @@ func normalise(raws []rawEntry, dir string) ([]Entry, error) {
 			return nil, fmt.Errorf("manifest: entry %d: unknown mode %q", n, r.Mode)
 		}
 
-		seenBasenames := make(map[string]string) // basename -> first file path
-		resolved := make([]string, len(r.Files))
+		seenBasenames := make(map[string]string) // basename -> first rel path
+		resolved := make([]File, len(r.Files))
 		for j, f := range r.Files {
-			p := filepath.Join(dir, f)
-			if _, dup := seenPaths[p]; dup {
-				return nil, fmt.Errorf("manifest: entry %d: duplicate path %q", n, p)
+			abs := filepath.Join(dir, f)
+			rel := filepath.ToSlash(f)
+			if _, dup := seenPaths[abs]; dup {
+				return nil, fmt.Errorf("manifest: entry %d: duplicate path %q", n, rel)
 			}
-			seenPaths[p] = struct{}{}
-			base := filepath.Base(p)
+			seenPaths[abs] = struct{}{}
+			base := filepath.Base(abs)
 			if prev, dup := seenBasenames[base]; dup {
-				return nil, fmt.Errorf("manifest: entry %d: files %q and %q produce the same migration_id (duplicate basename %q)", n, prev, p, base)
+				return nil, fmt.Errorf("manifest: entry %d: files %q and %q produce the same migration_id (duplicate basename %q)", n, prev, rel, base)
 			}
-			seenBasenames[base] = p
-			resolved[j] = p
+			seenBasenames[base] = rel
+			resolved[j] = File{Path: rel, AbsPath: abs}
 		}
 
 		entries = append(entries, Entry{
