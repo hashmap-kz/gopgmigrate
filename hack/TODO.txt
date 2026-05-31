@@ -13,6 +13,7 @@
 13) baseline (urgent)
 14) CLI to generate bash from migration file (psql commands against migration dir)
 15) migrate CMD (from flyway, etc...), for testing
+16) hard check migration-dir against history-table (early error handling)
 
 
 
