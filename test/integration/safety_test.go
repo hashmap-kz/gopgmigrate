@@ -123,11 +123,11 @@ func TestSafety_MissingAppliedFileIsError(t *testing.T) {
 
 	err = m2.Run(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "0000002-add-email.up.sql")
+	assert.Contains(t, err.Error(), "0000002")
 
 	_, err = m2.Status(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "0000002-add-email.up.sql")
+	assert.Contains(t, err.Error(), "0000002")
 }
 
 func TestStatus_ShowsChecksumMismatch(t *testing.T) {

@@ -34,7 +34,6 @@ type EntryStatus struct {
 // Recovery: execute RecoverySQL() manually, then re-run.
 type NoTxHistoryError struct {
 	MigrationID int64
-	Path        string
 	Table       string
 	Checksum    string
 	Cause       error
@@ -42,12 +41,12 @@ type NoTxHistoryError struct {
 
 func (e *NoTxHistoryError) Error() string {
 	return fmt.Sprintf(
-		"executor: CRITICAL: no-tx migration %q was applied but history record failed to write.\n"+
+		"executor: CRITICAL: no-tx migration %d was applied but history record failed to write.\n"+
 			"The migration is in the database but will be re-applied on the next run.\n"+
 			"To recover, manually execute:\n\n"+
 			"  %s\n\n"+
 			"Then re-run. Cause: %v",
-		e.Path, e.RecoverySQL(), e.Cause,
+		e.MigrationID, e.RecoverySQL(), e.Cause,
 	)
 }
 
@@ -56,8 +55,8 @@ func (e *NoTxHistoryError) Unwrap() error { return e.Cause }
 // RecoverySQL returns the exact INSERT needed to mark this migration as applied.
 func (e *NoTxHistoryError) RecoverySQL() string {
 	return fmt.Sprintf(
-		"INSERT INTO %s (migration_id, path, kind, checksum) VALUES (%d, '%s', 'no-tx', '%s');",
-		e.Table, e.MigrationID, e.Path, e.Checksum,
+		"INSERT INTO %s (migration_id, kind, checksum) VALUES (%d, 'no-tx', '%s');",
+		e.Table, e.MigrationID, e.Checksum,
 	)
 }
 
@@ -73,7 +72,7 @@ type runStats struct {
 type runner struct {
 	db      *sql.DB
 	hist    *history.Exported
-	applied map[string]history.Row
+	applied map[int64]history.Row
 	table   string
 	dryRun  bool
 	tbl     *progress.Table // nil = no progress output
@@ -173,7 +172,7 @@ func Status(ctx context.Context, db *sql.DB, mf *manifest.Manifest) ([]EntryStat
 			if err != nil {
 				return nil, err
 			}
-			row, exists := applied[f.Path]
+			row, exists := applied[entry.Revision]
 			kind := kindLabel(entry)
 			pending := !exists
 			repeatable := entry.Mode == manifest.ModeRepeatable || entry.Mode == manifest.ModeRepeatableNoTx
@@ -227,7 +226,7 @@ func (r *runner) applyEntry(ctx context.Context, entry manifest.Entry) error {
 
 func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 	for _, f := range entry.Files {
-		row, exists := r.applied[f.Path]
+		row, exists := r.applied[entry.Revision]
 		if exists {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
@@ -275,7 +274,6 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 			}
 			return r.hist.Insert(ctx, tx, &history.Record{
 				MigrationID: entry.Revision,
-				Path:        f.Path,
 				Kind:        "once",
 				Checksum:    checksum,
 			})
@@ -304,7 +302,7 @@ func (r *runner) applyDefault(ctx context.Context, entry manifest.Entry) error {
 
 func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 	for _, f := range entry.Files {
-		row, exists := r.applied[f.Path]
+		row, exists := r.applied[entry.Revision]
 		if exists {
 			if err := checksumGuard(f.AbsPath, row.Checksum); err != nil {
 				return err
@@ -357,13 +355,11 @@ func (r *runner) applyNoTx(ctx context.Context, entry manifest.Entry) error {
 		// On failure, return a NoTxHistoryError with recovery SQL.
 		if err := r.hist.Insert(ctx, r.db, &history.Record{
 			MigrationID: entry.Revision,
-			Path:        f.Path,
 			Kind:        "no-tx",
 			Checksum:    checksum,
 		}); err != nil {
 			noTxErr := &NoTxHistoryError{
 				MigrationID: entry.Revision,
-				Path:        f.Path,
 				Table:       r.table,
 				Checksum:    checksum,
 				Cause:       err,
@@ -397,7 +393,7 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 			return err
 		}
 
-		row, exists := r.applied[f.Path]
+		row, exists := r.applied[entry.Revision]
 		if exists && row.Checksum == checksum {
 			slog.DebugContext(ctx, "skip",
 				slog.String("path", f.Path),
@@ -439,7 +435,6 @@ func (r *runner) applyRepeatable(ctx context.Context, entry manifest.Entry) erro
 			}
 			return r.hist.Upsert(ctx, tx, &history.Record{
 				MigrationID: entry.Revision,
-				Path:        f.Path,
 				Kind:        "repeatable",
 				Checksum:    checksum,
 			})
@@ -473,7 +468,7 @@ func (r *runner) applyRepeatableNoTx(ctx context.Context, entry manifest.Entry) 
 			return err
 		}
 
-		row, exists := r.applied[f.Path]
+		row, exists := r.applied[entry.Revision]
 		if exists && row.Checksum == checksum {
 			slog.DebugContext(ctx, "skip",
 				slog.String("path", f.Path),
@@ -517,7 +512,6 @@ func (r *runner) applyRepeatableNoTx(ctx context.Context, entry manifest.Entry) 
 
 		if err := r.hist.Upsert(ctx, r.db, &history.Record{
 			MigrationID: entry.Revision,
-			Path:        f.Path,
 			Kind:        "repeatable-notx",
 			Checksum:    checksum,
 		}); err != nil {
@@ -580,30 +574,32 @@ func execStatements(ctx context.Context, db execer, path, content string) (int, 
 	return count, nil
 }
 
-// integrityCheck verifies that every path recorded in the history table exists
-// in the current scan. Applied migrations that are no longer present on disk
-// indicate a mismatched --dir or deleted files, both of which are hard errors.
-func integrityCheck(mf *manifest.Manifest, applied map[string]history.Row) error {
-	inScan := make(map[string]struct{}, len(mf.Entries))
+// integrityCheck verifies that every revision recorded in the history table
+// exists in the current scan. Applied revisions absent from the scan indicate
+// a mismatched --dir or deleted files, both of which are hard errors.
+func integrityCheck(mf *manifest.Manifest, applied map[int64]history.Row) error {
+	inScan := make(map[int64]struct{}, len(mf.Entries))
 	for _, e := range mf.Entries {
-		for _, f := range e.Files {
-			inScan[f.Path] = struct{}{}
-		}
+		inScan[e.Revision] = struct{}{}
 	}
-	var missing []string
-	for path := range applied {
-		if _, ok := inScan[path]; !ok {
-			missing = append(missing, path)
+	var missing []int64
+	for rev := range applied {
+		if _, ok := inScan[rev]; !ok {
+			missing = append(missing, rev)
 		}
 	}
 	if len(missing) == 0 {
 		return nil
 	}
-	sort.Strings(missing)
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	parts := make([]string, len(missing))
+	for i, rev := range missing {
+		parts[i] = fmt.Sprintf("%07d", rev)
+	}
 	return fmt.Errorf(
 		"executor: %d applied migration(s) not found in the migrations directory"+
 			" (wrong --dir, or files were deleted after apply):\n  %s",
-		len(missing), strings.Join(missing, "\n  "),
+		len(missing), strings.Join(parts, "\n  "),
 	)
 }
 

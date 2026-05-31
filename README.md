@@ -24,7 +24,7 @@ Drop SQL files in a directory. The filename encodes the execution mode. Done.
 | `.notx.sql`  | Versioned · runs once · outside a transaction                          |
 | `.rnotx.sql` | Repeatable · re-runs when file content changes · outside a transaction |
 
-The 7-digit prefix controls execution order globally across all subdirectories.
+The 7-digit prefix controls execution order **globally across all subdirectories**.
 Every file in the migrations directory must match - any stray file is an error (exit 3).
 
 **Examples:**
@@ -129,25 +129,6 @@ Modifying an applied `.up.sql` or `.notx.sql` file is a hard error - the checksu
 Modifying a `.r.sql` or `.rnotx.sql` file triggers a re-apply on the next run.
 
 Advisory locking prevents concurrent runs against the same database.
-
----
-
-## History table
-
-Created automatically on first run (`schema_migrations` by default):
-
-```sql
-create table schema_migrations (
-    record_id    serial      primary key,
-    migration_id int         not null unique,  -- revision number
-    path         text        not null,         -- dir-relative path, e.g. 0000001-schemas.up.sql
-    kind         text        not null,         -- once | no-tx | repeatable | repeatable-notx
-    checksum     text        not null,         -- sha256 of file contents at apply time
-    applied_by   name        not null default session_user,
-    applied_at   timestamptz not null default transaction_timestamp(),
-    txid         text        not null default pg_current_xact_id()::text
-);
-```
 
 ---
 

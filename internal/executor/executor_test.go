@@ -10,41 +10,21 @@ import (
 )
 
 func TestNoTxHistoryError_RecoverySQL(t *testing.T) {
-	tests := []struct {
-		name        string
-		err         *executor.NoTxHistoryError
-		wantContain []string
-	}{
-		{
-			name: "basic",
-			err: &executor.NoTxHistoryError{
-				MigrationID: 1,
-				Path:        "0000001-create-users.notx.sql",
-				Table:       "schema_migrations",
-				Checksum:    "abc123",
-			},
-			wantContain: []string{
-				"INSERT INTO schema_migrations",
-				"0000001-create-users.notx.sql",
-				"no-tx",
-				"abc123",
-			},
-		},
+	e := &executor.NoTxHistoryError{
+		MigrationID: 1,
+		Table:       "schema_migrations",
+		Checksum:    "abc123",
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			sql := tc.err.RecoverySQL()
-			for _, want := range tc.wantContain {
-				assert.Contains(t, sql, want)
-			}
-		})
-	}
+	sql := e.RecoverySQL()
+	assert.Contains(t, sql, "INSERT INTO schema_migrations")
+	assert.Contains(t, sql, "no-tx")
+	assert.Contains(t, sql, "abc123")
+	assert.NotContains(t, sql, "path")
 }
 
 func TestNoTxHistoryError_RecoverySQL_ContainsMigrationID(t *testing.T) {
 	e := &executor.NoTxHistoryError{
-		MigrationID: 42, Path: "0000042-vacuum.notx.sql", Table: "t", Checksum: "x",
+		MigrationID: 42, Table: "t", Checksum: "x",
 	}
 	assert.Contains(t, e.RecoverySQL(), "42")
 }
@@ -53,13 +33,12 @@ func TestNoTxHistoryError_Error_ContainsKeyInfo(t *testing.T) {
 	cause := errors.New("connection reset by peer")
 	e := &executor.NoTxHistoryError{
 		MigrationID: 1,
-		Path:        "0000001-vacuum.notx.sql",
 		Table:       "schema_migrations",
 		Checksum:    "abc",
 		Cause:       cause,
 	}
 	msg := e.Error()
-	assert.Contains(t, msg, "0000001-vacuum.notx.sql")
+	assert.Contains(t, msg, "1")
 	assert.Contains(t, msg, "connection reset by peer")
 }
 

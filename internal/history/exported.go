@@ -8,7 +8,6 @@ import (
 // Record holds the fields written to the history table for a single applied migration.
 type Record struct {
 	MigrationID int64
-	Path        string
 	Kind        string
 	Checksum    string
 }
@@ -27,7 +26,7 @@ func (e *Exported) Init(ctx context.Context, db *sql.DB) error {
 	return e.r.createTable(ctx, db)
 }
 
-func (e *Exported) All(ctx context.Context, db *sql.DB) (map[string]Row, error) {
+func (e *Exported) All(ctx context.Context, db *sql.DB) (map[int64]Row, error) {
 	return e.r.loadAll(ctx, db)
 }
 
