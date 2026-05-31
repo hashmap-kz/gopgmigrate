@@ -11,8 +11,8 @@ select
     u.avatar_url,
     u.bio,
     u.is_active,
-    c.name          as country,
-    l.name          as language,
+    c.name                as country,
+    l.name                as language,
     count(distinct s.id)  as active_sessions,
     count(distinct p.key) as preference_count,
     u.created_at
