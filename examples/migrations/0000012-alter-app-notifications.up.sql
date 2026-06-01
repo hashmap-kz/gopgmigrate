@@ -1,0 +1,1 @@
+alter table app.notifications add column is_current bool;
