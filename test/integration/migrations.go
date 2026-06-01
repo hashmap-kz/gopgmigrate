@@ -19,7 +19,7 @@ func NewMigrationDir(t *testing.T) *MigrationDir {
 }
 
 // Add writes a SQL file at the given relative path.
-// Calling Add with the same filename twice overwrites the first write -
+// Calling Add with the same filename twice overwrites the first write —
 // this is intentional for repeatable migration tests that need to change file content.
 func (m *MigrationDir) Add(t *testing.T, filename, content string) {
 	t.Helper()

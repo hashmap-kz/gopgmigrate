@@ -16,7 +16,7 @@ import (
 type DBSnapshot struct {
 	Tables    map[string]TableSnapshot
 	Functions map[string]FunctionSnapshot
-	Views     map[string]string // name -> definition
+	Views     map[string]string // name → definition
 }
 
 type TableSnapshot struct {
