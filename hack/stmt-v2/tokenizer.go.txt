@@ -1,0 +1,678 @@
+package stmt
+
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// Token types
+type TokenType int
+
+const (
+	TokenRaw TokenType = iota // Anything except comments & strings
+	TokenSingleLineComment
+	TokenBlockComment
+	TokenString
+	TokenDollarQuoted
+	TokenSemicolon
+	TokenEOF
+)
+
+// Token structure
+type Token struct {
+	Type  TokenType
+	Value string
+}
+
+// Tokenizer structure
+type Tokenizer struct {
+	sql      string
+	position int
+}
+
+// Read the next Unicode rune
+//
+//nolint:gocritic,unparam
+func (t *Tokenizer) nextRune() (rune, int, bool) {
+	if t.position >= len(t.sql) {
+		return 0, 0, false
+	}
+
+	r, size := utf8.DecodeRuneInString(t.sql[t.position:])
+	t.position += size
+
+	return r, size, true
+}
+
+// Peek the next Unicode rune without consuming
+//
+//nolint:gocritic,unparam
+func (t *Tokenizer) peekRune() (rune, int, bool) {
+	if t.position >= len(t.sql) {
+		return 0, 0, false
+	}
+
+	r, size := utf8.DecodeRuneInString(t.sql[t.position:])
+
+	return r, size, true
+}
+
+// Peek the next two Unicode runes without consuming
+//
+//nolint:gocritic
+func (t *Tokenizer) peekTwoRunes() (rune, rune, bool) {
+	if t.position >= len(t.sql) {
+		return 0, 0, false
+	}
+
+	savedPos := t.position
+
+	r1, _, ok1 := t.nextRune()
+	if !ok1 {
+		t.position = savedPos
+		return 0, 0, false
+	}
+
+	r2, _, ok2 := t.nextRune()
+
+	t.position = savedPos
+
+	return r1, r2, ok2
+}
+
+func IsIdentStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r)
+}
+
+func IsIdentTail(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// Read a single-line comment.
+func (t *Tokenizer) readSingleLineComment() string {
+	var sb strings.Builder
+	sb.WriteString("--")
+
+	for {
+		r, _, ok := t.nextRune()
+		if !ok {
+			break
+		}
+
+		sb.WriteRune(r)
+
+		if r == '\n' {
+			break
+		}
+
+		if r == '\r' {
+			if next, _, ok := t.peekRune(); ok && next == '\n' {
+				t.nextRune()
+				sb.WriteRune(next)
+			}
+			break
+		}
+	}
+
+	return sb.String()
+}
+
+// Read a block comment, handling nested comments.
+func (t *Tokenizer) readBlockComment() string {
+	var sb strings.Builder
+	sb.WriteString("/*")
+
+	nested := 1
+
+	for nested > 0 {
+		r, _, ok := t.nextRune()
+		if !ok {
+			break
+		}
+
+		sb.WriteRune(r)
+
+		if r == '/' {
+			if next, _, ok := t.peekRune(); ok && next == '*' {
+				t.nextRune()
+				sb.WriteRune(next)
+				nested++
+			}
+			continue
+		}
+
+		if r == '*' {
+			if next, _, ok := t.peekRune(); ok && next == '/' {
+				t.nextRune()
+				sb.WriteRune(next)
+				nested--
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// Read a PostgreSQL single-quoted string.
+//
+// Plain PostgreSQL strings escape single quotes as ”.
+// E'...' strings additionally use backslash escaping.
+func (t *Tokenizer) readString1() string {
+	return t.readString1WithBackslashEscapes(false)
+}
+
+func (t *Tokenizer) readEscapeString() string {
+	return t.readString1WithBackslashEscapes(true)
+}
+
+func (t *Tokenizer) readString1WithBackslashEscapes(backslashEscapes bool) string {
+	var sb strings.Builder
+	sb.WriteRune('\'')
+
+	for {
+		r, _, ok := t.nextRune()
+		if !ok {
+			break
+		}
+
+		sb.WriteRune(r)
+
+		if backslashEscapes && r == '\\' {
+			if next, _, ok := t.nextRune(); ok {
+				sb.WriteRune(next)
+			}
+			continue
+		}
+
+		if r != '\'' {
+			continue
+		}
+
+		if next, _, ok := t.peekRune(); ok && next == '\'' {
+			t.nextRune()
+			sb.WriteRune(next)
+			continue
+		}
+
+		break
+	}
+
+	return sb.String()
+}
+
+// Read a PostgreSQL double-quoted identifier.
+func (t *Tokenizer) readString2(stop rune) string {
+	var sb strings.Builder
+	sb.WriteRune(stop)
+
+	for {
+		r, _, ok := t.nextRune()
+		if !ok {
+			break
+		}
+
+		sb.WriteRune(r)
+
+		if r != stop {
+			continue
+		}
+
+		// PostgreSQL quoted identifiers escape " as "".
+		if next, _, ok := t.peekRune(); ok && next == stop {
+			t.nextRune()
+			sb.WriteRune(next)
+			continue
+		}
+
+		break
+	}
+
+	return sb.String()
+}
+
+// Read a dollar-quoted string ($tag$...$tag$ or $$...$$).
+func (t *Tokenizer) readDollarQuoted() (string, bool) {
+	tag, ok := t.readDollarTag()
+	if !ok {
+		return tag, false
+	}
+
+	var sb strings.Builder
+	sb.WriteString(tag)
+
+	rest := t.sql[t.position:]
+	idx := strings.Index(rest, tag)
+
+	if tag == "$$" {
+		if lineStartIdx := indexDollarTagAtLineStart(rest, tag); lineStartIdx >= 0 {
+			idx = lineStartIdx
+		}
+	}
+
+	if idx < 0 {
+		sb.WriteString(rest)
+		t.position = len(t.sql)
+		return sb.String(), true
+	}
+
+	end := t.position + idx + len(tag)
+	sb.WriteString(t.sql[t.position:end])
+	t.position = end
+
+	return sb.String(), true
+}
+
+func indexDollarTagAtLineStart(s string, tag string) int {
+	searchFrom := 0
+
+	for {
+		idx := strings.Index(s[searchFrom:], tag)
+		if idx < 0 {
+			return -1
+		}
+
+		idx += searchFrom
+		if idx == 0 || s[idx-1] == '\n' || s[idx-1] == '\r' {
+			return idx
+		}
+
+		searchFrom = idx + len(tag)
+	}
+}
+
+// Read a dollar tag (e.g. $tag$ or $$).
+func (t *Tokenizer) readDollarTag() (string, bool) {
+	var sb strings.Builder
+	sb.WriteRune('$')
+
+	r, _, ok := t.peekRune()
+	if !ok {
+		return sb.String(), false
+	}
+
+	// just $$
+	if r == '$' {
+		t.nextRune()
+		sb.WriteRune(r)
+		return sb.String(), true
+	}
+
+	// Not a dollar quote:
+	// $1
+	// ${table}
+	// $-something
+	if !IsIdentStart(r) {
+		return sb.String(), false
+	}
+
+	// finally, seems like a dollar-tag
+	for {
+		r, _, ok := t.peekRune()
+		if !ok {
+			return sb.String(), false
+		}
+
+		// End of tag
+		if r == '$' {
+			t.nextRune()
+			sb.WriteRune(r)
+			return sb.String(), true
+		}
+
+		// If it's not a letter, number, or underscore, stop
+		if !IsIdentTail(r) {
+			return sb.String(), false
+		}
+
+		t.nextRune()
+		sb.WriteRune(r)
+	}
+}
+
+// Read raw text.
+func (t *Tokenizer) readRaw() string {
+	var sb strings.Builder
+
+	for {
+		r, _, ok := t.peekRune()
+		if !ok {
+			break
+		}
+
+		if isEscapeStringStart(t.sql, t.position) {
+			break
+		}
+
+		isSpecial := r == '-' ||
+			r == '/' ||
+			r == '\'' ||
+			r == '$' ||
+			r == ';' ||
+			r == '"'
+
+		if isSpecial {
+			break
+		}
+
+		t.nextRune()
+		sb.WriteRune(r)
+	}
+
+	return sb.String()
+}
+
+// Tokenize input SQL.
+func (t *Tokenizer) NextToken() Token {
+	if t.position >= len(t.sql) {
+		return Token{Type: TokenEOF}
+	}
+
+	r1, r2, hasSecond := t.peekTwoRunes()
+
+	if r1 == '-' {
+		t.nextRune()
+
+		if hasSecond && r2 == '-' {
+			t.nextRune()
+			return Token{Type: TokenSingleLineComment, Value: t.readSingleLineComment()}
+		}
+
+		return Token{Type: TokenRaw, Value: string(r1)}
+	}
+
+	if r1 == '/' {
+		t.nextRune()
+
+		if hasSecond && r2 == '*' {
+			t.nextRune()
+			return Token{Type: TokenBlockComment, Value: t.readBlockComment()}
+		}
+
+		return Token{Type: TokenRaw, Value: string(r1)}
+	}
+
+	if isEscapeStringStart(t.sql, t.position) {
+		r, _, _ := t.nextRune() // E/e
+		t.nextRune()            // opening quote
+
+		return Token{Type: TokenString, Value: string(r) + t.readEscapeString()}
+	}
+
+	if r1 == '\'' {
+		t.nextRune()
+		return Token{Type: TokenString, Value: t.readString1()}
+	}
+
+	if r1 == '"' {
+		t.nextRune()
+		return Token{Type: TokenString, Value: t.readString2(r1)}
+	}
+
+	if r1 == '$' {
+		savedPosition := t.position
+		t.nextRune()
+
+		dollarQuoted, ok := t.readDollarQuoted()
+		if ok {
+			return Token{Type: TokenDollarQuoted, Value: dollarQuoted}
+		}
+
+		t.position = savedPosition + 1
+		return Token{Type: TokenRaw, Value: "$"}
+	}
+
+	if r1 == ';' {
+		t.nextRune()
+		return Token{Type: TokenSemicolon, Value: ";"}
+	}
+
+	return Token{Type: TokenRaw, Value: t.readRaw()}
+}
+
+func isEscapeStringStart(sql string, position int) bool {
+	if position >= len(sql) {
+		return false
+	}
+
+	r, size := utf8.DecodeRuneInString(sql[position:])
+	if r != 'E' && r != 'e' {
+		return false
+	}
+
+	quotePos := position + size
+	if quotePos >= len(sql) || sql[quotePos] != '\'' {
+		return false
+	}
+
+	if position == 0 {
+		return true
+	}
+
+	prev, _ := utf8.DecodeLastRuneInString(sql[:position])
+
+	return !IsIdentTail(prev)
+}
+
+// parser
+
+type Parser struct {
+	tokens   []Token
+	position int
+}
+
+// Get the current token.
+func (p *Parser) currentToken() Token {
+	if p.position >= len(p.tokens) {
+		return Token{Type: TokenEOF}
+	}
+
+	return p.tokens[p.position]
+}
+
+// Consume the current token and move to the next.
+func (p *Parser) consume() {
+	p.position++
+}
+
+// Parse SQL statement.
+func (p *Parser) parseStatement() string {
+	var sb strings.Builder
+
+	for {
+		token := p.currentToken()
+
+		if token.Type == TokenEOF || token.Type == TokenSemicolon {
+			break
+		}
+
+		sb.WriteString(token.Value)
+		p.consume()
+	}
+
+	if p.currentToken().Type == TokenSemicolon {
+		sb.WriteString(";")
+		p.consume()
+
+		if isCopyFromStdinStatement(sb.String()) {
+			sb.WriteString(p.consumeCopyFromStdinData())
+		}
+	}
+
+	return sb.String()
+}
+
+func (p *Parser) consumeCopyFromStdinData() string {
+	var sb strings.Builder
+
+	for p.currentToken().Type != TokenEOF {
+		token := p.currentToken()
+		value := token.Value
+
+		if idx, ok := copyDoneLineEnd(value); ok {
+			sb.WriteString(value[:idx])
+			p.tokens[p.position].Value = value[idx:]
+
+			if p.tokens[p.position].Value == "" {
+				p.consume()
+			}
+
+			break
+		}
+
+		sb.WriteString(value)
+		p.consume()
+	}
+
+	return sb.String()
+}
+
+func copyDoneLineEnd(s string) (int, bool) {
+	lineStart := 0
+
+	for lineStart <= len(s) {
+		lineEnd := strings.IndexByte(s[lineStart:], '\n')
+		if lineEnd < 0 {
+			line := strings.TrimSuffix(s[lineStart:], "\r")
+			if line == `\.` {
+				return len(s), true
+			}
+
+			return 0, false
+		}
+
+		lineEnd += lineStart
+		line := strings.TrimSuffix(s[lineStart:lineEnd], "\r")
+		if line == `\.` {
+			return lineEnd, true
+		}
+
+		lineStart = lineEnd + 1
+	}
+
+	return 0, false
+}
+
+func isCopyFromStdinStatement(statement string) bool {
+	if strings.ToLower(firstKeyword(statement)) != "copy" {
+		return false
+	}
+
+	normalized := strings.ToLower(statement)
+	normalized = strings.Join(strings.Fields(normalized), " ")
+
+	return strings.Contains(normalized, " from stdin;") ||
+		strings.HasSuffix(normalized, " from stdin;")
+}
+
+func firstKeyword(statement string) string {
+	pos := 0
+
+	for pos < len(statement) {
+		for pos < len(statement) {
+			r, size := utf8.DecodeRuneInString(statement[pos:])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			pos += size
+		}
+
+		if strings.HasPrefix(statement[pos:], "--") {
+			idx := strings.IndexByte(statement[pos:], '\n')
+			if idx < 0 {
+				return ""
+			}
+
+			pos += idx + 1
+			continue
+		}
+
+		if strings.HasPrefix(statement[pos:], "/*") {
+			idx := strings.Index(statement[pos+2:], "*/")
+			if idx < 0 {
+				return ""
+			}
+
+			pos += idx + 4
+			continue
+		}
+
+		break
+	}
+
+	start := pos
+	for pos < len(statement) {
+		r, size := utf8.DecodeRuneInString(statement[pos:])
+		if !IsIdentTail(r) {
+			break
+		}
+
+		pos += size
+	}
+
+	return statement[start:pos]
+}
+
+// Parse the entire SQL input.
+func (p *Parser) parseSQL() []string {
+	if len(p.tokens) == 0 {
+		return []string{""}
+	}
+
+	var statements []string
+
+	for p.currentToken().Type != TokenEOF {
+		statement := p.parseStatement()
+
+		// The splitter must preserve byte identity, but a trailing whitespace-only
+		// fragment after the last semicolon should not become a separate statement.
+		//
+		// Example:
+		//
+		//	SELECT 1;
+		//	<spaces/newline>
+		//
+		// Should be:
+		//
+		//	[]string{"SELECT 1;\n"}
+		//
+		// not:
+		//
+		//	[]string{"SELECT 1;", "\n"}
+		if strings.TrimSpace(statement) == "" && p.currentToken().Type == TokenEOF {
+			if len(statements) == 0 {
+				return []string{""}
+			}
+
+			statements[len(statements)-1] += statement
+			break
+		}
+
+		statements = append(statements, statement)
+	}
+
+	if len(statements) == 0 {
+		return []string{""}
+	}
+
+	return statements
+}
+
+func SplitSQLStatements(sql string) ([]string, error) {
+	tokenizer := &Tokenizer{sql: sql}
+
+	var tokens []Token
+
+	for {
+		token := tokenizer.NextToken()
+		if token.Type == TokenEOF {
+			break
+		}
+
+		tokens = append(tokens, token)
+	}
+
+	parser := &Parser{tokens: tokens}
+
+	return parser.parseSQL(), nil
+}
