@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/conn"
 	"github.com/hashmap-kz/gopgmigrate/v2/internal/manifest"
+	"github.com/hexops/gotextdiff"
+	"github.com/hexops/gotextdiff/myers"
+	"github.com/hexops/gotextdiff/span"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -73,11 +75,11 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = StopContainer(c.ID) }()
+	defer func() { _ = c.Stop() }()
 	fmt.Fprintf(os.Stderr, "container ready: %s\n\n", c.ID[:12])
 
 	const dbName = "diffdb"
-	if err := containerExecSQL(ctx, c.ID, "postgres", "CREATE DATABASE "+dbName+";"); err != nil {
+	if err := containerExecSQL(ctx, c, "postgres", "CREATE DATABASE "+dbName+";"); err != nil {
 		return fmt.Errorf("diff: create database: %w", err)
 	}
 
@@ -100,32 +102,32 @@ func Run(ctx context.Context, opts Options) error {
 	planGlob := filepath.Join(outDir, "dbstate-planned-globals.sql")
 
 	fmt.Fprintf(os.Stderr, "applying %d applied migration(s) to container...\n", len(applied))
-	if err := applyEntries(ctx, c.ID, dbName, applied); err != nil {
+	if err := applyEntries(ctx, c, dbName, applied); err != nil {
 		return err
 	}
-	if err := schemaDump(ctx, c.ID, dbName, curSQL); err != nil {
+	if err := schemaDump(ctx, c, dbName, curSQL); err != nil {
 		return err
 	}
-	if err := globalsDump(ctx, c.ID, curGlob); err != nil {
+	if err := globalsDump(ctx, c, curGlob); err != nil {
 		return err
 	}
 
 	fmt.Fprintf(os.Stderr, "applying %d pending migration(s) to container...\n", len(pending))
-	if err := applyEntries(ctx, c.ID, dbName, pending); err != nil {
+	if err := applyEntries(ctx, c, dbName, pending); err != nil {
 		return err
 	}
-	if err := schemaDump(ctx, c.ID, dbName, planSQL); err != nil {
+	if err := schemaDump(ctx, c, dbName, planSQL); err != nil {
 		return err
 	}
-	if err := globalsDump(ctx, c.ID, planGlob); err != nil {
+	if err := globalsDump(ctx, c, planGlob); err != nil {
 		return err
 	}
 
-	schemaDiff, err := gitDiff(curSQL, planSQL)
+	schemaDiff, err := fileDiff(curSQL, planSQL)
 	if err != nil {
 		return err
 	}
-	globalsDiff, err := gitDiff(curGlob, planGlob)
+	globalsDiff, err := fileDiff(curGlob, planGlob)
 	if err != nil {
 		return err
 	}
@@ -185,10 +187,10 @@ func hasPGEnv() bool {
 	return false
 }
 
-func applyEntries(ctx context.Context, containerID, dbName string, entries []manifest.Entry) error {
+func applyEntries(ctx context.Context, c *Container, dbName string, entries []manifest.Entry) error {
 	for _, e := range entries {
 		for _, f := range e.Files {
-			if err := applyFile(ctx, containerID, dbName, f); err != nil {
+			if err := applyFile(ctx, c, dbName, f); err != nil {
 				return fmt.Errorf("apply %s: %w", f.Path, err)
 			}
 		}
@@ -197,27 +199,26 @@ func applyEntries(ctx context.Context, containerID, dbName string, entries []man
 }
 
 // applyFile copies the SQL file into the container and runs it with psql -f.
-// Using docker cp + psql -f avoids stdin-pipe reliability issues on Windows.
-func applyFile(ctx context.Context, containerID, dbName string, f manifest.File) error {
+func applyFile(ctx context.Context, c *Container, dbName string, f manifest.File) error {
 	const dst = "/tmp/_gopgmigrate_mig.sql"
-	if err := CopyToContainer(ctx, containerID, f.AbsPath, dst); err != nil {
+	if err := c.copyFile(ctx, f.AbsPath, dst); err != nil {
 		return fmt.Errorf("copy to container: %w", err)
 	}
-	_, err := ExecOutput(ctx, containerID,
+	_, err := c.execOutput(ctx,
 		"psql", "-U", "postgres", "-d", dbName, "-v", "ON_ERROR_STOP=1", "-f", dst,
 	)
 	return err
 }
 
-func containerExecSQL(ctx context.Context, containerID, dbName, query string) error {
-	_, err := ExecOutput(ctx, containerID,
+func containerExecSQL(ctx context.Context, c *Container, dbName, query string) error {
+	_, err := c.execOutput(ctx,
 		"psql", "-U", "postgres", "-d", dbName, "-v", "ON_ERROR_STOP=1", "-c", query,
 	)
 	return err
 }
 
-func schemaDump(ctx context.Context, containerID, dbName, outPath string) error {
-	out, err := ExecOutput(ctx, containerID,
+func schemaDump(ctx context.Context, c *Container, dbName, outPath string) error {
+	out, err := c.execOutput(ctx,
 		"pg_dump", "-U", "postgres", "-s", "--no-comments", "--restrict-key", "0", "-d", dbName,
 	)
 	if err != nil {
@@ -226,8 +227,8 @@ func schemaDump(ctx context.Context, containerID, dbName, outPath string) error 
 	return os.WriteFile(outPath, out, 0o644)
 }
 
-func globalsDump(ctx context.Context, containerID, outPath string) error {
-	out, err := ExecOutput(ctx, containerID,
+func globalsDump(ctx context.Context, c *Container, outPath string) error {
+	out, err := c.execOutput(ctx,
 		"pg_dumpall", "-U", "postgres", "--globals-only", "--restrict-key", "0",
 	)
 	if err != nil {
@@ -236,15 +237,20 @@ func globalsDump(ctx context.Context, containerID, outPath string) error {
 	return os.WriteFile(outPath, out, 0o644)
 }
 
-func gitDiff(fileA, fileB string) (string, error) {
-	cmd := exec.Command("git", "diff", "--no-index", fileA, fileB)
-	out, err := cmd.Output()
+// fileDiff computes a unified diff between two files using the Myers algorithm.
+// No external tools required.
+func fileDiff(pathA, pathB string) (string, error) {
+	a, err := os.ReadFile(pathA)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			// exit 1 means files differ - expected, not an error
-			return string(out), nil
-		}
-		return "", fmt.Errorf("git diff: %w\n%s", err, out)
+		return "", err
 	}
-	return string(out), nil
+	b, err := os.ReadFile(pathB)
+	if err != nil {
+		return "", err
+	}
+	edits := myers.ComputeEdits(span.URIFromPath(pathA), string(a), string(b))
+	return fmt.Sprint(gotextdiff.ToUnified(
+		filepath.Base(pathA), filepath.Base(pathB),
+		string(a), edits,
+	)), nil
 }
