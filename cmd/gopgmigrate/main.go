@@ -35,6 +35,7 @@ func main() {
 			gopgmigratecli.CmdPlan(),
 			gopgmigratecli.CmdStatus(),
 			gopgmigratecli.CmdValidate(),
+			gopgmigratecli.CmdDiff(),
 		},
 	}
 

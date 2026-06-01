@@ -35,7 +35,7 @@ type Migrator struct {
 
 // NewWithDSN creates a Migrator that opens and owns its own DB connection.
 // dsn may be empty when standard PG* environment variables are configured
-// (PGHOST, PGDATABASE, PGUSER, etc.) — pgx reads them automatically.
+// (PGHOST, PGDATABASE, PGUSER, etc.) - pgx reads them automatically.
 // Returns an error early if neither dsn nor any PG* env var is set.
 func NewWithDSN(dsn string, cfg Config) (*Migrator, error) {
 	if dsn == "" && !hasPGEnv() {

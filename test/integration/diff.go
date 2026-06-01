@@ -179,7 +179,7 @@ func (d *SnapshotDiff) String() string {
 			fmt.Fprintf(&sb, "  ~ column:   %s.%s\n", table, c)
 		}
 		if td.RowsAdded() != 0 {
-			fmt.Fprintf(&sb, "  ~ rows:     %s %+d (%d → %d)\n",
+			fmt.Fprintf(&sb, "  ~ rows:     %s %+d (%d ->> %d)\n",
 				table, td.RowsAdded(), td.RowCountBefore, td.RowCountAfter)
 		}
 	}
