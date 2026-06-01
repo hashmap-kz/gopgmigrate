@@ -8,16 +8,16 @@ import (
 )
 
 type HistoryRow struct {
-	Version int64
-	Name    string
-	Hash    string
+	MigrationID int64
+	Kind        string
+	Checksum    string
 }
 
 func QueryHistory(t *testing.T, db *sql.DB, table string) []HistoryRow {
 	t.Helper()
 	rows, err := db.QueryContext(
 		t.Context(),
-		"select mh_version, mh_name, mh_hash from "+table+" order by mh_version",
+		"select migration_id, kind, checksum from "+table+" order by record_id",
 	)
 	if err != nil {
 		t.Fatalf("query history: %v", err)
@@ -27,7 +27,7 @@ func QueryHistory(t *testing.T, db *sql.DB, table string) []HistoryRow {
 	var result []HistoryRow
 	for rows.Next() {
 		var r HistoryRow
-		if err := rows.Scan(&r.Version, &r.Name, &r.Hash); err != nil {
+		if err := rows.Scan(&r.MigrationID, &r.Kind, &r.Checksum); err != nil {
 			t.Fatalf("scan history row: %v", err)
 		}
 		result = append(result, r)
@@ -51,7 +51,7 @@ func TableExists(t *testing.T, db *sql.DB, schema, table string) bool {
 func RowCount(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
 	var count int
-	if err := db.QueryRowContext(t.Context(), "select count(*) from "+table).Scan(&count); err != nil {
+	if err := db.QueryRowContext(t.Context(), "select count(*) from "+table).Scan(&count); err != nil { //nolint:gosec
 		t.Fatalf("row count: %v", err)
 	}
 	return count

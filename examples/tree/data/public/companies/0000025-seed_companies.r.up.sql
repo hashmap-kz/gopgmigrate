@@ -1,1 +1,0 @@
-insert into public.companies (xname) values ('test-0000025');

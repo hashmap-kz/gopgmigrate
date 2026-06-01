@@ -8,10 +8,13 @@ on:
       - "release/**"
     paths-ignore: &paths-ignore
       - ".github/**"
+      - ".run/**"
+      - ".vscode/**"
       - "docs/**"
       - "examples/**"
       - "charts/**"
       - "hack/**"
+      - "ui/static/**"
       - "**/*.md"
       - "**/*.gitignore"
       - "**/*.gitattributes"
@@ -39,5 +42,5 @@ jobs:
         if: runner.os == 'Linux'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.11.4
           skip-cache: true

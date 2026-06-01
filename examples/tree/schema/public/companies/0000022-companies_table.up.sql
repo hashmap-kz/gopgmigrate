@@ -1,1 +1,0 @@
-create table if not exists public.companies (id serial primary key, xname text not null);

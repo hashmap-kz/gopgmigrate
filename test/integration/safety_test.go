@@ -8,35 +8,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashmap-kz/gopgmigrate/v2/pkg/migrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopgmigrate/internal/migration"
 )
 
-// integration/safety_test.go
-func TestSafety_HashMismatchRejected(t *testing.T) {
+func TestSafety_ChecksumMismatchRejected(t *testing.T) {
 	t.Parallel()
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "0000001-create-users.up.sql",
-		"create table users (id int primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	opts := &migration.ApplyOpts{
-		MigrationDir:     dir.Root,
-		ConnStr:          pg.ConnStr,
-		HistoryTableName: "public.migrate_history",
-	}
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
 
-	require.NoError(t, migration.RunMigrationsUp(context.Background(), opts))
+	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
 
-	// modify an already-applied versioned migration
-	dir.Add(t, "0000001-create-users.up.sql",
-		"create table users (id bigint primary key);")
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id bigint primary key);")
 
-	err := migration.RunMigrationsUp(context.Background(), opts)
+	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m2.Close()
+	err = m2.Run(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "hash mismatch")
+	assert.Contains(t, err.Error(), "checksum mismatch")
 }
 
 func TestSafety_AdvisoryLockBlocksConcurrent(t *testing.T) {
@@ -44,49 +42,145 @@ func TestSafety_AdvisoryLockBlocksConcurrent(t *testing.T) {
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	// a slow migration — gives us time to attempt a second run
 	dir.Add(t, "0000001-slow.up.sql", "select pg_sleep(2);")
 
-	opts := &migration.ApplyOpts{
-		MigrationDir:     dir.Root,
-		ConnStr:          pg.ConnStr,
-		HistoryTableName: "public.migrate_history",
+	errCh := make(chan error, 2)
+	run := func() {
+		m, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{
+			Dir:   dir.Root,
+			Table: histTable,
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer m.Close()
+		errCh <- m.Run(context.Background())
 	}
 
-	errCh := make(chan error, 2)
-
-	go func() { errCh <- migration.RunMigrationsUp(context.Background(), opts) }()
-	time.Sleep(200 * time.Millisecond) // let first acquire the lock
-	go func() { errCh <- migration.RunMigrationsUp(context.Background(), opts) }()
+	go run()
+	time.Sleep(200 * time.Millisecond)
+	go run()
 
 	err1 := <-errCh
 	err2 := <-errCh
 
-	// one must succeed, one must fail with lock error
-	errs := []error{err1, err2}
-	lockErr := 0
-	for _, e := range errs {
+	var lockErrs int
+	for _, e := range []error{err1, err2} {
 		if e != nil && strings.Contains(e.Error(), "lock") {
-			lockErr++
+			lockErrs++
 		}
 	}
-	assert.Equal(t, 1, lockErr)
+	assert.Equal(t, 1, lockErrs, "exactly one run should fail with a lock error")
 }
 
-func TestSafety_StrayFileRejected(t *testing.T) {
+func TestStatus_ShowsAppliedAndPending(t *testing.T) {
 	t.Parallel()
 	pg := NewPgDatabase(t)
 	dir := NewMigrationDir(t)
 
-	dir.Add(t, "0000001-create-users.up.sql",
-		"create table users (id int primary key);")
-	dir.Add(t, "not-a-migration.sql", "select 1;") // stray
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
 
-	err := migration.RunMigrationsUp(context.Background(), &migration.ApplyOpts{
-		MigrationDir:     dir.Root,
-		ConnStr:          pg.ConnStr,
-		HistoryTableName: "public.migrate_history",
-	})
+	m1, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{Dir: dir.Root, Table: histTable})
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
+
+	dir.Add(t, "0000002-add-email.up.sql", "alter table users add column email text;")
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, migrator.Config{Dir: dir.Root, Table: histTable})
+	require.NoError(t, err)
+	defer m2.Close()
+
+	statuses, err := m2.Status(context.Background())
+	require.NoError(t, err)
+	require.Len(t, statuses, 2)
+	assert.True(t, statuses[0].Applied, "first migration should be applied")
+	assert.False(t, statuses[1].Applied, "second migration should be pending")
+}
+
+func TestSafety_ModeChangeIsError(t *testing.T) {
+	t.Parallel()
+	pg := NewPgDatabase(t)
+	dir := NewMigrationDir(t)
+
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
+
+	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
+
+	// rename the applied versioned migration to repeatable
+	require.NoError(t, removeFile(dir.Root, "0000001-create-users.up.sql"))
+	dir.Add(t, "0000001-create-users.r.sql", "create or replace view v as select 1;")
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m2.Close()
+
+	err = m2.Run(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "stray")
+	assert.Contains(t, err.Error(), "0000001")
+	assert.Contains(t, err.Error(), "once")
+	assert.Contains(t, err.Error(), "repeatable")
+}
+
+func TestSafety_MissingAppliedFileIsError(t *testing.T) {
+	t.Parallel()
+	pg := NewPgDatabase(t)
+	dir := NewMigrationDir(t)
+
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+	dir.Add(t, "0000002-add-email.up.sql", "alter table users add column email text;")
+
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
+
+	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
+
+	// remove a file that has already been applied
+	require.NoError(t, removeFile(dir.Root, "0000002-add-email.up.sql"))
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m2.Close()
+
+	err = m2.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0000002")
+
+	_, err = m2.Status(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0000002")
+}
+
+func TestStatus_ShowsChecksumMismatch(t *testing.T) {
+	t.Parallel()
+	pg := NewPgDatabase(t)
+	dir := NewMigrationDir(t)
+
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id int primary key);")
+
+	cfg := migrator.Config{Dir: dir.Root, Table: histTable}
+
+	m1, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m1.Close()
+	require.NoError(t, m1.Run(context.Background()))
+
+	dir.Add(t, "0000001-create-users.up.sql", "create table users (id bigint primary key);")
+
+	m2, err := migrator.NewWithDSN(pg.ConnStr, cfg)
+	require.NoError(t, err)
+	defer m2.Close()
+
+	statuses, err := m2.Status(context.Background())
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.Contains(t, statuses[0].Kind, "CHECKSUM MISMATCH")
 }

@@ -1,0 +1,410 @@
+package stmt
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+var copyFromStdinPattern = regexp.MustCompile(`(?is)\bfrom\s+stdin\b`)
+
+func SplitSQLStatements(sql string) ([]string, error) {
+	var (
+		statements []string
+		stmt       strings.Builder
+		pos        int
+	)
+
+	for pos < len(sql) {
+		switch sql[pos] {
+		case '-':
+			if hasPrefixAt(sql, pos, "--") {
+				next := readSingleLineComment(sql, pos)
+				stmt.WriteString(sql[pos:next])
+				pos = next
+				continue
+			}
+
+			stmt.WriteByte(sql[pos])
+			pos++
+
+		case '/':
+			if hasPrefixAt(sql, pos, "/*") {
+				next := readBlockComment(sql, pos)
+				stmt.WriteString(sql[pos:next])
+				pos = next
+				continue
+			}
+
+			stmt.WriteByte(sql[pos])
+			pos++
+
+		case '\'':
+			next := readSingleQuotedString(sql, pos, isEscapeStringQuote(sql, pos))
+			stmt.WriteString(sql[pos:next])
+			pos = next
+
+		case '"':
+			next := readDelimitedQuoted(sql, pos, '"')
+			stmt.WriteString(sql[pos:next])
+			pos = next
+
+		case '`':
+			// PostgreSQL does not use backticks, but keeping this makes the splitter
+			// friendlier for mixed SQL or ClickHouse/MySQL-like inputs.
+			next := readDelimitedQuoted(sql, pos, '`')
+			stmt.WriteString(sql[pos:next])
+			pos = next
+
+		case '$':
+			if isDollarQuoteStartAllowed(sql, pos) {
+				next, ok := readDollarQuotedString(sql, pos)
+				if ok {
+					stmt.WriteString(sql[pos:next])
+					pos = next
+					continue
+				}
+			}
+
+			stmt.WriteByte(sql[pos])
+			pos++
+
+		case ';':
+			stmt.WriteByte(';')
+			pos++
+
+			if isCopyFromStdinStatement(stmt.String()) {
+				next := readCopyFromStdinData(sql, pos)
+				stmt.WriteString(sql[pos:next])
+				pos = next
+			}
+
+			appendStatement(&statements, stmt.String())
+			stmt.Reset()
+
+		default:
+			next := readRaw(sql, pos)
+			stmt.WriteString(sql[pos:next])
+			pos = next
+		}
+	}
+
+	appendStatement(&statements, stmt.String())
+
+	if len(statements) == 0 {
+		return []string{""}, nil
+	}
+
+	return statements, nil
+}
+
+func appendStatement(statements *[]string, statement string) {
+	if isEmptyStatement(statement) {
+		return
+	}
+
+	*statements = append(*statements, statement)
+}
+
+func isEmptyStatement(statement string) bool {
+	trimmed := strings.TrimSpace(statement)
+	trimmed = strings.Trim(trimmed, ";")
+	return strings.TrimSpace(trimmed) == ""
+}
+
+func readRaw(sql string, pos int) int {
+	for pos < len(sql) {
+		switch sql[pos] {
+		case '-', '/', '\'', '"', '`', '$', ';':
+			return pos
+		default:
+			_, size := utf8.DecodeRuneInString(sql[pos:])
+			if size == 0 {
+				return pos + 1
+			}
+			pos += size
+		}
+	}
+
+	return pos
+}
+
+func readSingleLineComment(sql string, pos int) int {
+	pos += len("--")
+
+	for pos < len(sql) {
+		r, size := utf8.DecodeRuneInString(sql[pos:])
+		pos += size
+
+		if r == '\n' {
+			return pos
+		}
+
+		if r == '\r' {
+			if pos < len(sql) && sql[pos] == '\n' {
+				pos++
+			}
+			return pos
+		}
+	}
+
+	return pos
+}
+
+func readBlockComment(sql string, pos int) int {
+	pos += len("/*")
+	depth := 1
+
+	for pos < len(sql) && depth > 0 {
+		if hasPrefixAt(sql, pos, "/*") {
+			pos += len("/*")
+			depth++
+			continue
+		}
+
+		if hasPrefixAt(sql, pos, "*/") {
+			pos += len("*/")
+			depth--
+			continue
+		}
+
+		_, size := utf8.DecodeRuneInString(sql[pos:])
+		if size == 0 {
+			return pos + 1
+		}
+		pos += size
+	}
+
+	return pos
+}
+
+func readSingleQuotedString(sql string, pos int, escapeBackslash bool) int {
+	pos++ // opening quote
+
+	for pos < len(sql) {
+		r, size := utf8.DecodeRuneInString(sql[pos:])
+		pos += size
+
+		if escapeBackslash && r == '\\' {
+			if pos < len(sql) {
+				_, nextSize := utf8.DecodeRuneInString(sql[pos:])
+				pos += nextSize
+			}
+			continue
+		}
+
+		if r != '\'' {
+			continue
+		}
+
+		if pos < len(sql) && sql[pos] == '\'' {
+			pos++ // PostgreSQL doubled quote: ''
+			continue
+		}
+
+		return pos
+	}
+
+	return pos
+}
+
+func readDelimitedQuoted(sql string, pos int, quote byte) int {
+	pos++ // opening quote
+
+	for pos < len(sql) {
+		if sql[pos] != quote {
+			_, size := utf8.DecodeRuneInString(sql[pos:])
+			if size == 0 {
+				return pos + 1
+			}
+			pos += size
+			continue
+		}
+
+		pos++ // closing quote or escaped quote
+
+		if pos < len(sql) && sql[pos] == quote {
+			pos++ // doubled quote: "" or ``
+			continue
+		}
+
+		return pos
+	}
+
+	return pos
+}
+
+func readDollarQuotedString(sql string, pos int) (int, bool) {
+	tag, tagEnd, ok := readDollarTag(sql, pos)
+	if !ok {
+		return pos, false
+	}
+
+	bodyStart := tagEnd
+	bodyEnd := strings.Index(sql[bodyStart:], tag)
+	if bodyEnd < 0 {
+		return len(sql), true
+	}
+
+	return bodyStart + bodyEnd + len(tag), true
+}
+
+func readDollarTag(sql string, pos int) (tag string, end int, ok bool) {
+	if pos >= len(sql) || sql[pos] != '$' {
+		return "", pos, false
+	}
+
+	if pos+1 < len(sql) && sql[pos+1] == '$' {
+		return "$$", pos + 2, true
+	}
+
+	nextPos := pos + 1
+	if nextPos >= len(sql) {
+		return "", pos, false
+	}
+
+	r, size := utf8.DecodeRuneInString(sql[nextPos:])
+	if !IsIdentStart(r) {
+		return "", pos, false
+	}
+	nextPos += size
+
+	for nextPos < len(sql) {
+		if sql[nextPos] == '$' {
+			return sql[pos : nextPos+1], nextPos + 1, true
+		}
+
+		r, size = utf8.DecodeRuneInString(sql[nextPos:])
+		if !IsIdentTail(r) {
+			return "", pos, false
+		}
+
+		nextPos += size
+	}
+
+	return "", pos, false
+}
+
+func isDollarQuoteStartAllowed(sql string, pos int) bool {
+	if pos == 0 {
+		return true
+	}
+
+	prev, _ := utf8.DecodeLastRuneInString(sql[:pos])
+	return !IsIdentTail(prev)
+}
+
+func isEscapeStringQuote(sql string, quotePos int) bool {
+	if quotePos == 0 {
+		return false
+	}
+
+	prev, prevSize := utf8.DecodeLastRuneInString(sql[:quotePos])
+	if prev != 'e' && prev != 'E' {
+		return false
+	}
+
+	prefixStart := quotePos - prevSize
+	if prefixStart == 0 {
+		return true
+	}
+
+	beforePrefix, _ := utf8.DecodeLastRuneInString(sql[:prefixStart])
+	return !IsIdentTail(beforePrefix)
+}
+
+func isCopyFromStdinStatement(statement string) bool {
+	if firstKeyword(statement) != "copy" {
+		return false
+	}
+
+	return copyFromStdinPattern.MatchString(statement)
+}
+
+func firstKeyword(statement string) string {
+	pos := 0
+
+	for pos < len(statement) {
+		pos = skipWhitespace(statement, pos)
+
+		if hasPrefixAt(statement, pos, "--") {
+			pos = readSingleLineComment(statement, pos)
+			continue
+		}
+
+		if hasPrefixAt(statement, pos, "/*") {
+			pos = readBlockComment(statement, pos)
+			continue
+		}
+
+		break
+	}
+
+	start := pos
+
+	for pos < len(statement) {
+		r, size := utf8.DecodeRuneInString(statement[pos:])
+		if !IsIdentTail(r) {
+			break
+		}
+		pos += size
+	}
+
+	if start == pos {
+		return ""
+	}
+
+	return strings.ToLower(statement[start:pos])
+}
+
+func skipWhitespace(s string, pos int) int {
+	for pos < len(s) {
+		r, size := utf8.DecodeRuneInString(s[pos:])
+		if !unicode.IsSpace(r) {
+			return pos
+		}
+		pos += size
+	}
+
+	return pos
+}
+
+func readCopyFromStdinData(sql string, pos int) int {
+	for pos < len(sql) {
+		lineStart := pos
+		lineEnd := strings.IndexByte(sql[pos:], '\n')
+
+		if lineEnd < 0 {
+			line := sql[lineStart:]
+			if strings.TrimSuffix(line, "\r") == `\.` {
+				return len(sql)
+			}
+			return len(sql)
+		}
+
+		lineEnd = pos + lineEnd
+		line := sql[lineStart:lineEnd]
+		lineWithoutCR := strings.TrimSuffix(line, "\r")
+
+		if lineWithoutCR == `\.` {
+			return lineEnd
+		}
+
+		pos = lineEnd + 1
+	}
+
+	return pos
+}
+
+func hasPrefixAt(s string, pos int, prefix string) bool {
+	return pos >= 0 && pos+len(prefix) <= len(s) && s[pos:pos+len(prefix)] == prefix
+}
+
+func IsIdentStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r)
+}
+
+func IsIdentTail(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}

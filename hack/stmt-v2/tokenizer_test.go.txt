@@ -1,0 +1,1316 @@
+package stmt
+
+import (
+	"fmt"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSimple1(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputSQL string
+		expected int
+	}{
+		{"simple-1", "select 1", 1},
+		{"simple-2", "select 1;", 1},
+		{"multilineNestedComment", multilineNestedComment, 1},
+		{"q1", q1, 11},
+		{"audit", auditStmts, 40},
+		{"placeholder", "${table_name}", 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			splitResult, cnt := checkSplit(strings.TrimSpace(test.inputSQL))
+			if cnt != test.expected {
+				t.Errorf("%s: expected %d statements, got: %d", test.name, test.expected, cnt)
+			}
+			if strings.TrimSpace(splitResult) != strings.TrimSpace(test.inputSQL) {
+				assert.NoError(t, os.WriteFile("expected.txt", []byte(strings.TrimSpace(test.inputSQL)), 0o600))
+				assert.NoError(t, os.WriteFile("actual.txt", []byte(strings.TrimSpace(splitResult)), 0o600))
+				t.Errorf("Content not matching: %s, expected: [%s], actual: [%s]",
+					test.name,
+					strings.TrimSpace(test.inputSQL),
+					strings.TrimSpace(splitResult),
+				)
+			}
+		})
+	}
+}
+
+func TestSimple2(t *testing.T) {
+	// SELECT c, ascii(c)
+	// FROM unnest(string_to_array(E'\n\ta', NULL)) AS t(c);
+
+	tests := []struct {
+		name     string
+		inputSQL string
+		expected []string
+	}{
+		{"simple-1", "select 1", []string{`select 1`}},
+		{"simple-2", `$$ select 1 $$ ; $t$ 1 $t$`, []string{`$$ select 1 $$ ;`, ` $t$ 1 $t$`}},
+		{"simple-3", `select E'\n'`, []string{`select E'\n'`}},
+		{"simple-4", `select "1"`, []string{`select "1"`}},
+		{"simple-5", `${table_name}; select 1;`, []string{`${table_name};`, ` select 1;`}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			splitResult := checkSplitStmt(strings.TrimSpace(test.inputSQL), test.expected)
+			if !splitResult {
+				t.Errorf("%s fail", test.name)
+			}
+		})
+	}
+}
+
+// Test Tokenizer Functions
+
+func TestNextRune(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "abc"}
+	r, _, ok := tokenizer.nextRune()
+	if !ok || r != 'a' {
+		t.Errorf("Expected 'a', got '%c'", r)
+	}
+}
+
+func TestPeekRune(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "abc"}
+	r, _, ok := tokenizer.peekRune()
+	if !ok || r != 'a' {
+		t.Errorf("Expected 'a', got '%c'", r)
+	}
+
+	// position should not change
+	nextRune, _, _ := tokenizer.nextRune()
+	if nextRune != 'a' {
+		t.Errorf("Expected 'a', got '%c'", nextRune)
+	}
+}
+
+func TestPeekTwoRunes(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "abc"}
+	r1, r2, ok := tokenizer.peekTwoRunes()
+	if !ok || r1 != 'a' || r2 != 'b' {
+		t.Errorf("Expected 'a', 'b', got '%c', '%c'", r1, r2)
+	}
+
+	// position should not change
+	nextRune, _, _ := tokenizer.nextRune()
+	if nextRune != 'a' {
+		t.Errorf("Expected 'a', got '%c'", nextRune)
+	}
+}
+
+func TestReadSingleLineComment(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "-- This is a comment\nNext line"}
+	tokenizer.nextRune() // Move to '-'
+	tokenizer.nextRune()
+	comment := tokenizer.readSingleLineComment()
+	expected := "-- This is a comment\n"
+	if comment != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, comment)
+	}
+}
+
+func TestReadBlockComment(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "/* This is a block comment */ Next"}
+	tokenizer.nextRune() // Move to '/'
+	tokenizer.nextRune()
+	comment := tokenizer.readBlockComment()
+	expected := "/* This is a block comment */"
+	if comment != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, comment)
+	}
+}
+
+func TestReadNestedBlockComment(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "/* This is a block comment /* This is a nested block comment */ */ Next"}
+	tokenizer.nextRune() // Move to '/'
+	tokenizer.nextRune()
+	comment := tokenizer.readBlockComment()
+	expected := "/* This is a block comment /* This is a nested block comment */ */"
+	if comment != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, comment)
+	}
+}
+
+func TestReadString_1_0(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "'Hello ''world''' next"}
+	tokenizer.nextRune() // Move to quote
+	str := tokenizer.readString1()
+	expected := "'Hello ''world'''"
+	if str != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, str)
+	}
+}
+
+func TestReadEscapeString(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "'Hello \\'world\\'' next"}
+	tokenizer.nextRune()
+
+	str := tokenizer.readEscapeString()
+
+	expected := "'Hello \\'world\\''"
+	assert.Equal(t, expected, str)
+}
+
+func TestReadString_2(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "\"public\".\"table\""}
+	tokenizer.nextRune() // Move to quote
+	str := tokenizer.readString2('"')
+	expected := "\"public\""
+	if str != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, str)
+	}
+}
+
+func TestReadDollarQuoted(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "$tag$Hello world$tag$ next"}
+	tokenizer.nextRune() // Move to $
+	str, ok := tokenizer.readDollarQuoted()
+	expected := "$tag$Hello world$tag$"
+	if !ok || str != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, str)
+	}
+}
+
+func TestReadDollarTag(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "$tag$"}
+	tokenizer.nextRune() // Move to $
+	tag, ok := tokenizer.readDollarTag()
+	expected := "$tag$"
+	if !ok || tag != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, tag)
+	}
+}
+
+func TestReadRaw(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "SELECT * FROM users;"}
+	raw := tokenizer.readRaw()
+	expected := "SELECT * FROM users"
+	if raw != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, raw)
+	}
+}
+
+func TestNextToken(t *testing.T) {
+	tokenizer := &Tokenizer{sql: "-- Comment\nSELECT 'hello';"}
+	token := tokenizer.NextToken()
+	if token.Type != TokenSingleLineComment {
+		t.Errorf("Expected TokenSingleLineComment, got %v", token.Type)
+	}
+
+	token = tokenizer.NextToken()
+	if token.Type != TokenRaw {
+		t.Errorf("Expected TokenRaw, got %v", token.Type)
+	}
+
+	token = tokenizer.NextToken()
+	if token.Type != TokenString {
+		t.Errorf("Expected TokenString, got %v", token.Type)
+	}
+
+	token = tokenizer.NextToken()
+	if token.Type != TokenSemicolon {
+		t.Errorf("Expected TokenSemicolon, got %v", token.Type)
+	}
+}
+
+// Test Parser Functions
+
+func TestParseStatement(t *testing.T) {
+	tokens := []Token{
+		{Type: TokenRaw, Value: "SELECT * FROM users"},
+		{Type: TokenSemicolon, Value: ";"},
+	}
+	parser := &Parser{tokens: tokens}
+	stmt := parser.parseStatement()
+	expected := "SELECT * FROM users;"
+	if stmt != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, stmt)
+	}
+}
+
+func TestParseSQL(t *testing.T) {
+	tokens := []Token{
+		{Type: TokenRaw, Value: "SELECT * FROM users"},
+		{Type: TokenSemicolon, Value: ";"},
+		{Type: TokenRaw, Value: "INSERT INTO users (name) VALUES ('Alice')"},
+		{Type: TokenSemicolon, Value: ";"},
+	}
+	parser := &Parser{tokens: tokens}
+	statements := parser.parseSQL()
+	expected := []string{
+		"SELECT * FROM users;",
+		"INSERT INTO users (name) VALUES ('Alice');",
+	}
+	if !reflect.DeepEqual(statements, expected) {
+		t.Errorf("Expected %v, got %v", expected, statements)
+	}
+}
+
+func TestSplitSQLStatements2(t *testing.T) {
+	sql := `
+	SELECT * FROM users;
+	INSERT INTO users (name) VALUES ('Alice');
+	`
+	statements := splitTrimSpaces(sql)
+	expected := []string{
+		"SELECT * FROM users;",
+		"INSERT INTO users (name) VALUES ('Alice');",
+	}
+	if !reflect.DeepEqual(statements, expected) {
+		t.Errorf("Expected %v, got %v", expected, statements)
+	}
+}
+
+// test various combinations
+
+func TestSplitSQLStatements_PostgresRegressionCases(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+		want []string
+	}{
+		{
+			name: "empty input returns one empty statement",
+			sql:  ``,
+			want: []string{``},
+		},
+		{
+			name: "only whitespace returns one empty statement",
+			sql: ` 
+	  `,
+			want: []string{``},
+		},
+		{
+			name: "simple two statements",
+			sql:  `SELECT 1; SELECT 2;`,
+			want: []string{
+				`SELECT 1;`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "trailing statement without semicolon",
+			sql:  `SELECT 1; SELECT 2`,
+			want: []string{
+				`SELECT 1;`,
+				` SELECT 2`,
+			},
+		},
+		{
+			name: "multiple empty semicolons preserved",
+			sql:  `;;; SELECT 1; ;; SELECT 2; ;`,
+			want: []string{
+				`;`,
+				`;`,
+				`;`,
+				` SELECT 1;`,
+				` ;`,
+				`;`,
+				` SELECT 2;`,
+				` ;`,
+			},
+		},
+
+		{
+			name: "semicolon inside single quoted string",
+			sql:  `SELECT ';'; SELECT 2;`,
+			want: []string{
+				`SELECT ';';`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "doubled single quote",
+			sql:  `SELECT ''''; SELECT 2;`,
+			want: []string{
+				`SELECT '''';`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "semicolon after doubled single quote inside string",
+			sql:  `SELECT 'abc''def;ghi'; SELECT 2;`,
+			want: []string{
+				`SELECT 'abc''def;ghi';`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "plain postgres string with backslash before quote",
+			sql:  `SELECT 'abc\'; SELECT 2;`,
+			want: []string{
+				`SELECT 'abc\';`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "escape string constant with backslash quote",
+			sql:  `SELECT E'abc\';still string'; SELECT 2;`,
+			want: []string{
+				`SELECT E'abc\';still string';`,
+				` SELECT 2;`,
+			},
+		},
+
+		{
+			name: "semicolon inside double quoted identifier",
+			sql:  `SELECT "a;b"; SELECT 2;`,
+			want: []string{
+				`SELECT "a;b";`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "doubled double quote inside identifier",
+			sql:  `CREATE TABLE "weird "" table; name" (id int); SELECT 2;`,
+			want: []string{
+				`CREATE TABLE "weird "" table; name" (id int);`,
+				` SELECT 2;`,
+			},
+		},
+
+		{
+			name: "semicolon inside single line comment",
+			sql: `-- comment ; here
+SELECT 1;`,
+			want: []string{
+				`-- comment ; here
+SELECT 1;`,
+			},
+		},
+		{
+			name: "single line comment at EOF",
+			sql:  `-- comment at eof`,
+			want: []string{
+				`-- comment at eof`,
+			},
+		},
+		{
+			name: "semicolon inside block comment",
+			sql: `/* comment ; here */
+SELECT 1;`,
+			want: []string{
+				`/* comment ; here */
+SELECT 1;`,
+			},
+		},
+		{
+			name: "nested block comment with semicolon",
+			sql: `/* outer /* inner ; */ still comment */
+SELECT 1;`,
+			want: []string{
+				`/* outer /* inner ; */ still comment */
+SELECT 1;`,
+			},
+		},
+		{
+			name: "unterminated block comment does not panic",
+			sql:  `SELECT 1; /* unterminated ; comment`,
+			want: []string{
+				`SELECT 1;`,
+				` /* unterminated ; comment`,
+			},
+		},
+
+		{
+			name: "simple dollar quoted body",
+			sql:  `SELECT $$hello; world$$; SELECT 2;`,
+			want: []string{
+				`SELECT $$hello; world$$;`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "tagged dollar quoted body",
+			sql:  `SELECT $tag$hello; world$tag$; SELECT 2;`,
+			want: []string{
+				`SELECT $tag$hello; world$tag$;`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "do block with semicolons",
+			sql: `DO $$
+BEGIN
+  RAISE NOTICE 'hello; world';
+END;
+$$;
+SELECT 2;`,
+			want: []string{
+				`DO $$
+BEGIN
+  RAISE NOTICE 'hello; world';
+END;
+$$;`,
+				`
+SELECT 2;`,
+			},
+		},
+		{
+			name: "do block with tagged dollar quote and nested different tag",
+			sql: `DO $func$
+BEGIN
+  PERFORM $q$nested ; text$q$;
+END;
+$func$;
+SELECT 2;`,
+			want: []string{
+				`DO $func$
+BEGIN
+  PERFORM $q$nested ; text$q$;
+END;
+$func$;`,
+				`
+SELECT 2;`,
+			},
+		},
+		{
+			name: "same looking dollar quote inside single quoted string",
+			sql:  `SELECT '$$ not dollar quote; $$'; SELECT 2;`,
+			want: []string{
+				`SELECT '$$ not dollar quote; $$';`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "postgres parameter is not dollar quote",
+			sql:  `SELECT $1; SELECT $2;`,
+			want: []string{
+				`SELECT $1;`,
+				` SELECT $2;`,
+			},
+		},
+		{
+			name: "braced template variable is not dollar quote",
+			sql:  `SELECT ${table}; SELECT 2;`,
+			want: []string{
+				`SELECT ${table};`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "incomplete dollar tag is not dollar quote",
+			sql:  `SELECT $bad; SELECT 2;`,
+			want: []string{
+				`SELECT $bad;`,
+				` SELECT 2;`,
+			},
+		},
+		{
+			name: "unterminated dollar quote stays one statement",
+			sql:  `SELECT $tag$abc;def`,
+			want: []string{
+				`SELECT $tag$abc;def`,
+			},
+		},
+
+		{
+			name: "copy from stdin remains one logical migration statement",
+			sql: `COPY public.t (id, name) FROM stdin;
+1	hello;world
+2	other
+\.
+SELECT 2;`,
+			want: []string{
+				`COPY public.t (id, name) FROM stdin;
+1	hello;world
+2	other
+\.`,
+				`
+SELECT 2;`,
+			},
+		},
+		{
+			name: "copy from stdin with comments and semicolons in data",
+			sql: `-- before copy
+COPY public.t (id, payload) FROM stdin;
+1	{"text":"hello;world"}
+2	-- not a sql comment inside copy data
+3	/* not a block comment either ; */
+\.
+-- after copy
+SELECT 2;`,
+			want: []string{
+				`-- before copy
+COPY public.t (id, payload) FROM stdin;
+1	{"text":"hello;world"}
+2	-- not a sql comment inside copy data
+3	/* not a block comment either ; */
+\.`,
+				`
+-- after copy
+SELECT 2;`,
+			},
+		},
+
+		{
+			name: "comments strings and dollar quotes mixed",
+			sql: `-- before ; comment
+CREATE FUNCTION test_fn() RETURNS void AS $$
+BEGIN
+  /*
+    block ; comment
+    /* nested ; comment */
+  */
+  RAISE NOTICE 'value; %', 'x''y';
+  RAISE NOTICE $$inner ; dollar text$$;
+END;
+$$ LANGUAGE plpgsql;
+-- after ; comment
+SELECT 42;`,
+			want: []string{
+				`-- before ; comment
+CREATE FUNCTION test_fn() RETURNS void AS $$
+BEGIN
+  /*
+    block ; comment
+    /* nested ; comment */
+  */
+  RAISE NOTICE 'value; %', 'x''y';
+  RAISE NOTICE $$inner ; dollar text$$;
+END;
+$$ LANGUAGE plpgsql;`,
+				`
+-- after ; comment
+SELECT 42;`,
+			},
+		},
+		{
+			name: "create trigger function and trigger",
+			sql: `CREATE OR REPLACE FUNCTION trg_fn()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION trg_fn();`,
+			want: []string{
+				`CREATE OR REPLACE FUNCTION trg_fn()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;`,
+				`
+
+CREATE TRIGGER trg
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION trg_fn();`,
+			},
+		},
+		{
+			name: "function body containing copy-like text should not affect splitting",
+			sql: `DO $$
+BEGIN
+  RAISE NOTICE 'COPY t FROM stdin;';
+  RAISE NOTICE '\.';
+END;
+$$;
+SELECT 1;`,
+			want: []string{
+				`DO $$
+BEGIN
+  RAISE NOTICE 'COPY t FROM stdin;';
+  RAISE NOTICE '\.';
+END;
+$$;`,
+				`
+SELECT 1;`,
+			},
+		},
+		{
+			name: "quoted schema table and comments",
+			sql: `CREATE TABLE "odd;schema"."odd "" table" (
+  id int,
+  note text DEFAULT 'hello;world'
+); -- table done ;
+INSERT INTO "odd;schema"."odd "" table" VALUES (1, 'x;y');`,
+			want: []string{
+				`CREATE TABLE "odd;schema"."odd "" table" (
+  id int,
+  note text DEFAULT 'hello;world'
+);`,
+				` -- table done ;
+INSERT INTO "odd;schema"."odd "" table" VALUES (1, 'x;y');`,
+			},
+		},
+		{
+			name: "alter function with dollar body containing fake terminators",
+			sql: `CREATE FUNCTION f()
+RETURNS text
+LANGUAGE plpgsql
+AS $body$
+BEGIN
+  RETURN 'not done; still string';
+  -- not done either ;
+  /*
+    still not done ;
+  */
+END;
+$body$;
+ALTER FUNCTION f() OWNER TO postgres;`,
+			want: []string{
+				`CREATE FUNCTION f()
+RETURNS text
+LANGUAGE plpgsql
+AS $body$
+BEGIN
+  RETURN 'not done; still string';
+  -- not done either ;
+  /*
+    still not done ;
+  */
+END;
+$body$;`,
+				`
+ALTER FUNCTION f() OWNER TO postgres;`,
+			},
+		},
+		{
+			name: "case sensitive dollar tags",
+			sql:  `SELECT $Tag$hello; world$Tag$; SELECT $tag$other; value$tag$;`,
+			want: []string{
+				`SELECT $Tag$hello; world$Tag$;`,
+				` SELECT $tag$other; value$tag$;`,
+			},
+		},
+		{
+			name: "dollar quote body may contain unmatched quotes and comments",
+			sql: `DO $$
+BEGIN
+  RAISE NOTICE 'unterminated looking;
+  RAISE NOTICE "identifier looking;
+  RAISE NOTICE /* comment looking ;
+END;
+$$;
+SELECT 1;`,
+			want: []string{
+				`DO $$
+BEGIN
+  RAISE NOTICE 'unterminated looking;
+  RAISE NOTICE "identifier looking;
+  RAISE NOTICE /* comment looking ;
+END;
+$$;`,
+				`
+SELECT 1;`,
+			},
+		},
+		{
+			name: "semicolon inside array literal and json string",
+			sql: `INSERT INTO t VALUES (ARRAY['a;b', 'c'], '{"x":"y;z"}');
+SELECT 2;`,
+			want: []string{
+				`INSERT INTO t VALUES (ARRAY['a;b', 'c'], '{"x":"y;z"}');`,
+				`
+SELECT 2;`,
+			},
+		},
+		{
+			name: "comments between statements attach to next statement",
+			sql: `SELECT 1;
+-- comment for next statement ;
+/* block comment for next statement ; */
+SELECT 2;`,
+			want: []string{
+				`SELECT 1;`,
+				`
+-- comment for next statement ;
+/* block comment for next statement ; */
+SELECT 2;`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := SplitSQLStatements(tt.sql)
+			require.NoError(t, err)
+			require.Equal(
+				t,
+				tt.want,
+				got,
+				"SQL:\n%s\n\nwant:\n%s\n\ngot:\n%s",
+				tt.sql,
+				formatStatements(tt.want),
+				formatStatements(got),
+			)
+		})
+	}
+}
+
+func TestSplitSQLStatements_PreservesOriginalBytes(t *testing.T) {
+	tests := []string{
+		``,
+		`;;; SELECT 1; ;; SELECT 2; ;`,
+		`SELECT ';'; SELECT 2;`,
+		`-- comment ; here
+SELECT 1;`,
+		`DO $$
+BEGIN
+  RAISE NOTICE 'hello; world';
+END;
+$$;
+SELECT 2;`,
+	}
+
+	for _, sql := range tests {
+		t.Run(sql, func(t *testing.T) {
+			statements, err := SplitSQLStatements(sql)
+			require.NoError(t, err)
+			require.Equal(t, sql, strings.Join(statements, ""))
+		})
+	}
+}
+
+func TestSplitSQLStatements_RoundTripNonEmptyInput(t *testing.T) {
+	sql := `-- pre
+CREATE TABLE t (
+  id int,
+  note text DEFAULT 'a;b'
+);
+
+DO $$
+BEGIN
+  RAISE NOTICE 'hello;world';
+END;
+$$;
+
+SELECT 1;`
+
+	got, err := SplitSQLStatements(sql)
+	require.NoError(t, err)
+
+	joined := strings.Join(got, ``)
+	require.Equal(t, sql, joined)
+}
+
+func TestSplitSQLStatements_DoesNotPanicOnBrokenInputs(t *testing.T) {
+	tests := []string{
+		`'`,
+		`"`,
+		`/*`,
+		`$$`,
+		`$tag$`,
+		`SELECT 'abc`,
+		`SELECT "abc`,
+		`SELECT /* abc`,
+		`SELECT $tag$ abc`,
+		`SELECT $tag`,
+		`SELECT $`,
+		`SELECT ${`,
+		`SELECT $1`,
+	}
+
+	for _, sql := range tests {
+		t.Run(sql, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				_, err := SplitSQLStatements(sql)
+				require.NoError(t, err)
+			})
+		})
+	}
+}
+
+func formatStatements(stmts []string) string {
+	var b strings.Builder
+
+	for i, stmt := range stmts {
+		fmt.Fprintf(&b, "---- statement %d ----\n", i)
+		b.WriteString(stmt)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// Utils
+
+func splitTrimSpaces(sql string) []string {
+	statements, err := SplitSQLStatements(sql)
+	if err != nil {
+		return []string{}
+	}
+	results := []string{}
+	for _, elem := range statements {
+		results = append(results, strings.TrimSpace(elem))
+	}
+	return results
+}
+
+func checkSplitStmt(inputSQL string, expected []string) bool {
+	statements, err := SplitSQLStatements(inputSQL)
+	if err != nil {
+		return false
+	}
+	if len(expected) != len(statements) {
+		return false
+	}
+	for i := 0; i < len(expected); i++ {
+		if statements[i] != expected[i] {
+			fmt.Printf("expected=[%s]; actual=[%s]", expected[i], statements[i])
+			return false
+		}
+	}
+	return true
+}
+
+//nolint:gocritic
+func checkSplit(inputSQL string) (string, int) {
+	statements, err := SplitSQLStatements(inputSQL)
+	if err != nil {
+		return "", -1
+	}
+	sb := strings.Builder{}
+	for _, elem := range statements {
+		sb.WriteString(elem)
+	}
+	return sb.String(), len(statements)
+}
+
+var q1 = `
+-- Single-line multilineNestedComment
+CREATE TABLE users (
+	id SERIAL PRIMARY KEY,
+	name TEXT NOT NULL,
+	emoji TEXT DEFAULT '🔥'
+);
+
+/* Multi-line
+   multilineNestedComment */
+INSERT INTO users (name) VALUES ('Alice');
+
+/*
+	/* nested multiline multilineNestedComment */
+*/
+SELECT 1024;
+
+INSERT INTO users (name) VALUES ('O''Connor'); -- Handle escaped quote
+
+-- Dollar-quoted function
+CREATE FUNCTION hello() RETURNS TEXT AS $$
+BEGIN
+	RETURN 'Hello, 世界!';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION another() RETURNS TEXT AS $tag$
+BEGIN
+	RETURN 'Another function';
+END;
+$tag$ LANGUAGE plpgsql;
+
+-- Extended strings
+INSERT INTO messages (text) VALUES (E'Hello\nNew Line\tTab');
+
+INSERT INTO messages (text, name) VALUES ($1, $2);
+
+-- select 1
+select 2; -- select 3;
+/* select 4; */
+select 'select 5;';
+
+--select 6;
+select 7;
+`
+
+var multilineNestedComment = `
+/* /*1*/ 2 /*3/*4*/*/ */
+1
+`
+
+var auditStmts = `
+-- An audit history is important on most tables. Provide an audit trigger that
+-- logs to a dedicated audit table for the major relations.
+--
+
+-- Complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pg-audit-json" to load this file. \quit
+
+--
+-- Implements missing "-" JSONB operators that are available in HSTORE
+--
+
+--
+-- Implements "JSONB- TEXT[]" operation to remove a list of keys
+--
+-- Note: This method will be a supported operation of PostgreSQL 10
+--
+--
+CREATE OR REPLACE FUNCTION "jsonb_minus" ( "left" JSONB, "keys" TEXT[] )
+  RETURNS JSONB
+  LANGUAGE SQL
+  IMMUTABLE
+  STRICT
+AS $$
+  SELECT
+    CASE
+      WHEN "left" ?| "keys"
+        THEN COALESCE(
+          (SELECT ('{' ||
+                    string_agg(to_json("key")::TEXT || ':' || "value", ',') ||
+                    '}')
+             FROM jsonb_each("left")
+            WHERE "key" <> ALL ("keys")),
+          '{}'
+        )::JSONB
+      ELSE "left"
+    END
+$$;
+
+-- CREATE OPERATOR - (
+--   LEFTARG = JSONB,
+--   RIGHTARG = TEXT[],
+--   PROCEDURE = jsonb_minus
+-- );
+
+COMMENT ON FUNCTION jsonb_minus(JSONB, TEXT[]) IS 'Delete specificed keys';
+
+-- COMMENT ON OPERATOR - (JSONB, TEXT[]) IS 'Delete specified keys';
+
+--
+-- Implements "JSONB- JSONB" operation to recursively delete matching pairs.
+--
+--
+
+CREATE OR REPLACE FUNCTION "jsonb_minus" ( "left" JSONB, "right" JSONB )
+  RETURNS JSONB
+  LANGUAGE SQL
+  IMMUTABLE
+  STRICT
+AS $$
+  SELECT
+    COALESCE(json_object_agg(
+      "key",
+      CASE
+        -- if the value is an object and the value of the second argument is
+        -- not null, we do a recursion
+        WHEN jsonb_typeof("value") = 'object' AND "right" -> "key" IS NOT NULL
+        THEN jsonb_minus("value", "right" -> "key")
+        -- for all the other types, we just return the value
+        ELSE "value"
+      END
+    ), '{}')::JSONB
+  FROM
+    jsonb_each("left")
+  WHERE
+    "left" -> "key" <> "right" -> "key"
+    OR "right" -> "key" IS NULL
+$$;
+
+-- CREATE OPERATOR - (
+--   LEFTARG   = JSONB,
+--   RIGHTARG  = JSONB,
+--   PROCEDURE = jsonb_minus
+-- );
+
+COMMENT ON FUNCTION jsonb_minus(JSONB, JSONB)
+  IS 'Delete matching pairs in the right argument from the left argument';
+
+-- COMMENT ON OPERATOR - (JSONB, JSONB)
+--   IS 'Delete matching pairs in the right argument from the left argument';
+
+
+CREATE SCHEMA audit;
+REVOKE ALL ON SCHEMA audit FROM public;
+COMMENT ON SCHEMA audit
+  IS 'Out-of-table audit/history logging tables and trigger functions';
+--
+-- Remember, every column you add takes up more audit table space and slows
+-- audit inserts.
+--
+-- Every index you add has a big impact too, so avoid adding indexes to the
+-- audit table unless you REALLY need them. The hstore GIST indexes are
+-- particularly expensive.
+--
+-- It is sometimes worth copying the audit table, or a coarse subset of it that
+-- you're interested in, into a temporary table where you CREATE any useful
+-- indexes and do your analysis.
+--
+CREATE TABLE audit.log (
+    id BIGSERIAL PRIMARY KEY,
+    schema_name TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    relid OID NOT NULL,
+    session_user_name TEXT NOT NULL,
+    current_user_name TEXT NOT NULL,
+    action_tstamp_tx TIMESTAMP WITH TIME ZONE NOT NULL,
+    action_tstamp_stm TIMESTAMP WITH TIME ZONE NOT NULL,
+    action_tstamp_clk TIMESTAMP WITH TIME ZONE NOT NULL,
+    transaction_id BIGINT NOT NULL,
+    application_name TEXT,
+    application_user_name TEXT,
+    client_addr INET,
+    client_port INTEGER,
+    client_query TEXT,
+    action TEXT NOT NULL CHECK (action IN ('I','D','U', 'T')),
+    row_data JSONB,
+    changed_fields JSONB,
+    statement_only BOOLEAN NOT NULL
+);
+
+REVOKE ALL ON audit.log FROM public;
+
+COMMENT ON TABLE audit.log
+  IS 'History of auditable actions on audited tables';
+COMMENT ON COLUMN audit.log.id
+  IS 'Unique identifier for each auditable event';
+COMMENT ON COLUMN audit.log.schema_name
+  IS 'Database schema audited table for this event is in';
+COMMENT ON COLUMN audit.log.table_name
+  IS 'Non-schema-qualified table name of table event occurred in';
+COMMENT ON COLUMN audit.log.relid
+  IS 'Table OID. Changes with drop/create. Get with ''tablename''::REGCLASS';
+COMMENT ON COLUMN audit.log.session_user_name
+  IS 'Login / session user whose statement caused the audited event';
+COMMENT ON COLUMN audit.log.current_user_name
+  IS 'Effective user that cased audited event (if authorization level changed)';
+COMMENT ON COLUMN audit.log.action_tstamp_tx
+  IS 'Transaction start timestamp for tx in which audited event occurred';
+COMMENT ON COLUMN audit.log.action_tstamp_stm
+  IS 'Statement start timestamp for tx in which audited event occurred';
+COMMENT ON COLUMN audit.log.action_tstamp_clk
+  IS 'Wall clock time at which audited event''s trigger call occurred';
+COMMENT ON COLUMN audit.log.transaction_id
+  IS 'Identifier of transaction that made the change. Unique when paired with action_tstamp_tx.';
+COMMENT ON COLUMN audit.log.client_addr
+  IS 'IP address of client that issued query. Null for unix domain socket.';
+COMMENT ON COLUMN audit.log.client_port
+  IS 'Port address of client that issued query. Undefined for unix socket.';
+COMMENT ON COLUMN audit.log.client_query
+  IS 'Top-level query that caused this auditable event. May be more than one.';
+COMMENT ON COLUMN audit.log.application_name
+  IS 'Client-set session application name when this audit event occurred.';
+COMMENT ON COLUMN audit.log.application_user_name
+  IS 'Client-set session application user when this audit event occurred.';
+COMMENT ON COLUMN audit.log.action
+  IS 'Action type; I = insert, D = delete, U = update, T = truncate';
+COMMENT ON COLUMN audit.log.row_data
+  IS 'Record value. Null for statement-level trigger. For INSERT this is null. For DELETE and UPDATE it is the old tuple.';
+COMMENT ON COLUMN audit.log.changed_fields
+  IS 'New values of fields for INSERT or changed by UPDATE. Null for DELETE';
+COMMENT ON COLUMN audit.log.statement_only
+  IS '''t'' if audit event is from an FOR EACH STATEMENT trigger, ''f'' for FOR EACH ROW';
+
+CREATE INDEX log_relid_idx ON audit.log(relid);
+CREATE INDEX log_action_tstamp_tx_stm_idx ON audit.log(action_tstamp_stm);
+CREATE INDEX log_action_idx ON audit.log(action);
+
+--
+-- Allow the user of the extension to create a backup of the audit log data
+--
+SELECT pg_catalog.pg_extension_config_dump('audit.log', '');
+
+CREATE OR REPLACE FUNCTION audit.if_modified_func()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    audit_row audit.log;
+    include_values BOOLEAN;
+    log_diffs BOOLEAN;
+    h_old JSONB;
+    h_new JSONB;
+    excluded_cols TEXT[] = ARRAY[]::TEXT[];
+BEGIN
+  IF TG_WHEN <> 'AFTER' THEN
+    RAISE EXCEPTION 'audit.if_modified_func() may only run as an AFTER trigger';
+  END IF;
+
+  audit_row = ROW(
+    nextval('audit.log_id_seq'),                    -- id
+    TG_TABLE_SCHEMA::TEXT,                          -- schema_name
+    TG_TABLE_NAME::TEXT,                            -- table_name
+    TG_RELID,                                       -- relation OID for faster searches
+    session_user::TEXT,                             -- session_user_name
+    current_user::TEXT,                             -- current_user_name
+    current_timestamp,                              -- action_tstamp_tx
+    statement_timestamp(),                          -- action_tstamp_stm
+    clock_timestamp(),                              -- action_tstamp_clk
+    txid_current(),                                 -- transaction ID
+    current_setting('audit.application_name', true),      -- client application
+    current_setting('audit.application_user_name', true), -- client user name
+    inet_client_addr(),                             -- client_addr
+    inet_client_port(),                             -- client_port
+    current_query(),                                -- top-level query or queries
+    substring(TG_OP, 1, 1),                         -- action
+    NULL,                                           -- row_data
+    NULL,                                           -- changed_fields
+    'f'                                             -- statement_only
+    );
+
+  IF NOT TG_ARGV[0]::BOOLEAN IS DISTINCT FROM 'f'::BOOLEAN THEN
+    audit_row.client_query = NULL;
+  END IF;
+
+  IF TG_ARGV[1] IS NOT NULL THEN
+    excluded_cols = TG_ARGV[1]::TEXT[];
+  END IF;
+
+  IF (TG_OP = 'INSERT' AND TG_LEVEL = 'ROW') THEN
+    audit_row.changed_fields = jsonb_minus(to_jsonb(NEW.*), excluded_cols);
+  ELSIF (TG_OP = 'UPDATE' AND TG_LEVEL = 'ROW') THEN
+    audit_row.row_data = jsonb_minus(to_jsonb(OLD.*), excluded_cols);
+    audit_row.changed_fields =
+      jsonb_minus(jsonb_minus(to_jsonb(NEW.*), audit_row.row_data), excluded_cols);
+    IF audit_row.changed_fields = '{}'::JSONB THEN
+      -- All changed fields are ignored. Skip this update.
+      RETURN NULL;
+    END IF;
+  ELSIF (TG_OP = 'DELETE' AND TG_LEVEL = 'ROW') THEN
+    audit_row.row_data = jsonb_minus(to_jsonb(OLD.*), excluded_cols);
+  ELSIF (TG_LEVEL = 'STATEMENT' AND
+         TG_OP IN ('INSERT','UPDATE','DELETE','TRUNCATE')) THEN
+    audit_row.statement_only = 't';
+  ELSE
+    RAISE EXCEPTION '[audit.if_modified_func] - Trigger func added as trigger '
+                    'for unhandled case: %, %', TG_OP, TG_LEVEL;
+    RETURN NULL;
+  END IF;
+  INSERT INTO audit.log VALUES (audit_row.*);
+  RETURN NULL;
+END;
+$$;
+
+
+COMMENT ON FUNCTION audit.if_modified_func() IS $$
+Track changes to a table at the statement and/or row level.
+
+Optional parameters to trigger in CREATE TRIGGER call:
+
+param 0: BOOLEAN, whether to log the query text. Default 't'.
+
+param 1: TEXT[], columns to ignore in updates. Default [].
+
+         Updates to ignored cols are omitted from changed_fields.
+
+         Updates with only ignored cols changed are not inserted
+         into the audit log.
+
+         Almost all the processing work is still done for updates
+         that ignored. If you need to save the load, you need to use
+         WHEN clause on the trigger instead.
+
+         No warning or error is issued if ignored_cols contains columns
+         that do not exist in the target table. This lets you specify
+         a standard set of ignored columns.
+
+There is no parameter to disable logging of values. Add this trigger as
+a 'FOR EACH STATEMENT' rather than 'FOR EACH ROW' trigger if you do not
+want to log row values.
+
+Note that the user name logged is the login role for the session. The audit
+trigger cannot obtain the active role because it is reset by
+the SECURITY DEFINER invocation of the audit trigger its self.
+$$;
+
+---
+--- Enables tracking on a table by generating and attaching a trigger
+---
+CREATE OR REPLACE FUNCTION audit.audit_table(
+  target_table REGCLASS,
+  audit_rows BOOLEAN,
+  audit_query_text BOOLEAN,
+  ignored_cols TEXT[]
+)
+RETURNS VOID
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+  stm_targets TEXT = 'INSERT OR UPDATE OR DELETE OR TRUNCATE';
+  _q_txt TEXT;
+  _ignored_cols_snip TEXT = '';
+BEGIN
+  EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || target_table::TEXT;
+  EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_stm ON ' || target_table::TEXT;
+
+  IF audit_rows THEN
+    IF array_length(ignored_cols,1) > 0 THEN
+        _ignored_cols_snip = ', ' || quote_literal(ignored_cols);
+    END IF;
+    _q_txt = 'CREATE TRIGGER audit_trigger_row '
+             'AFTER INSERT OR UPDATE OR DELETE ON ' ||
+             target_table::TEXT ||
+             ' FOR EACH ROW EXECUTE PROCEDURE audit.if_modified_func(' ||
+             quote_literal(audit_query_text) ||
+             _ignored_cols_snip ||
+             ');';
+    RAISE NOTICE '%', _q_txt;
+    EXECUTE _q_txt;
+    stm_targets = 'TRUNCATE';
+  END IF;
+
+  _q_txt = 'CREATE TRIGGER audit_trigger_stm AFTER ' || stm_targets || ' ON ' ||
+           target_table ||
+           ' FOR EACH STATEMENT EXECUTE PROCEDURE audit.if_modified_func('||
+           quote_literal(audit_query_text) || ');';
+  RAISE NOTICE '%', _q_txt;
+  EXECUTE _q_txt;
+END;
+$$;
+
+COMMENT ON FUNCTION audit.audit_table(REGCLASS, BOOLEAN, BOOLEAN, TEXT[]) IS $$
+Add auditing support to a table.
+
+Arguments:
+   target_table:     Table name, schema qualified if not on search_path
+   audit_rows:       Record each row change, or only audit at a statement level
+   audit_query_text: Record the text of the client query that triggered
+                     the audit event?
+   ignored_cols:     Columns to exclude from update diffs,
+                     ignore updates that change only ignored cols.
+$$;
+
+--
+-- Pg doesn't allow variadic calls with 0 params, so provide a wrapper
+--
+CREATE OR REPLACE FUNCTION audit.audit_table(
+  target_table REGCLASS,
+  audit_rows BOOLEAN,
+  audit_query_text BOOLEAN
+)
+RETURNS VOID
+LANGUAGE SQL
+AS $$
+  SELECT audit.audit_table($1, $2, $3, ARRAY[]::TEXT[]);
+$$;
+
+--
+-- And provide a convenience call wrapper for the simplest case
+-- of row-level logging with no excluded cols and query logging enabled.
+--
+CREATE OR REPLACE FUNCTION audit.audit_table(target_table REGCLASS)
+RETURNS VOID
+LANGUAGE 'sql'
+AS $$
+  SELECT audit.audit_table($1, BOOLEAN 't', BOOLEAN 't');
+$$;
+
+COMMENT ON FUNCTION audit.audit_table(REGCLASS) IS $$
+Add auditing support to the given table. Row-level changes will be logged with
+full client query text. No cols are ignored.
+$$;
+`

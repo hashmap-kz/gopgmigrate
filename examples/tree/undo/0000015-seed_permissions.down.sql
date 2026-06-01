@@ -1,1 +1,0 @@
-delete from authn.permissions where xname = 'test-0000015';

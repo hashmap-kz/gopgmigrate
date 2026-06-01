@@ -1,3 +1,25 @@
-Add 'batch' execution mode: merge all files that may be executed inside and outside transaction in bundles.
+1) PG* env aware (urgent)
+2) rollback-cnt (NO: forward only rollback)
+3) unit-tests
+4) readme
+5) migration schema name (cfg/cli)
+6) complex examples
+7) integration tests (simplify compose, etc)
+8) make targets (integ, etc)
+9) docker image (for CI)
+10) update ci workflows
+11) regex for check "schema.table" is valid pg identifier
+12) live progress, totals, etc...
+13) baseline (urgent)
+14) CLI to generate bash from migration file (psql commands against migration dir)
+15) migrate CMD (from flyway, etc...), for testing
+16) hard check migration-dir against history-table (early error handling)
+
+
+
+
+
+
+
 
 
